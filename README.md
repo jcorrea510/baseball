@@ -54,6 +54,7 @@ Other handy commands:
 ```bash
 npm test        # runs the automated checks on the game rules and physics
 npm run build   # makes the finished website in the "dist" folder
+npm run smoke   # after a build: opens the finished site in a real browser and checks it reaches the title screen
 npm run sim     # plays hundreds of computer-controlled games and prints statistics
 ```
 
@@ -65,8 +66,12 @@ Every time something is pushed to the **`main`** branch, GitHub automatically te
 
 1. Open the repository page → **Settings** (top row of tabs).
 2. In the left sidebar click **Pages**.
-3. Under **Build and deployment**, set **Source** to **GitHub Actions**.
-4. Go to the **Actions** tab, open the latest run of "Deploy to GitHub Pages" and wait for the green check mark (about a minute). If it already ran before you changed the setting, click **Re-run all jobs**.
+3. Under **Build and deployment**, open the **Source** drop-down and choose **GitHub Actions**. **Do not** pick "Deploy from a branch": that publishes the raw source code instead of the finished game, and the page shows an error screen ("The game files didn't load").
+4. Go to the **Actions** tab, click **Deploy to GitHub Pages** in the left list, then **Run workflow** → **Run workflow**. Wait for the green check mark (about two minutes) - the game is then live.
+
+**How to tell it worked:** the run named "Deploy to GitHub Pages" is green. If instead you see a run named "pages build and deployment" (with a "Build with Jekyll" step), Pages is still on "Deploy from a branch" - go back to step 3.
+
+If the game ever shows an error screen instead of the title screen, read the message on it: it says whether the game files didn't load (the Pages setting above) or the browser couldn't start 3D graphics (turn on hardware acceleration or try another browser).
 
 ## Tuning the game
 

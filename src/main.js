@@ -1,18 +1,28 @@
 // Sandlot entry point.
+// The splash and the on-screen error screen live in index.html (window.__sandlotBoot). The splash is hidden by the game
+// loop after the first frame is drawn; anything that goes wrong before that is reported through boot.fail().
 import './style.css';
 import { App } from './app.js';
 
 const params = new URLSearchParams(location.search);
 const canvas = document.getElementById('game');
 const ui = document.getElementById('ui');
-const boot = document.getElementById('boot');
+const boot = window.__sandlotBoot;
 
-// Let the browser paint the "warming up" splash first, then build the (fairly heavy) ballpark.
-requestAnimationFrame(() => setTimeout(() => {
-  const app = new App(canvas, ui, params);
-  window.__app = app; // handy for debugging / automated checks
-  if (boot) {
-    boot.style.opacity = '0';
-    setTimeout(() => boot.remove(), 600);
+let started = false;
+function start() {
+  if (started) return;
+  started = true;
+  try {
+    const app = new App(canvas, ui, params);
+    window.__app = app; // handy for debugging / automated checks
+  } catch (err) {
+    console.error(err);
+    if (boot) boot.fail('start', err);
   }
-}, 30));
+}
+
+// Let the browser paint the splash first, then build the (fairly heavy) ballpark. Animation frames never fire in a hidden
+// tab, so a plain timer is the backstop: startup must not depend on the tab being visible.
+requestAnimationFrame(() => setTimeout(start, 30));
+setTimeout(start, 400);

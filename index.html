@@ -7,22 +7,135 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="description" content="Sandlot - a browser baseball batting game. Time your swing, crush home runs." />
+    <!--
+      Boot guard. This is plain inline JavaScript on purpose: it has to work even when the game's own files
+      never load (wrong publish setting, blocked script, old browser). It owns the "Warming up the ballpark"
+      splash and turns ANY startup problem into a readable message instead of a spinner that never ends.
+        __sandlotBoot.done()          the game drew its first frame: fade the splash away
+        __sandlotBoot.fail(kind, err) show the error screen (kind: load | start | frame | timeout)
+      The current state is mirrored in <html data-boot="loading | ready | failed:<kind>"> for automated checks.
+    -->
+    <script>
+      (function () {
+        var state = 'loading';
+        var failKind = '';
+        var timers = [];
+        var $ = function (id) { return document.getElementById(id); };
+        var setState = function (s) { state = s; document.documentElement.setAttribute('data-boot', s); };
+        setState('loading');
+
+        function explain(kind, err) {
+          var msg = String((err && err.message) || err || '');
+          if (kind === 'load') {
+            return {
+              title: "The game files didn't load",
+              body: 'The page opened, but the game program itself could not be downloaded or started. Reload the page to try again. ' +
+                'If you run this site: it is most likely publishing the un-built source code instead of the finished game. ' +
+                'On GitHub open Settings → Pages, set Source to “GitHub Actions”, then run the “Deploy to GitHub Pages” workflow again.'
+            };
+          }
+          if (/webgl/i.test(msg)) {
+            return {
+              title: "Your browser couldn't start 3D graphics",
+              body: 'Sandlot needs WebGL. Turn on hardware acceleration in your browser settings (or update your browser and graphics drivers), ' +
+                'or try another browser or device, then reload the page.'
+            };
+          }
+          if (kind === 'timeout') {
+            return { title: 'The game is taking too long to start', body: 'Your device may be very slow, or something is blocking the game. Reload the page to try again.' };
+          }
+          return {
+            title: 'Something went wrong starting the game',
+            body: 'Reload the page to try again. If it keeps happening, the technical details below will help whoever looks after the game.'
+          };
+        }
+
+        function show(kind, err) {
+          var box = $('boot-error');
+          if (!box) { document.addEventListener('DOMContentLoaded', function () { show(kind, err); }); return; }
+          var e = explain(kind, err);
+          $('boot-error-title').textContent = e.title;
+          $('boot-error-body').textContent = e.body;
+          var detail = kind + ': ' + String((err && err.message) || err || 'no message');
+          if (err && err.stack) detail += '\n' + String(err.stack).split('\n').slice(0, 6).join('\n');
+          detail += '\n' + navigator.userAgent;
+          $('boot-error-detail').textContent = detail;
+          box.hidden = false;
+        }
+
+        var api = (window.__sandlotBoot = {
+          get state() { return state; },
+          done: function () {
+            if (state === 'ready' || (state.indexOf('failed') === 0 && failKind !== 'timeout')) return;
+            for (var i = 0; i < timers.length; i++) clearTimeout(timers[i]);
+            setState('ready');
+            var box = $('boot-error'); if (box) box.hidden = true;
+            var boot = $('boot');
+            if (boot) { boot.style.opacity = '0'; setTimeout(function () { if (boot.parentNode) boot.parentNode.removeChild(boot); }, 600); }
+          },
+          fail: function (kind, err) {
+            if (state.indexOf('failed') === 0 && failKind !== 'timeout') return;
+            for (var i = 0; i < timers.length; i++) clearTimeout(timers[i]);
+            failKind = kind;
+            setState('failed:' + kind);
+            try { console.error('[sandlot] ' + kind + ' failure', err); } catch (_) { /* ignore */ }
+            show(kind, err);
+          }
+        });
+
+        // A script that fails to load (404, blocked, wrong path) fires an error event on the <script> element, which does
+        // not bubble - so listen in the capture phase. Uncaught exceptions and rejected promises are caught too, but only
+        // while starting up; once the game is running, a stray error must not cover the screen.
+        window.addEventListener('error', function (ev) {
+          if (state !== 'loading') return;
+          var t = ev.target;
+          if (t && t !== window && t.tagName) {
+            if (t.tagName === 'SCRIPT') api.fail('load', { message: 'Could not load ' + (t.src || 'a script') });
+            return; // a missing icon or stylesheet is not fatal
+          }
+          api.fail('start', ev.error || ev.message);
+        }, true);
+        window.addEventListener('unhandledrejection', function (ev) { if (state === 'loading') api.fail('start', ev.reason); });
+
+        // Slow device? Say so. Never started at all? Say that too, instead of spinning forever.
+        timers.push(setTimeout(function () {
+          var m = $('boot-msg');
+          if (state === 'loading' && m) m.textContent = 'Still loading … slower devices need a little longer';
+        }, 12000));
+        timers.push(setTimeout(function () { if (state === 'loading') api.fail('timeout'); }, 45000));
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <title>Sandlot - Baseball Batting Game</title>
     <style>
       html, body { margin: 0; height: 100%; background: #05080c; }
-      #boot { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: radial-gradient(ellipse at center, #14261c, #05080c 70%); color: #ffe8a8; font-family: 'Arial Black', Impact, system-ui, sans-serif; transition: opacity .5s ease; }
+      #boot, #boot-error { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: radial-gradient(ellipse at center, #14261c, #05080c 70%); color: #ffe8a8; font-family: 'Arial Black', Impact, system-ui, sans-serif; }
+      #boot { z-index: 50; transition: opacity .5s ease; }
       #boot b { font-size: clamp(44px, 12vw, 120px); letter-spacing: .02em; text-shadow: 0 5px 0 rgba(140, 60, 10, .85); }
-      #boot span { font: 600 13px system-ui, sans-serif; letter-spacing: .3em; text-transform: uppercase; color: #a9b6d3; }
+      #boot span { font: 600 13px system-ui, sans-serif; letter-spacing: .3em; text-transform: uppercase; color: #a9b6d3; text-align: center; padding: 0 16px; }
       #boot i { display: block; width: 46px; height: 46px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff, #d8d2c4); position: relative; animation: bootspin 1s linear infinite; }
       #boot i::before, #boot i::after { content: ''; position: absolute; top: 6px; bottom: 6px; width: 10px; border: 2px solid #c62828; border-radius: 50%; }
       #boot i::before { left: 4px; border-right-color: transparent; border-top-color: transparent; border-bottom-color: transparent; }
       #boot i::after { right: 4px; border-left-color: transparent; border-top-color: transparent; border-bottom-color: transparent; }
       @keyframes bootspin { to { transform: rotate(360deg); } }
+      #boot-error { z-index: 60; padding: 24px; box-sizing: border-box; text-align: center; }
+      #boot-error[hidden] { display: none; }
+      #boot-error h1 { margin: 0; font-size: clamp(24px, 5vw, 40px); }
+      #boot-error p { margin: 0; max-width: 34em; font: 400 clamp(15px, 2.4vw, 18px)/1.5 system-ui, sans-serif; color: #dfe7f7; }
+      #boot-error button { font: 800 16px system-ui, sans-serif; letter-spacing: .06em; text-transform: uppercase; padding: 12px 28px; border: 0; border-radius: 999px; background: linear-gradient(#ffd54a, #ffab1a); color: #2a1600; cursor: pointer; }
+      #boot-error details { max-width: min(92vw, 44em); font: 400 12px system-ui, sans-serif; color: #8d9ab8; text-align: left; }
+      #boot-error summary { cursor: pointer; text-align: center; }
+      #boot-error pre { white-space: pre-wrap; word-break: break-word; margin: 8px 0 0; font: 11px/1.4 ui-monospace, Menlo, Consolas, monospace; }
     </style>
   </head>
   <body>
-    <div id="boot"><b>SANDLOT</b><i></i><span>Warming up the ballpark</span></div>
+    <div id="boot"><b>SANDLOT</b><i></i><span id="boot-msg">Warming up the ballpark</span><noscript><span>Sandlot needs JavaScript. Please turn it on and reload.</span></noscript></div>
+    <div id="boot-error" role="alert" hidden>
+      <h1 id="boot-error-title"></h1>
+      <p id="boot-error-body"></p>
+      <button type="button" onclick="location.reload()">Reload</button>
+      <details><summary>Technical details</summary><pre id="boot-error-detail"></pre></details>
+    </div>
     <div id="app">
       <canvas id="game" tabindex="-1"></canvas>
       <div id="ui"></div>

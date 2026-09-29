@@ -6,6 +6,7 @@ Browser baseball batting game ("spiritual successor to the old doodle baseball g
 - `npm run dev` - dev server (http://localhost:5173)
 - `npm test` - Vitest (`tests/*.test.js`, pure logic, no browser)
 - `npm run build` - production build to `dist/` (base path comes from `BASE_PATH`, default `/baseball/`)
+- `npm run smoke` - (after a build) serves `dist/` like GitHub Pages and drives headless Chrome: must reach the title screen; with WebGL blocked and with the raw un-built source it must show the on-screen error screen. `CHROME_PATH=/path/to/chrome` picks the browser locally; CI uses the runner's Chrome. It runs in the deploy workflow before publishing.
 - `npm run sim` / `node scripts/sim.mjs [games] [timingSdMs] [difficulty]` - headless bot playtest with stats (win %, AVG, HR, outcome table by contact grade). Use it after changing physics/fielding/contact numbers.
 - `node scripts/tune.mjs [samples] [sdMs] [difficulty]` - hit/out/HR rate by batted-ball type (for tuning fielders).
 - Deploy: push to `main` -> `.github/workflows/deploy.yml` runs tests + build + publishes to GitHub Pages (Settings -> Pages -> Source: GitHub Actions).
@@ -34,6 +35,13 @@ Feet. Origin = back tip of home plate. `+x` = right-field side (screen-right fro
 - `render/scene.js` renderer + adaptive resolution; `environment.js` sky/sun/fog/day-dusk-night presets + clouds; `stadium.js` (+ `perimeter.js`, `crowd.js`, `scoreboard.js`, `textures.js`) the ballpark; `rig.js` person model + two-bone IK (parts merged into few meshes); `poses.js` procedural animation; `actors.js` drives every person and the ball from engine state; `cameraRig.js` broadcast camera (batter view -> follow -> snap back, shake); `ball.js` ball + trail; `effects.js` particles/fireworks.
 - `audio/audio.js` - Web Audio synthesis (bat crack scaled by contact quality, glove pop, crowd, cheers, organ riff). Context is created only after the first user gesture.
 - `ui/ui.js` + `style.css` - all menus/HUD. `app.js` - input, time control (hit-stop, slow-mo, fast-forward), engine->effects/audio/UI hooks.
+
+### Startup and the boot guard (do not bypass)
+- `index.html` has an **inline classic script** (`window.__sandlotBoot`) that owns the "Warming up the ballpark" splash and the `#boot-error` screen. It works even when the game's own files never load. `done()` hides the splash; `fail(kind, err)` shows a readable error (kinds: `load`, `start`, `frame`, `timeout`). State is mirrored in `<html data-boot="loading|ready|failed:<kind>">`.
+- It catches: the module script failing to load (capture-phase `error` on `<script>`), uncaught exceptions / rejected promises while starting, and a 45 s timeout (soft "still loading" note at 12 s).
+- `main.js` builds the `App` inside try/catch and starts on a timer as well as on an animation frame (frames never fire in hidden tabs). `App.loop` requests the next frame first, guards each frame with try/catch, and calls `__sandlotBoot.done()` only after the first frame draws; repeated frame errors stop the loop and call `fail('frame')`.
+- Never add startup work that can throw or wait without going through this path, and never remove the splash anywhere else.
+- Deploy pitfall: GitHub Pages must be set to **Source: GitHub Actions**. "Deploy from a branch" publishes the repo's raw `index.html` (pointing at `/src/main.js`, which does not exist on the site) - that once left the live game on the splash forever. `tests/boot.test.js` and `npm run smoke` guard this.
 
 ## Conventions
 - Put every tunable number in `src/config.js` with a plain-English comment. No magic numbers in logic.

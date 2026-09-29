@@ -31,7 +31,19 @@ jobs:
         run: npm run build
         env:
           BASE_PATH: /${{ github.event.repository.name }}/
-      - uses: actions/configure-pages@v5
+      # Opens the finished site in a real browser (the runner's preinstalled Chrome) the way GitHub Pages will serve it.
+      # It must reach the title screen, and startup failures must show a readable message instead of hanging.
+      - name: Smoke test the built game
+        run: npm run smoke
+        env:
+          BASE_PATH: /${{ github.event.repository.name }}/
+      - id: pages
+        uses: actions/configure-pages@v5
+      - name: Explain a Pages settings problem
+        if: failure() && steps.pages.outcome == 'failure'
+        run: |
+          echo "::error title=GitHub Pages is not set to GitHub Actions::Open the repository on GitHub, go to Settings > Pages, set Source to GitHub Actions, then run this workflow again (Actions tab > Deploy to GitHub Pages > Run workflow). Until then GitHub publishes the raw un-built source code and the game shows an error screen."
+          exit 1
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

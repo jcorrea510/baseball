@@ -559,13 +559,29 @@ export class App {
 
   // ---------------------------------------------------------------- frame loop
   loop(now) {
-    requestAnimationFrame(this.loop);
-    const realDt = Math.min(0.05, Math.max(0.0005, (now - this.last) / 1000));
-    this.rawDtMs = now - this.last;
-    this.last = now;
-    this.lastFrameStamp = now;
-    this.S.adapt(this.rawDtMs, realDt);
-    this.tick(realDt, true);
+    if (this.halted) return;
+    requestAnimationFrame(this.loop); // first, so one bad frame can never stop the loop
+    try {
+      const realDt = Math.min(0.05, Math.max(0.0005, (now - this.last) / 1000));
+      this.rawDtMs = now - this.last;
+      this.last = now;
+      this.lastFrameStamp = now;
+      this.S.adapt(this.rawDtMs, realDt);
+      this.tick(realDt, true);
+      this.frameErrors = 0;
+      if (!this.running) {
+        this.running = true; // the first frame drew fine: the loading splash can go
+        if (window.__sandlotBoot) window.__sandlotBoot.done();
+      }
+    } catch (err) {
+      this.frameErrors = (this.frameErrors || 0) + 1;
+      if (this.frameErrors <= 3) console.error(err);
+      // A few bad frames in a row before anything ever drew, or a long run of them later: stop and say so on screen.
+      if (this.frameErrors >= (this.running ? 30 : 3)) {
+        this.halted = true;
+        if (window.__sandlotBoot) window.__sandlotBoot.fail('frame', err);
+      }
+    }
   }
 
   // Advance the whole game by `realDt` real seconds (optionally without drawing).
