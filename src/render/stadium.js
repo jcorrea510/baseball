@@ -1,7 +1,7 @@
 // Builds the whole ballpark: field, chalk, wall, stands, dugouts, light towers, scoreboard, crowd.
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
-import { BASE_XZ, fenceDistance, polar } from '../physics/field.js';
+import { BASE_XZ, fenceDistance, polar, dugoutSpot, DUGOUT } from '../physics/field.js';
 import { buildPerimeter, ribbonGeometry, groundStripGeometry } from './perimeter.js';
 import { grassTexture, dirtTexture, infieldTexture, wallTexture, seatTexture, softDotTexture, makeCanvas, toTexture } from './textures.js';
 import { createScoreboard } from './scoreboard.js';
@@ -291,19 +291,43 @@ export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {
     root.add(roof);
   }
 
-  // Batter's eye (dark backdrop behind center field so the ball is easy to see)
+  // Batter's eye (dark backdrop behind center field so the ball is easy to see): matte dark-green panels (kept dark and low in
+  // contrast on purpose - it is what the pitch is seen against) with a row of clipped juniper bushes along the top.
   {
     const eyePts = ofPts.filter((p) => Math.abs(p.a) <= 9).map((p) => ({ ...p, s: p.s - ofPts[0].s }));
-    const eyeMat = new THREE.MeshStandardMaterial({ color: 0x07110c, roughness: 1, side: THREE.DoubleSide });
-    const eye = new THREE.Mesh(ribbonGeometry(eyePts, { offset: 1.5, y0: 0, y1: 36, uPerFt: 0.1 }), eyeMat);
+    const panel = (() => {
+      const { canvas, ctx } = makeCanvas(256, 256);
+      ctx.fillStyle = '#0c1c13'; ctx.fillRect(0, 0, 256, 256);
+      for (let i = 0; i < 2600; i++) { // faint mottling so it reads as a surface, not a hole
+        const v = 12 + Math.random() * 10;
+        ctx.fillStyle = `rgba(${v},${v + 14},${v + 6},0.35)`;
+        ctx.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
+      }
+      ctx.fillStyle = '#050c08'; ctx.fillRect(0, 0, 3, 256); // panel seam
+      ctx.fillStyle = 'rgba(255,255,255,0.03)'; ctx.fillRect(3, 0, 2, 256);
+      return toTexture(canvas, { wrap: true, anisotropy: 4 });
+    })();
+    const eyeMat = new THREE.MeshStandardMaterial({ map: panel, color: 0xffffff, roughness: 1, side: THREE.DoubleSide });
+    const eye = new THREE.Mesh(ribbonGeometry(eyePts, { offset: 1.5, y0: 0, y1: 34, uPerFt: 1 / 16 }), eyeMat);
     root.add(eye);
-    // trees/hedge texture strip on top
-    const top = new THREE.Mesh(ribbonGeometry(eyePts, { offset: 1.5, y0: 33, y1: 37.5, uPerFt: 0.1 }), new THREE.MeshStandardMaterial({ color: 0x0f2a16, roughness: 1, side: THREE.DoubleSide }));
+    const hedge = (() => {
+      const { canvas, ctx } = makeCanvas(512, 128);
+      ctx.clearRect(0, 0, 512, 128);
+      for (let i = 0; i < 900; i++) {
+        const x = Math.random() * 512, bump = 18 * Math.abs(Math.sin(x / 512 * Math.PI * 9)); // a row of rounded bushes
+        const y = 128 - Math.random() * (70 + bump);
+        const r = 6 + Math.random() * 12, v = Math.random();
+        ctx.fillStyle = `rgb(${14 + v * 20},${48 + v * 50},${24 + v * 22})`;
+        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+      }
+      return toTexture(canvas, { wrap: true, anisotropy: 4 });
+    })();
+    const top = new THREE.Mesh(ribbonGeometry(eyePts, { offset: 1.2, y0: 31.5, y1: 40, uPerFt: 1 / 40 }), new THREE.MeshStandardMaterial({ map: hedge, roughness: 1, side: THREE.DoubleSide, alphaTest: 0.5, transparent: false }));
     root.add(top);
     // side wings
-    for (const s of [-1, 1]) {
-      const e = ofPts.reduce((b, p) => (Math.abs(p.a - s * 9) < Math.abs(b.a - s * 9) ? p : b), ofPts[0]);
-      const wing = new THREE.Mesh(new THREE.BoxGeometry(3, 36, 3), eyeMat);
+    for (const sd of [-1, 1]) {
+      const e = ofPts.reduce((b, p) => (Math.abs(p.a - sd * 9) < Math.abs(b.a - sd * 9) ? p : b), ofPts[0]);
+      const wing = new THREE.Mesh(new THREE.BoxGeometry(3, 36, 3), new THREE.MeshStandardMaterial({ color: 0x0c1a12, roughness: 1 }));
       wing.position.set(e.x + e.nx * 3, 18, e.z + e.nz * 3);
       root.add(wing);
     }
@@ -324,29 +348,56 @@ export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {
   }
 
   // ---------------------------------------------------------------- dugouts
+  // Set into the foul-territory wall (physics/field.js dugoutSpot, so fielders treat the front rail as a wall): a roof with a
+  // team-colour fascia, a padded front wall with a rail, posts, a bench, bat and helmet racks and a water cooler.
   {
-    const roofMat = new THREE.MeshStandardMaterial({ color: 0x5b6779, roughness: 0.7, metalness: 0.2 });
-    const wallMat = new THREE.MeshStandardMaterial({ color: 0x7c8797, roughness: 0.9 });
-    const darkMat = new THREE.MeshStandardMaterial({ color: 0x2a3140, roughness: 1 });
-    const benchMat = new THREE.MeshStandardMaterial({ color: 0x8a6a45, roughness: 0.8 });
-    for (const side of [-1, 1]) {
-      const g = new THREE.Group();
-      const L = 44, D = 12, Hh = 7.2;
-      const back = new THREE.Mesh(new THREE.BoxGeometry(L, Hh, 0.6), darkMat); back.position.set(0, Hh / 2, -D / 2); g.add(back);
-      const floor = new THREE.Mesh(new THREE.BoxGeometry(L, 0.4, D), wallMat); floor.position.set(0, 0.2, 0); g.add(floor);
-      const roofB = new THREE.Mesh(new THREE.BoxGeometry(L + 1.5, 0.7, D + 2.5), roofMat); roofB.position.set(0, Hh + 0.3, 0.6); roofB.castShadow = true; g.add(roofB);
-      for (const e of [-1, 1]) { const sw = new THREE.Mesh(new THREE.BoxGeometry(0.6, Hh, D), wallMat); sw.position.set(e * (L / 2), Hh / 2, 0); g.add(sw); }
-      const bench = new THREE.Mesh(new THREE.BoxGeometry(L - 4, 0.6, 1.4), benchMat); bench.position.set(0, 1.5, -D / 2 + 1.6); g.add(bench);
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(L, 0.35, 0.35), new THREE.MeshStandardMaterial({ color: 0xd9d9d9, roughness: 0.4, metalness: 0.5 })); rail.position.set(0, 3.9, D / 2 - 0.4); g.add(rail);
-      const front = new THREE.Mesh(new THREE.BoxGeometry(L, 3.2, 0.5), new THREE.MeshStandardMaterial({ color: 0x24406e, roughness: 0.85 })); front.position.set(0, 1.6, D / 2 - 0.25); g.add(front);
-      // Sit along the foul line, on the outside of it, facing the field.
-      const dir = new THREE.Vector3(side * 0.7071, 0, -0.7071);
-      const out = new THREE.Vector3(side * 0.7071, 0, 0.7071);
-      const p = dir.clone().multiplyScalar(74).addScaledVector(out, 22);
-      g.position.set(p.x, 0, p.z);
-      // local +z of the group should face the field: field direction = -out
-      g.rotation.y = Math.atan2(-out.x, -out.z);
-      g.traverse((o) => { if (o.isMesh) { o.receiveShadow = true; } });
+    const M = (color, rough = 0.85, metal = 0) => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal });
+    const concrete = M(0x8d949c, 0.95), inside = M(0x1b212a, 1), floorM = M(0x3b4048, 1), roofM = M(0x2a323d, 0.8, 0.1);
+    const pad = M(0x1d4d33, 0.9), railM = M(0xc9ced6, 0.35, 0.7), wood = M(0x8a6a45, 0.75), cooler = M(0xf07a12, 0.5), white = M(0xf2f2f2, 0.6);
+    const fascia = (() => {
+      const { canvas, ctx } = makeCanvas(1024, 64);
+      ctx.fillStyle = '#16284a'; ctx.fillRect(0, 0, 1024, 64);
+      ctx.fillStyle = '#ffb52e'; ctx.fillRect(0, 6, 1024, 4); ctx.fillRect(0, 54, 1024, 4);
+      ctx.fillStyle = '#f5f7fc'; ctx.font = 'italic 900 34px Arial Black, Arial, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('SANDLOT PARK', 512, 33);
+      return new THREE.MeshStandardMaterial({ map: toTexture(canvas, { anisotropy: 4 }), roughness: 0.7 });
+    })();
+    const D = DUGOUT.depth, back = -3, Hh = 7.6;
+    for (const sd of [-1, 1]) {
+      const spot = dugoutSpot(sd);
+      const L = spot.length, g = new THREE.Group();
+      const add = (geo, mat, x, y, z, shadow = false) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.receiveShadow = true; m.castShadow = shadow; g.add(m); return m; };
+      const depth = D - back;
+      add(new THREE.BoxGeometry(L, 0.2, depth), floorM, 0, 0.1, (D + back) / 2);
+      add(new THREE.BoxGeometry(L, Hh, 0.5), inside, 0, Hh / 2, back);
+      for (const e of [-1, 1]) add(new THREE.BoxGeometry(0.8, Hh + 0.4, depth), concrete, e * (L / 2 - 0.4), (Hh + 0.4) / 2, (D + back) / 2, true);
+      add(new THREE.BoxGeometry(L + 0.6, 0.6, depth + 1.2), roofM, 0, Hh + 0.3, (D + back) / 2 + 0.6, true);
+      const fas = add(new THREE.BoxGeometry(L + 0.6, 1.4, 0.3), [roofM, roofM, roofM, roofM, fascia, roofM], 0, Hh + 0.1, D + 1.25);
+      void fas;
+      add(new THREE.BoxGeometry(L - 1.6, 3.3, 0.7), pad, 0, 1.65, D - 0.35, true); // padded front wall
+      add(new THREE.CylinderGeometry(0.12, 0.12, L - 1.6, 8), railM, 0, 4.1, D - 0.35).rotation.z = Math.PI / 2;
+      for (const px of [-L / 4, 0, L / 4]) add(new THREE.CylinderGeometry(0.16, 0.16, Hh - 3.3, 8), railM, px, 3.3 + (Hh - 3.3) / 2, D - 0.35);
+      // bench along the back wall
+      add(new THREE.BoxGeometry(L - 8, 0.3, 1.5), wood, 0, 1.6, back + 1.3);
+      add(new THREE.BoxGeometry(L - 8, 1.5, 0.2), wood, 0, 2.6, back + 0.5);
+      for (const bx of [-(L - 10) / 2, 0, (L - 10) / 2]) add(new THREE.BoxGeometry(0.3, 1.5, 1.2), concrete, bx, 0.75, back + 1.3);
+      // bat rack (one end) and helmet shelf (the other)
+      const rx = sd * (L / 2 - 3.2);
+      add(new THREE.BoxGeometry(3.4, 0.25, 0.8), wood, rx, 3.2, back + 0.8);
+      const batWoods = [0xc9a066, 0xe8d3a2, 0x8a2a1c, 0x151517, 0xc9a066, 0xe8d3a2, 0x3b4756];
+      batWoods.forEach((c, i) => { const b = add(new THREE.CylinderGeometry(0.1, 0.04, 2.8, 6), M(c, 0.5), rx - 1.4 + i * 0.47, 1.9, back + 0.8); b.rotation.x = -0.12; });
+      const hx = -sd * (L / 2 - 4);
+      add(new THREE.BoxGeometry(5, 0.2, 0.9), wood, hx, 4.6, back + 0.7);
+      const helm = new THREE.SphereGeometry(0.42, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), helmM = M(0x16284a, 0.35, 0.1);
+      for (let i = 0; i < 5; i++) add(helm, helmM, hx - 2 + i, 4.72, back + 0.7);
+      // water cooler on a stand, near the steps
+      const cx = sd * (L / 2 - 8);
+      add(new THREE.BoxGeometry(1.8, 2.2, 1.6), concrete, cx, 1.1, back + 1.4);
+      add(new THREE.CylinderGeometry(0.7, 0.7, 1.5, 16), cooler, cx, 2.95, back + 1.4, true);
+      add(new THREE.CylinderGeometry(0.72, 0.72, 0.18, 16), white, cx, 3.8, back + 1.4);
+      const [ccx, ccz] = spot.center, [nx, nz] = spot.inward;
+      g.position.set(ccx, 0, ccz);
+      g.rotation.y = Math.atan2(nx, nz); // local +z faces the field
       root.add(g);
     }
   }

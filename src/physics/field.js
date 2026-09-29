@@ -69,6 +69,31 @@ export function distXZ(a, b) {
 // Where can a person stand? The ballpark outline: the outfield wall, the foul-territory walls and the backstop
 // (the same shape the stadium is drawn with, see render/perimeter.js). Fielders are kept inside it.
 // ---------------------------------------------------------------------------------------------------------------
+// How far outside the foul line the foul-territory wall stands, s feet from home (the stands are drawn along the same line).
+export const foulWallOffset = (s) => 12 + 58 * Math.pow(1 - s / 315, 1.15);
+const lineXZ = (sd, s, w) => [sd * Math.SQRT1_2 * (s + w), Math.SQRT1_2 * (w - s)]; // s feet down the line, w feet outside it
+
+// The dugouts: set into the foul-territory wall between s0 and s1 feet down each line, sticking `depth` feet out into foul
+// territory. Shared by the picture (render/stadium.js) and the ballpark outline, so a fielder chasing a foul pop stops at the
+// dugout rail instead of running through it. sd: +1 = first-base side, -1 = third-base side.
+export const DUGOUT = { s0: 64, s1: 106, depth: 8 };
+export function dugoutSpot(sd) {
+  const wall = (s) => { // the wall runs straight between its control points at 60 and 110 ft
+    const u = (s - 60) / 50, w = foulWallOffset(60) + (foulWallOffset(110) - foulWallOffset(60)) * u;
+    return lineXZ(sd, s, w);
+  };
+  const a = wall(DUGOUT.s0), b = wall(DUGOUT.s1);
+  const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const ux = (b[0] - a[0]) / len, uz = (b[1] - a[1]) / len;
+  let nx = -uz, nz = ux; // toward the field (the foul line)
+  if (nx * -sd + nz * 0 < 0 && Math.abs(nx) > 1e-6) { nx = -nx; nz = -nz; }
+  const d = DUGOUT.depth;
+  return {
+    back0: a, back1: b, front0: [a[0] + nx * d, a[1] + nz * d], front1: [b[0] + nx * d, b[1] + nz * d],
+    center: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], along: [ux, uz], inward: [nx, nz], length: len,
+  };
+}
+
 const PLAYABLE = (() => {
   const poly = [];
   for (let a = -45; a <= 45.0001; a += 1.5) { const p = polar(a, fenceDistance(a)); poly.push([p.x, p.z]); } // left pole -> right pole
@@ -77,8 +102,8 @@ const PLAYABLE = (() => {
     const P = polar(45 * sd, fenceDistance(45 * sd));
     const c = [[P.x + sd * S * 16, P.z + S * 4]]; // just outside the pole
     for (const s of [285, 225, 165, 110, 60, 20]) {
-      const w = 12 + 58 * Math.pow(1 - s / 315, 1.15); // how far outside the foul line the wall stands, s feet from home
-      c.push([sd * S * (s + w), -S * s + S * w]);
+      c.push(lineXZ(sd, s, foulWallOffset(s)));
+      if (s === 110) { const g = dugoutSpot(sd); c.push(g.back1, g.front1, g.front0, g.back0); } // the dugout's front rail
     }
     return c;
   };
