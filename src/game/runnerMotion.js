@@ -199,7 +199,7 @@ export function buildProfile(route, { vmax, accelTime, brake, turnBrake = brake,
     return i;
   };
   const prof = {
-    duration, tBase, route, sEnd, brake,
+    duration, tBase, route, sEnd, brake, tAtS,
     /** State at time t (seconds after the run began). `out` is reused if given. */
     at(tt, out = {}) {
       const c = Math.max(0, tt);
@@ -299,6 +299,18 @@ export function runnerState(move, t, cfg = CONFIG, out = {}) {
   const p = runnerProfile(move.from, Math.max(toBase, move.from), kind, cfg);
   const tt = t - t0;
   p.at(tt, out);
+  // The inning ended while he was still running (move.stopAt, seconds after contact): he eases up and coasts to a stop
+  // along his route instead of running on to the next bag.
+  if (move.stopAt !== undefined && t > move.stopAt && p.route && move.stopAt - t0 < p.duration) {
+    const s0 = p.at(Math.max(0, move.stopAt - t0), out);
+    const v0 = s0.speed, sStop = s0.s, after = t - move.stopAt, tau = R.easeUp;
+    const extra = v0 * tau * (1 - Math.exp(-after / tau));
+    p.at(p.tAtS(Math.min(p.sEnd, sStop + extra)), out);
+    out.speed = v0 * Math.exp(-after / tau);
+    out.accel = -out.speed / tau;
+    out.side = 0; out.turn = 0;
+    if (out.speed < 0.3) { out.speed = 0; out.done = true; }
+  }
   out.kind = kind;
   out.waiting = tt <= 0;
   out.running = tt > 0 && !out.done && out.speed > 0.05;

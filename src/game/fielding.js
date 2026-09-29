@@ -492,11 +492,32 @@ function planPlayCore(i, cfg) {
 }
 
 
+// A play that makes the third out ends the inning right there: runners still on their way ease up and stop (they do not keep
+// running round to score a run that cannot count), and the play is over soon after the out instead of when they would have stopped.
+function endInningStop(plan, outs, cfg) {
+  if (outs + plan.outsMade < 3 || plan.homer) return;
+  let tOut = -1;
+  for (const m of plan.moves) if (m.out && m.outAt !== undefined) tOut = Math.max(tOut, m.outAt);
+  if (plan.caught && plan.catchT !== undefined) tOut = Math.max(tOut, plan.catchT);
+  if (tOut < 0) return;
+  const stopAt = tOut + cfg.runner.easeUpReact;
+  let running = false;
+  for (const m of plan.moves) {
+    if (m.out || m.to <= m.from) continue;
+    if (runnerFinish(cfg, m.from, m.to, m.tStart) > stopAt) { m.stopAt = stopAt; running = true; }
+  }
+  if (!running) return;
+  let end = tOut + 0.8;
+  for (const th of plan.throws) end = Math.max(end, th.t1 + 0.3);
+  plan.endTime = Math.min(plan.endTime, Math.max(end, stopAt + cfg.runner.easeUp * 3));
+}
+
 // ---------------------------------------------------------------------------
 // Public entry point: the core plan (who fields it, throws, runners) plus everybody else's job.
 // ---------------------------------------------------------------------------
 export function planPlay(i, cfg = CONFIG) {
   const plan = planPlayCore(i, cfg);
+  if (!i.simple) endInningStop(plan, i.outs || 0, cfg);
   addSupport(plan, i, cfg);
   settleThrows(plan);
   addCalls(plan, cfg);
@@ -512,6 +533,7 @@ function addCalls(plan, cfg) {
     for (const m of plan.moves) {
       if (m.out || m.to !== base) continue;
       const arrive = runnerArrival(cfg, m.from, base, m.tStart);
+      if (m.stopAt !== undefined && arrive > m.stopAt) continue; // the inning was already over: he never got there
       const margin = th.t1 - arrive;
       if (margin >= 0 && margin <= cfg.fielding.closePlay) { plan.events.push({ t: th.t1 + 0.1, type: 'safe', base }); return; }
     }

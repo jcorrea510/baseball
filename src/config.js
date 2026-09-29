@@ -343,6 +343,8 @@ export const CONFIG = {
     trotSpeedup: 2.2, // home-run trots are sped up this much for pacing
     jogSpeed: 20, // ft/s: the walk to first after ball four
     slide: 0.6, // s: a play is 'close' (he slides) when the throw arrives within this of him (either side)
+    easeUp: 0.4, // s: once the third out is made, runners still going ease up and coast to a stop (how quickly their speed dies away)
+    easeUpReact: 0.15, // s after the third out before the runners ease up
   },
 
   // --------------------------------------------------------------------------
