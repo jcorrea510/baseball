@@ -37,6 +37,7 @@ export class Actors {
     this.tmpV = V(); this.tmpV2 = V(); this.tmpV3 = V();
     this.cfgKey = '';
     this.detailScale = 1; // set below 1 on phones (fewer polygons per figure)
+    this.viewH = 720; // screen height in pixels (the app keeps it up to date; the pitch has a minimum on-screen size)
     this.ballPos = V();
     this.looseBat = null;
     this.batStyle = 'ash';
@@ -798,7 +799,7 @@ export class Actors {
     }
     // after a take the next windup places the ball in the pitcher's hands again
     ball.setVisible(kind !== 'hidden');
-    ball.setScale(kind === 'pitch' ? cfg.pitch.ballScale : 1);
+    ball.setScale(kind === 'pitch' ? cfg.pitch.ballScale : 1, kind === 'pitch' ? Math.max(cfg.pitch.minScreenPx, this.viewH * cfg.pitch.minScreenFrac) : 0);
     ball.setPosition(bp.x, bp.y, bp.z);
     if (spinRate) ball.spin(this.spinAxis || new THREE.Vector3(1, 0, 0), spinRate, dt);
     ball.setTrail(trail);

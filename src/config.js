@@ -77,6 +77,10 @@ export const CONFIG = {
     locations: { edge: [0.9, 1.3], chase: [1.3, 1.9], waste: [1.9, 2.9] },
     wasteMinRatio: 1.75, // a 'waste' pitch is never wilder in the wrong direction than this: it stays out of reach
     ballScale: 1.35, // pitches are drawn a bit bigger so they are easy to track
+    // ...and on screen at least this many pixels across (or this fraction of the screen height, whichever is bigger) while it still
+    // grows as it comes in: at release a real-size ball is only ~2.5 px on a phone held sideways. Only the picture: timing is unchanged.
+    minScreenPx: 5,
+    minScreenFrac: 0.009,
     // Movement is measured at the plate. breakArm: feet toward the pitcher's
     // throwing-arm side (negative = glove side). hop: feet of "extra rise"
     // (negative = extra drop) compared with plain gravity.

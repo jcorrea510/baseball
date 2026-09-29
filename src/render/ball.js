@@ -69,13 +69,14 @@ export function createBall(scene) {
   const history = []; // recent positions (newest first)
   let trailStrength = 0;
   let visible = true;
+  let baseScale = 1, minPx = 0; // minPx: extra on-screen size for the pitch (so it is readable on a phone), see setPosition below
 
   const api = {
     group, mesh,
     setHaloBoost(b) { haloBoost = b; },
     setVisible(v) { visible = v; group.visible = v; shadow.visible = v; halo.visible = v; if (!v) { trailStrength = 0; tg.getAttribute('aAlpha').array.fill(0); tg.getAttribute('aAlpha').needsUpdate = true; } },
     get visible() { return visible; },
-    setScale(s) { mesh.scale.setScalar(s); },
+    setScale(s, minScreenPx = 0) { baseScale = s; minPx = minScreenPx; mesh.scale.setScalar(s); },
     setPosition(x, y, z) {
       group.position.set(x, y, z);
       const h = Math.max(0, y - r);
@@ -110,6 +111,12 @@ export function createBall(scene) {
       a.needsUpdate = true; s.needsUpdate = true; p.needsUpdate = true;
       tm.uniforms.uScale.value = (viewportH * 0.5) / Math.tan((camera.fov * Math.PI) / 360);
       const d = camera.position.distanceTo(group.position);
+      if (minPx > 0) {
+        // How many pixels across it would be. Far away on a small screen that is a speck, so it is drawn as big as
+        // hypot(real size, minPx): at least minPx, and it still grows all the way in (that growth is what tells you it is coming).
+        const px = (2 * r * baseScale * viewportH) / (2 * Math.max(1, d) * Math.tan((camera.fov * Math.PI) / 360));
+        mesh.scale.setScalar(baseScale * (Math.hypot(px, minPx) / Math.max(1e-3, px)));
+      }
       const k = Math.max(0, Math.min(1, (d - 70) / 130));
       haloMat.opacity = k * 0.85 * haloBoost;
       halo.position.copy(group.position);

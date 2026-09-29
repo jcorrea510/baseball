@@ -767,6 +767,7 @@ export class App {
       }
     }
     const eng = e || this.demo;
+    this.actors.viewH = this.S.size.h;
     this.actors.update(eng, simDt, eng.time);
     const camDt = this.fast ? Math.min(realDt * 3, 0.1) : realDt;
     if (this.screen === 'game' || this.screen === 'over') this.cam.update(camDt, e, this.actors, this.S.size.aspect);
