@@ -251,6 +251,13 @@ export const CONFIG = {
     relayDistance: 200, // outfield throws longer than this use a cut-off man
     relayTransfer: 0.3,
     accel: 0.42, // seconds fielders take to get up to running speed (they cannot cover ground instantly)
+    brake: 40, // ft/s^2: how hard a fielder can slow down (he eases to a stop instead of halting dead)
+    minRunEffort: 0.62, // when a fielder has time to spare he still runs at least this fraction of top speed, then waits
+    supportSpeed: 0.85, // backups and base-coverers run at this fraction of top speed
+    backupDepth: 24, // ft behind the fielder's spot where a teammate backs him up
+    backupTravel: 48, // an outfielder backing up an infield play charges in at most this far
+    jogHome: { speed: 21, accel: 34, brake: 42 }, // ft/s: how fielders return to their spots after a play
+    turnRate: 640, // degrees per second a fielder can turn his body
     tagTime: 0.4, // extra time for the catcher to receive a throw and apply the tag at home
     fastBallPenalty: 0.27, // extra reaction (s) fielders need on the hardest-hit grounders
     outMargin: 0.02, // a throw must beat the runner by this many seconds

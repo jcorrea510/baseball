@@ -254,7 +254,7 @@ export function runnerLeadPose(P, time) {
 
 // ---------------------------------------------------------------- running
 // phase: radians (advance by cadence * dt), speed: ft/s
-export function runPose(P, phase, speed) {
+export function runPose(P, phase, speed, look = 0) {
   resetPose(P);
   const sp = clamp(speed, 0, 32);
   const k = clamp(sp / 27, 0, 1.15);
@@ -275,6 +275,16 @@ export function runPose(P, phase, speed) {
   set3(P.handR, -0.68, 3.35 + 0.45 * Math.max(0, -sR) * k, 0.3 - swing * sR);
   P.poleL = [1.0, -0.2, -0.8]; P.poleR = [-1.0, -0.2, -0.8];
   set3(P.kneeL, 0.1, 0.05, 1); set3(P.kneeR, -0.1, 0.05, 1);
+  // eyes on the ball: a running fielder keeps his body pointed where he is going but turns his head (and a little torso)
+  if (look) { P.headYaw = clamp(P.headYaw + look * 0.85, -1.25, 1.25); P.torsoYaw += clamp(look, -1, 1) * 0.22; }
+  return P;
+}
+// Running with the glove arm reaching for the ball (a running catch); the other arm keeps pumping.
+export function runReachPose(P, phase, speed, target, look = 0) {
+  runPose(P, phase, speed, look);
+  set3(P.handL, target[0], target[1], target[2]);
+  P.poleL = [0.8, -0.3, -0.3];
+  P.torsoPitch = Math.max(0.05, P.torsoPitch - 0.05);
   return P;
 }
 export function runCadence(speed) {

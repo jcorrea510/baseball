@@ -5,6 +5,7 @@
 import { CONFIG } from '../config.js';
 import { sampleBall, judgeFairFoul, battedBallType } from '../physics/ballistics.js';
 import { BASE_XZ, polar, fenceDistance, sprayOf } from '../physics/field.js';
+import { planRun, samplePath } from './fielderMotion.js';
 
 export const POSITIONS = ['P', 'C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF'];
 const INFIELDERS = ['1B', '2B', 'SS', '3B'];
@@ -95,9 +96,9 @@ function findAirCatch(sim, defense, cfg) {
       const need = d - F.glove;
       if (need <= avail) {
         const slack = avail - need;
-        if (!best || need < best.need) best = { f, need, dive: false, slack, ball: { ...b } };
+        if (!best || need < best.need) best = { f, need, dive: false, slack, avail, ball: { ...b } };
       } else if (b.y <= 5.2 && need - F.diveExtra <= avail) {
-        if (!best) best = { f, need, dive: true, slack: -1, ball: { ...b } };
+        if (!best) best = { f, need, dive: true, slack: -1, avail, ball: { ...b } };
       }
     }
     if (best) return { t, ...best };
@@ -131,9 +132,9 @@ function findGroundPickup(sim, defense, cfg) {
       const need = d - glove;
       if (need <= avail) {
         const arrive = f.react + react + timeToCover(eff, Math.max(0, need), F.accel);
-        if (!best || arrive < best.arrive) best = { f, need, dive: false, arrive, ball: { ...b } };
+        if (!best || arrive < best.arrive) best = { f, need, dive: false, arrive, avail, start: f.react + react, ball: { ...b } };
       } else if (need - diveX <= avail) {
-        if (!best) best = { f, need, dive: true, arrive: t, ball: { ...b } };
+        if (!best) best = { f, need, dive: true, arrive: t, avail, start: f.react + react, ball: { ...b } };
       }
     }
     if (best) return { t, ...best };
@@ -146,8 +147,9 @@ function findGroundPickup(sim, defense, cfg) {
     if (pos === 'C' || pos === 'P') continue;
     const f = defense[pos];
     const need = Math.max(0, dist(f.x, f.z, b.x, b.z));
-    const arrive = f.react + need / f.speed;
-    if (!best || arrive < best.arrive) best = { f, need, dive: false, arrive, ball: { ...b } };
+    // same movement model as everywhere else (acceleration, and slower when running back), so the fielder really gets there
+    const arrive = f.react + timeToCover(f.speed * effort(f, b.x, b.z), need, F.accel);
+    if (!best || arrive < best.arrive) best = { f, need, dive: false, arrive, start: f.react, avail: need, ball: { ...b } };
   }
   const t = Math.max(fallback ?? tEnd, best.arrive);
   return { t, ...best, ball: { ...b } };
@@ -156,10 +158,37 @@ function findGroundPickup(sim, defense, cfg) {
 // ---------------------------------------------------------------------------
 // Helpers to build timeline pieces
 // ---------------------------------------------------------------------------
-function fielderMove(f, toX, toZ, tArrive, dive = false) {
-  // constant speed from reaction time to arrival; never faster than needed
-  const t0 = Math.min(f.react, Math.max(0, tArrive - 0.05));
-  return { pos: f.pos, keys: [{ t: 0, x: f.x, z: f.z }, { t: t0, x: f.x, z: f.z }, { t: tArrive, x: toX, z: toZ }], dive };
+// Give a fielder a run to (toX, toZ) that must be finished by `tArrive`. The run is a smooth profile (see fielderMotion.js):
+// he reacts, accelerates, runs and brakes. A fielder can have several jobs in one play (field the ball, then cover a base);
+// each new run starts where the previous one came to rest.
+//   opts.avail  how far (ft) he can really cover by tArrive - if the target is farther he stops that much short (glove reach)
+//   opts.start  when he begins moving (defaults to his reaction time)
+//   opts.vmax   top speed override;  opts.dive / opts.watch / opts.role are labels for the renderer
+function addMove(plan, f, toX, toZ, tArrive, opts = {}, cfg = CONFIG) {
+  const F = cfg.fielding;
+  const runs = (plan.paths[f.pos] = plan.paths[f.pos] || []);
+  const prev = runs[runs.length - 1];
+  const x0 = prev ? prev.xStop : f.x, z0 = prev ? prev.zStop : f.z;
+  const vmax = opts.vmax ?? f.speed * effort(f, toX, toZ);
+  let tStart = opts.start ?? f.react;
+  if (prev) tStart = Math.max(tStart, prev.tStop);
+  tStart = Math.min(tStart, Math.max(0, tArrive - 0.05));
+  let x1 = toX, z1 = toZ;
+  if (opts.avail !== undefined) {
+    // stop short by however far he cannot reach (never more than his glove + dive reach)
+    const d = dist(x0, z0, toX, toZ);
+    const short = Math.min(Math.max(0, d - opts.avail) + (opts.dive ? 0 : 0.15), F.glove + (opts.dive ? F.diveExtra : 0));
+    if (d > 0.01 && short > 0) { x1 = toX - ((toX - x0) / d) * Math.min(short, d); z1 = toZ - ((toZ - z0) / d) * Math.min(short, d); }
+  }
+  const run = planRun({ x0, z0, x1, z1, tStart, tArrive: Math.max(tArrive, tStart + 0.05), vmax, accel: vmax / F.accel, brake: F.brake, minEffort: opts.minEffort ?? F.minRunEffort, heading: Math.atan2(toX - x0, toZ - z0) });
+  runs.push(run);
+  const move = {
+    pos: f.pos,
+    keys: [{ t: 0, x: x0, z: z0 }, { t: tStart, x: x0, z: z0 }, { t: tArrive, x: toX, z: toZ }],
+    run, dive: !!opts.dive, watch: !!opts.watch, role: opts.role || 'field',
+  };
+  plan.fielderMoves.push(move);
+  return move;
 }
 
 function runnerPathTimes(fromBase, toBase, startDelay, cfg, isBatter = false) {
@@ -199,7 +228,7 @@ function coverer(base, fielder, defense) {
  * @param {object} i.defense   createDefense()
  * @param {boolean} [i.simple] derby / practice: no baserunning, stop after the ball is fielded
  */
-export function planPlay(i, cfg = CONFIG) {
+function planPlayCore(i, cfg) {
   const { sim, contact, defense } = i;
   const bases = i.bases || [null, null, null];
   const outs = i.outs || 0;
@@ -210,8 +239,8 @@ export function planPlay(i, cfg = CONFIG) {
   const plan = {
     fair, type,
     result: null, batterDest: 0, moves: [], outsMade: 0,
-    fielderMoves: [], throws: [], carries: [], events: [],
-    ballHitEnd: sim.duration, endTime: 0, homer: false,
+    fielderMoves: [], paths: {}, throws: [], carries: [], events: [],
+    ballHitEnd: sim.duration, endTime: 0, homer: false, ctx: null,
     fielder: null, notes: [],
     ballLandDistance: 0,
   };
@@ -237,7 +266,7 @@ export function planPlay(i, cfg = CONFIG) {
     const sp = sprayOf(end.x, end.z);
     const wx = Math.sin((sp * Math.PI) / 180) * wallD, wz = -Math.cos((sp * Math.PI) / 180) * wallD;
     const tArr = Math.min(sim.homerun.t, best.f.react + Math.hypot(best.f.x - wx, best.f.z - wz) / best.f.speed);
-    plan.fielderMoves.push({ pos: best.f.pos, keys: [{ t: 0, x: best.f.x, z: best.f.z }, { t: best.f.react, x: best.f.x, z: best.f.z }, { t: tArr, x: wx, z: wz }], dive: false, watch: true });
+    addMove(plan, best.f, wx, wz, Math.max(tArr, best.f.react + 0.4), { watch: true, role: 'watch', minEffort: 0.5 }, cfg);
     plan.fielder = best.f.pos;
     // everyone circles the bases (trot)
     for (let b = 0; b < 3; b++) if (bases[b]) plan.moves.push({ from: b + 1, to: 4, out: false });
@@ -255,7 +284,8 @@ export function planPlay(i, cfg = CONFIG) {
     plan.caught = true;
     plan.catchT = air.t;
     plan.catchPos = { x: air.ball.x, y: air.ball.y, z: air.ball.z };
-    plan.fielderMoves.push(fielderMove(f, air.ball.x, air.ball.z, air.t, air.dive));
+    addMove(plan, f, air.ball.x, air.ball.z, air.t, { dive: air.dive, avail: air.avail, role: 'catch' }, cfg);
+    plan.ctx = { kind: 'air', x: air.ball.x, z: air.ball.z, t: air.t };
     plan.ballHitEnd = air.t;
     plan.carries.push({ pos: f.pos, t0: air.t, t1: air.t + 99 });
     plan.events.push({ t: air.t, type: 'catch', pos: f.pos });
@@ -320,7 +350,8 @@ export function planPlay(i, cfg = CONFIG) {
   plan.pickupT = tF;
   plan.pickupPos = { x: pf.x, z: pf.z };
   plan.ballHitEnd = tF;
-  plan.fielderMoves.push(fielderMove(f, pf.x, pf.z, tF, pick.dive));
+  addMove(plan, f, pf.x, pf.z, tF, { dive: pick.dive, avail: pick.avail, start: pick.start, role: 'field' }, cfg);
+  plan.ctx = { kind: 'ground', x: pf.x, z: pf.z, t: tF };
   plan.events.push({ t: tF, type: 'field', pos: f.pos });
   const tr = F.transfer[f.type];
   const tReady = tF + tr;
@@ -350,6 +381,121 @@ export function planPlay(i, cfg = CONFIG) {
 
   // --- Otherwise it is a hit. Work out how far everyone goes. ---
   return finishHit(plan, { f, tF, tReady, pf, bases, forced, outs, defense, cfg });
+}
+
+
+// ---------------------------------------------------------------------------
+// Public entry point: the core plan (who fields it, throws, runners) plus everybody else's job.
+// ---------------------------------------------------------------------------
+export function planPlay(i, cfg = CONFIG) {
+  const plan = planPlayCore(i, cfg);
+  addSupport(plan, i, cfg);
+  settleThrows(plan);
+  return plan;
+}
+
+// When is a fielder finished with his job in this play (so he can start jogging back to his spot)?
+export function fielderFreeTime(plan, pos) {
+  plan._free = plan._free || {};
+  if (plan._free[pos] !== undefined) return plan._free[pos];
+  const runs = plan.paths[pos];
+  let t = 0;
+  if (runs) for (const r of runs) t = Math.max(t, r.tStop);
+  let involved = false;
+  for (const th of plan.throws) {
+    if (th.from === pos) { t = Math.max(t, th.t0 + 0.5); involved = true; }
+    if (th.to === pos) { t = Math.max(t, th.t1 + 0.6); involved = true; }
+  }
+  if (plan.fielder === pos) {
+    const tc = plan.caught ? plan.catchT : plan.pickupT;
+    if (tc !== undefined) t = Math.max(t, tc + 1.3);
+    involved = true;
+  }
+  // backups, shaders, watchers and coverers that never get a throw stay put until the play is over
+  if (!involved && runs) t = Math.max(t, plan.endTime);
+  plan._free[pos] = t;
+  return t;
+}
+
+// Where a fielder stands when he "covers" a base: just inside the bag, on the infield side.
+function standAt(base) {
+  const [bx, bz] = BASE_XZ[base];
+  if (base === 0 || base === 4) return [0, 1.6];
+  const cx = 0, cz = BASE_XZ[2][1] / 2;
+  const d = Math.hypot(cx - bx, cz - bz) || 1;
+  return [bx + ((cx - bx) / d) * 1.4, bz + ((cz - bz) / d) * 1.4];
+}
+
+// Everybody who is not fielding the ball gets a job: outfielders back the play up, infielders cover bags, the pitcher
+// backs up throws home / to third, the catcher covers the plate. (Movement only - it never changes who is safe or out.)
+function addSupport(plan, i, cfg) {
+  const c = plan.ctx;
+  if (!c || plan.homer || !plan.fair) return;
+  const F = cfg.fielding;
+  const defense = i.defense;
+  const bases = i.bases || [null, null, null];
+  const busy = new Set(plan.fielderMoves.map((m) => m.pos));
+  const depth = Math.max(1, Math.hypot(c.x, c.z));
+  const ux = c.x / depth, uz = c.z / depth;
+  const near = (p) => dist(defense[p].x, defense[p].z, c.x, c.z);
+  const idle = (list) => list.filter((p) => !busy.has(p));
+  const inside = (x, z, margin) => {
+    const lim = fenceDistance(sprayOf(x, z)) - margin;
+    const d = Math.hypot(x, z);
+    return d > lim ? [(x * lim) / d, (z * lim) / d] : [x, z];
+  };
+  const go = (pos, x, z, tArrive, role, limit = Infinity) => {
+    const f = defense[pos];
+    busy.add(pos);
+    let tx = x, tz = z;
+    const d = dist(f.x, f.z, x, z);
+    if (d > limit) { tx = f.x + ((x - f.x) / d) * limit; tz = f.z + ((z - f.z) / d) * limit; }
+    if (dist(f.x, f.z, tx, tz) < 1.5) return;
+    addMove(plan, f, tx, tz, tArrive, { role, vmax: f.speed * F.supportSpeed, minEffort: 0.75 }, cfg);
+  };
+  const tBall = Math.max(c.t, 1.2);
+
+  // ---- outfielders
+  const ofs = idle(['LF', 'CF', 'RF']).sort((a, b) => near(a) - near(b));
+  if (depth > 150 && ofs.length) {
+    const [bx, bz] = inside(c.x + ux * F.backupDepth, c.z + uz * F.backupDepth, 8);
+    go(ofs[0], bx, bz, tBall + 0.2, 'backup');
+    if (ofs[1]) {
+      const o = defense[ofs[1]];
+      go(ofs[1], o.x + (c.x - o.x) * 0.3, o.z + (c.z - o.z) * 0.3, tBall + 0.2, 'shade');
+    }
+  } else if (c.kind === 'ground' && ofs.length) {
+    const [bx, bz] = inside(c.x + ux * (F.backupDepth + 14), c.z + uz * (F.backupDepth + 14), 8);
+    go(ofs[0], bx, bz, tBall + 0.4, 'backup', F.backupTravel);
+  }
+
+  // ---- bases and battery on a hit that turns into a throw
+  if (!i.simple && c.leadDest !== undefined) {
+    const lead = c.leadDest;
+    const cover = (pos, base, t) => { const [x, z] = standAt(base); go(pos, x, z, t, 'cover'); };
+    if (!busy.has('1B')) cover('1B', 1, 2.0);
+    if (lead >= 2 || bases[0]) {
+      const mid = idle(['SS', '2B']).sort((a, b) => dist(defense[a].x, defense[a].z, BASE_XZ[2][0], BASE_XZ[2][1]) - dist(defense[b].x, defense[b].z, BASE_XZ[2][0], BASE_XZ[2][1]))[0];
+      if (mid) cover(mid, 2, 2.4);
+    }
+    if (lead >= 3 && !busy.has('3B')) cover('3B', 3, 2.6);
+    if (lead >= 3 && !busy.has('P')) {
+      if (c.tgtBase === 4) go('P', -7, 11, 2.4, 'backup');
+      else if (c.tgtBase === 3) go('P', BASE_XZ[3][0] - 14, BASE_XZ[3][1] + 14, 2.4, 'backup');
+    }
+    if ((bases[1] || bases[2] || lead >= 4) && !busy.has('C')) cover('C', 4, 2.2);
+  }
+}
+
+// A throw goes to where its receiver really is when the ball arrives (a late runner-up receiver never gets a ball
+// thrown at an empty base).
+function settleThrows(plan) {
+  for (const th of plan.throws) {
+    const runs = plan.paths[th.to];
+    if (!runs) continue;
+    const p = samplePath(runs, th.t1);
+    if (dist(p.x, p.z, th.bx, th.bz) > 1.2) { th.bx = p.x; th.bz = p.z; }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -399,7 +545,8 @@ function finishInfieldOut(plan, at, ctx) {
   const recv = coverFor(choice.base);
   const rp = { x: BASE_XZ[choice.base][0], z: BASE_XZ[choice.base][1] };
   // Receiving fielder covers the bag
-  plan.fielderMoves.push(fielderMove(recv, rp.x, rp.z, Math.max(recv.react + 0.2, choice.t - 0.25)));
+  addMove(plan, recv, rp.x, rp.z, Math.max(recv.react + 0.2, choice.t - 0.25), { role: 'cover', minEffort: 0.8 }, cfg);
+  plan.ctx.tgtBase = choice.base;
   plan.throws.push({ from: f.pos, to: recv.pos, t0: tReady, t1: choice.t, ax: pf.x, az: pf.z, bx: rp.x, bz: rp.z, toBase: choice.base });
   plan.events.push({ t: choice.t, type: 'out', base: choice.base, pos: recv.pos });
   plan.carries.push({ pos: recv.pos, t0: choice.t, t1: choice.t + 99 });
@@ -432,7 +579,7 @@ function finishInfieldOut(plan, at, ctx) {
       const first = defense['1B'].pos === recv.pos ? defense.P : defense['1B'];
       const arrival = R.timeToFirst;
       if (t2 + F.outMargin <= arrival && first.pos !== recv.pos && recv.pos !== '1B') {
-        plan.fielderMoves.push(fielderMove(first, BASE_XZ[1][0], BASE_XZ[1][1] + 0.5, Math.max(first.react + 0.2, t2 - 0.3)));
+        addMove(plan, first, BASE_XZ[1][0], BASE_XZ[1][1] + 0.5, Math.max(first.react + 0.2, t2 - 0.3), { role: 'cover', minEffort: 0.8 }, cfg);
         plan.throws.push({ from: recv.pos, to: first.pos, t0: tRelay, t1: t2, ax: rp.x, az: rp.z, bx: BASE_XZ[1][0], bz: BASE_XZ[1][1], toBase: 1 });
         plan.events.push({ t: t2, type: 'out', base: 1, pos: first.pos });
         plan.carries.push({ pos: first.pos, t0: t2, t1: t2 + 99 });
@@ -529,7 +676,9 @@ function finishHit(plan, ctx) {
   let leadDest = bd;
   for (const b of order) leadDest = Math.max(leadDest, dests[b]);
   plan.leadDest = leadDest;
+  plan.ctx.leadDest = leadDest;
   const tgtBase = Math.min(4, leadDest >= 4 ? 4 : leadDest + 0); // throw to the base the lead runner reaches
+  plan.ctx.tgtBase = tgtBase;
   const relayNeeded = f.type === 'OF' && dist(pf.x, pf.z, BASE_XZ[tgtBase][0], BASE_XZ[tgtBase][1]) > F.relayDistance;
   const recv = coverer(tgtBase, f, defense);
   const rp = { x: BASE_XZ[tgtBase][0], z: BASE_XZ[tgtBase][1] };
@@ -547,8 +696,8 @@ function finishHit(plan, ctx) {
     const t1 = tReady + dist(pf.x, pf.z, cx, cz) / F.throwSpeed.OF;
     const t2 = t1 + F.relayTransfer;
     const t3 = t2 + dist(cx, cz, rp.x, rp.z) / F.throwSpeed.IF;
-    plan.fielderMoves.push(fielderMove(c, cx, cz, Math.max(c.react + 0.3, t1 - 0.4)));
-    plan.fielderMoves.push(fielderMove(recv, rp.x, rp.z, Math.max(recv.react + 0.3, t3 - 0.3)));
+    addMove(plan, c, cx, cz, Math.max(c.react + 0.3, t1 - 0.4), { role: 'relay', minEffort: 0.8 }, cfg);
+    addMove(plan, recv, rp.x, rp.z, Math.max(recv.react + 0.3, t3 - 0.3), { role: 'cover', minEffort: 0.8 }, cfg);
     plan.throws.push({ from: f.pos, to: c.pos, t0: tReady, t1, ax: pf.x, az: pf.z, bx: cx, bz: cz, toBase: 0 });
     plan.throws.push({ from: c.pos, to: recv.pos, t0: t2, t1: t3, ax: cx, az: cz, bx: rp.x, bz: rp.z, toBase: tgtBase });
     plan.carries.push({ pos: c.pos, t0: t1, t1: t2 });
@@ -557,7 +706,7 @@ function finishHit(plan, ctx) {
     plan.ballEnd = t3;
   } else {
     const t1 = tReady + dist(pf.x, pf.z, rp.x, rp.z) / F.throwSpeed[f.type];
-    plan.fielderMoves.push(fielderMove(recv, rp.x, rp.z, Math.max(recv.react + 0.3, t1 - 0.3)));
+    addMove(plan, recv, rp.x, rp.z, Math.max(recv.react + 0.3, t1 - 0.3), { role: 'cover', minEffort: 0.8 }, cfg);
     plan.throws.push({ from: f.pos, to: recv.pos, t0: tReady, t1, ax: pf.x, az: pf.z, bx: rp.x, bz: rp.z, toBase: tgtBase });
     plan.carries.push({ pos: recv.pos, t0: t1, t1: t1 + 99 });
     plan.events.push({ t: t1, type: 'throwEnd', pos: recv.pos, base: tgtBase });

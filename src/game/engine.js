@@ -58,6 +58,7 @@ export class Engine {
     this.paEnded = false;
     this.lastPA = null;
     this.pitchOverride = null;
+    this.contactOverride = null; // QA / demo hook: (engine) => ({ exitVelocity, launchAngle, sprayAngle, backspin, hook }) forces an exact batted ball
     this.aiSummary = null;
     this.lastPlayResult = null;
     this.over = false;
@@ -202,6 +203,7 @@ export class Engine {
       evBonus: this.mode === 'derby' ? this.cfg.modes.derby.evBonus : 0,
       rng: this.rng,
     }, this.cfg);
+    if (this.contactOverride) { delete contact.reason; Object.assign(contact, { made: true, grade: 'good' }, this.contactOverride(this)); }
     // The bat only meets the ball at the clamped time when contact is made; a miss swings through at the true time.
     const tHit = contact.made ? times.hitTime : times.barrelTime;
     this.swing = {

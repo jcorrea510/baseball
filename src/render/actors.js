@@ -2,12 +2,13 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { Person, makeBat, restyleBat, mixPose, makePose, copyPose } from './rig.js';
-import { batterPose, pitcherPose, catcherPose, fielderReady, runPose, runCadence, runnerLeadPose, throwPose, catchPose, divePose, celebratePose, standingPose, umpirePose, THROW_RELEASE_U } from './poses.js';
+import { batterPose, pitcherPose, catcherPose, fielderReady, runPose, runReachPose, runCadence, runnerLeadPose, throwPose, catchPose, divePose, celebratePose, standingPose, umpirePose, THROW_RELEASE_U } from './poses.js';
 import { UNIFORMS } from '../game/teams.js';
 import { BASE_XZ, MOUND_XZ } from '../physics/field.js';
 import { sampleBall } from '../physics/ballistics.js';
-import { runnerPosition, pathPoint, POSITIONS } from '../game/fielding.js';
-import { clamp, lerp, smoothstep, damp, TAU } from '../util/math.js';
+import { runnerPosition, pathPoint, POSITIONS, fielderFreeTime } from '../game/fielding.js';
+import { Mover, samplePath, turnToward } from '../game/fielderMotion.js';
+import { clamp, lerp, smoothstep, damp, wrapAngle, TAU, DEG } from '../util/math.js';
 
 const P0 = CONFIG.field;
 const V = () => new THREE.Vector3();
@@ -41,6 +42,7 @@ export class Actors {
     this.state = new WeakMap(); // per-person animation state
     this.blendPose = makePose();
     this.prevPose = makePose();
+    this.tmpPose = makePose();
     this.celebrate = 0;
     this.playerUniform = UNIFORMS.classic;
     this.defenseUniform = null;
@@ -172,57 +174,81 @@ export class Actors {
   }
 
   // ------------------------------------------------ fielders (incl. pitcher & catcher)
+  // Positions come from the play's planned runs (fielderMotion.js) while a fielder has a job, and from a steering Mover
+  // (brakes on a curve, stops inside a small radius) for everything else - jogging back, repositioning. Facing turns at a
+  // limited rate and only re-aims when it has a reason to, so nothing snaps or dithers.
   updateFielders(E, dt, time, pitch, plan, playT) {
     const phase = E.phase;
+    const F = E.cfg.fielding;
+    const turn = F.turnRate * DEG * dt;
     for (const pos of POSITIONS) {
       const person = this.fielders[pos];
       const def = E.defense[pos];
       const st = this.state.get(person);
-      const move = plan ? plan.fielderMoves.find((m) => m.pos === pos) : null;
+      const runs = plan ? plan.paths[pos] : null;
+      const move = plan ? plan.fielderMoves.find((m) => m.pos === pos) || null : null;
       const root = person.root;
 
-      // ---- position (follows the play's path, then jogs back to the fielder's spot)
-      let hx = def.homeX, hz = def.homeZ, moving = false, speed = 0;
-      let vx = 0, vz = 0;
-      if (pos === 'P') { hx = (E.pitcher.hand === 'R' ? -0.35 : 0.35); hz = -P0.moundDistance; }
+      // ---- his spot (the pitcher and catcher also shift a little for every pitch; that is kept as a separate small offset)
+      let fx = 0, fz = 0;
+      if (pos === 'P') { fx = (E.pitcher.hand === 'R' ? -0.35 : 0.35) - def.homeX; fz = -P0.moundDistance - def.homeZ; }
       if (pos === 'C') {
         const tx = pitch ? pitch.target.x : 0;
-        hx = clamp(tx * 0.5, -1.0, 1.0) * (phase === 'ready' ? 0 : 1);
-        hz = def.homeZ;
+        fx = clamp(tx * 0.5, -1.0, 1.0) * (phase === 'ready' ? 0 : 1) - def.homeX;
       }
-      if (!st.init) { st.cx = hx; st.cz = hz; st.init = true; }
-      if (move && playT >= 0) {
-        const k = move.keys;
-        let i = 0;
-        while (i < k.length - 2 && playT > k[i + 1].t) i++;
-        const a = k[i], b = k[i + 1];
-        const u = b.t > a.t ? clamp((playT - a.t) / (b.t - a.t), 0, 1) : 1;
-        st.cx = lerp(a.x, b.x, u); st.cz = lerp(a.z, b.z, u);
-        if (u > 0 && u < 1) { moving = true; const dtt = Math.max(1e-3, b.t - a.t); vx = (b.x - a.x) / dtt; vz = (b.z - a.z) / dtt; speed = Math.hypot(vx, vz); }
-      } else if (!plan) {
-        const dx = hx - st.cx, dz = hz - st.cz;
-        const d = Math.hypot(dx, dz);
-        if (d > 0.02) {
-          const step = Math.min(d, 40 * dt);
-          st.cx += (dx / d) * step; st.cz += (dz / d) * step;
-          if (d > 0.7) { moving = true; speed = 18; vx = (dx / d) * speed; vz = (dz / d) * speed; }
-        }
+      if (!st.init) {
+        st.mover = new Mover(def.homeX, def.homeZ, { vmax: F.jogHome.speed, accel: F.jogHome.accel, brake: F.jogHome.brake, wake: 0.9 });
+        st.cx = def.homeX; st.cz = def.homeZ; st.vx = 0; st.vz = 0; st.fx = fx; st.fz = fz; st.yaw = pos === 'C' ? Math.PI : 0; st.init = true; st.inPlay = false;
       }
-      const x = st.cx, z = st.cz;
+      st.fx = damp(st.fx, fx, 7, dt); st.fz = damp(st.fz, fz, 7, dt);
+
+      // a new play begins: every planned run starts from his spot, so a fielder still jogging back pops onto it
+      const live = !!plan && playT >= 0;
+      if (live && !st.inPlay && runs && Math.hypot(st.cx - def.homeX, st.cz - def.homeZ) > 0.3) {
+        st.mover.reset(def.homeX, def.homeZ); st.cx = def.homeX; st.cz = def.homeZ; st.vx = st.vz = 0;
+      }
+      st.inPlay = live;
+
+      let speed = 0, vx = 0, vz = 0;
+      if (live && runs && playT < fielderFreeTime(plan, pos)) {
+        const p = samplePath(runs, playT);
+        st.cx = p.x; st.cz = p.z; vx = p.ux * p.speed; vz = p.uz * p.speed; speed = p.speed;
+        st.mover.reset(p.x, p.z, vx, vz); // keep the jog in step so the hand-off after his job is seamless
+      } else {
+        st.mover.setTarget(def.homeX, def.homeZ); // only re-aims if the spot moved meaningfully
+        st.mover.update(dt);
+        st.cx = st.mover.x; st.cz = st.mover.z; vx = st.mover.vx; vz = st.mover.vz; speed = st.mover.speed;
+      }
+      st.vx = vx; st.vz = vz;
+      const x = st.cx + st.fx, z = st.cz + st.fz;
       const y = pos === 'P' ? moundY(x, z) : 0;
+      const moving = speed > 0.5;
 
       // ---- facing
-      let yaw = st.yaw;
-      if (moving && speed > 2) yaw = Math.atan2(vx, vz);
-      else if (pos === 'C') yaw = Math.PI;
-      else if (pos === 'P' && !move) yaw = 0;
-      else {
-        // face the batter / ball
-        const tx = this.ballPos.x, tz = this.ballPos.z;
-        const target = plan && playT > 0.2 ? [tx, tz] : [0, 0];
-        yaw = Math.atan2(target[0] - x, target[1] - z);
+      const bx = this.ballPos.x, bz = this.ballPos.z;
+      const ballD = Math.hypot(bx - x, bz - z);
+      const catchT = plan && plan.fielder === pos ? (plan.caught ? plan.catchT : plan.pickupT) : undefined;
+      let want = st.yaw, rate = turn;
+      // the ball is in his hands: square up to wherever he is about to throw
+      let face = null;
+      if (plan) {
+        const th = plan.throws.find((q) => q.from === pos && playT <= q.t0 + 0.4);
+        const carry = plan.carries.some((c) => c.pos === pos && playT >= c.t0 - 0.3 && playT <= c.t1);
+        if (th && ((carry && playT >= (catchT ?? 0) - 0.2) || playT >= th.t0 - 0.45)) face = th;
       }
-      st.yaw = yaw;
+      if (pos === 'C' && !(moving && speed > 2)) want = Math.PI;
+      else if (pos === 'P' && !runs && !(moving && speed > 2)) want = 0;
+      else if (face) { want = Math.atan2(face.bx - x, face.bz - z); rate = turn * 1.3; }
+      else if (moving && speed > 2) {
+        want = Math.atan2(vx, vz);
+        // on a fly ball he turns to face it for the last half second before the catch (keeps his eyes and glove on it)
+        if (plan && plan.caught && catchT !== undefined && playT > catchT - 0.7 && ballD > 5) want = Math.atan2(bx - x, bz - z);
+      } else if (plan && playT > 0.2 && ballD > 8) want = Math.atan2(bx - x, bz - z);
+      else if (!plan || playT <= 0.2) want = Math.atan2(-x, -z); // watching the batter
+      st.yaw = turnToward(st.yaw, want, rate, 12, dt);
+      const yaw = st.yaw;
+      // eyes on the ball while he runs (head turns, body keeps pointing where he is going)
+      const lookYaw = plan && playT > 0.1 && ballD > 6 && !face ? clamp(wrapAngle(Math.atan2(bx - x, bz - z) - yaw), -1.1, 1.1) : 0;
       root.position.set(x, y, z);
       root.rotation.y = yaw;
       root.updateMatrixWorld(true);
@@ -233,7 +259,7 @@ export class Actors {
       let done = false;
       if (pos === 'P') done = this.pitcherPoseUpdate(E, person, P, time, pitch, plan, playT, move, moving, speed, st, dt);
       else if (pos === 'C') done = this.catcherPoseUpdate(E, person, P, time, pitch, plan, playT, move, moving, speed, st, dt);
-      if (!done) this.fielderPoseUpdate(E, person, P, time0, pos, plan, playT, move, moving, speed, st, dt);
+      if (!done) this.fielderPoseUpdate(E, person, P, time0, pos, plan, playT, move, speed, st, dt, lookYaw);
       person.setShadows(Math.hypot(x, z + 62) < 120);
       person.apply();
     }
@@ -292,37 +318,33 @@ export class Actors {
     return true;
   }
 
-  fielderPoseUpdate(E, person, P, time, pos, plan, playT, move, moving, speed, st, dt) {
-    const cfg = E.cfg;
+  fielderPoseUpdate(E, person, P, time, pos, plan, playT, move, speed, st, dt, look = 0) {
     const kind = person.role === 'fielder' && (pos === 'LF' || pos === 'CF' || pos === 'RF') ? 'OF' : 'IF';
+    const scratch = this.tmpPose;
+    if (speed > 0.8) st.phase += runCadence(speed) * TAU * dt; // stride follows his real speed (continuous, no sliding feet)
+    st.runOn = st.runOn ? speed > 1.6 : speed > 3.0; // hysteresis: no flicker between running and standing
+    const runW = smoothstep(1.4, 4.2, speed); // how much running is mixed into a catch / throw pose
     // throws this fielder makes
     let throwing = null;
     if (plan) for (const th of plan.throws) if (th.from === pos) { if (playT >= th.t0 - 0.32 && playT <= th.t0 + 0.32) throwing = th; }
     // catch / field moments
     let catchT = null, catchDive = false;
-    if (plan && move) {
-      catchT = plan.caught && plan.fielder === pos ? plan.catchT : (plan.pickupT !== undefined && plan.fielder === pos ? plan.pickupT : null);
+    if (plan && move && plan.fielder === pos) {
+      catchT = plan.caught ? plan.catchT : (plan.pickupT !== undefined ? plan.pickupT : null);
       catchDive = move.dive;
     }
     if (throwing) {
-      const u = clamp((playT - (throwing.t0 - 0.32)) / 0.58, 0, 1) * (1) * 1.0;
-      const uu = clamp(0.55 * ((playT - (throwing.t0 - 0.32)) / 0.32) * 0.5 + 0, 0, 1);
-      void uu;
-      // yaw toward the target
-      const tx = throwing.bx - person.root.position.x, tz = throwing.bz - person.root.position.z;
-      const want = Math.atan2(tx, tz);
-      st.yaw = want;
-      person.root.rotation.y = want;
-      person.root.updateMatrixWorld(true);
       const uT = clamp((playT - (throwing.t0 - 0.32)) / 0.32, 0, 1) * THROW_RELEASE_U + clamp((playT - throwing.t0) / 0.3, 0, 1) * (1 - THROW_RELEASE_U);
       throwPose(P, uT);
-      void u;
+      if (runW > 0.01) { runPose(scratch, st.phase, speed, 0); mixPose(P, P, scratch, runW); }
+      person.animState = 'throw';
       return;
     }
     if (catchT !== null && playT >= 0) {
       const dtC = playT - catchT;
       if (catchDive && dtC > -0.55 && dtC < 0.8) {
         divePose(P, clamp((dtC + 0.55) / 1.1, 0, 1));
+        person.animState = 'dive';
         return;
       }
       if (dtC > -0.5 && dtC < 1.2) {
@@ -339,16 +361,22 @@ export class Actors {
         const settle = smoothstep(0, 0.5, dtC);
         tx = lerp(tx, 0.5, settle); ty = lerp(ty, 3.6, settle); tz = lerp(tz, 0.7, settle);
         catchPose(P, [tx, ty, tz], clamp(1 - ty / 4.2, 0, 1) * 0.9);
+        if (runW > 0.01) {
+          // a running catch: keep striding with the glove out, settle into the catch pose as he slows
+          runReachPose(scratch, st.phase, speed, [tx, ty, tz], look);
+          mixPose(P, P, scratch, runW);
+        }
+        person.animState = 'catch';
         return;
       }
     }
-    if (moving && speed > 2.5) {
-      st.phase += runCadence(speed) * TAU * dt;
-      runPose(P, st.phase, speed);
+    if (st.runOn) {
+      runPose(P, st.phase, speed, look);
+      person.animState = 'run';
       return;
     }
     fielderReady(P, time, kind);
-    void cfg;
+    person.animState = 'ready';
   }
 
   // ------------------------------------------------ batter and base runners
