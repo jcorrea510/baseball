@@ -367,6 +367,23 @@ export const CONFIG = {
   // --------------------------------------------------------------------------
   //  Camera and visuals
   // --------------------------------------------------------------------------
+  // --------------------------------------------------------------------------
+  //  Landing spot ring: a soft ring on the grass where a ball hit in the air will come down; it shrinks as the ball falls and is at
+  //  its smallest the moment the ball lands. (Hidden once the ball lands or is caught.)
+  // --------------------------------------------------------------------------
+  landing: {
+    minApex: 14, // ft: only balls hit up into the air get a ring (not grounders or low liners)
+    minFlight: 1.0, // s: ...and only if they stay up at least this long
+    delay: 0.45, // s after contact before the ring appears (the ball has left the bat)
+    fadeIn: 0.3, // s the ring takes to fade in
+    radiusStart: 15, // ft: how big the ring starts
+    radiusEnd: 3.0, // ft: how small it is when the ball lands (about a fielder's reach)
+    minScreen: 0.03, // the ring is never smaller than this fraction of its distance from the camera, so it stays visible far away
+    viewTilt: 30, // degrees: the camera looks across the grass at a very low angle, so the ring is tilted toward it until it is seen from at least this steep an angle (it stays centred on the landing spot)
+    alpha: 0.6, // how see-through the ring is at its clearest
+    color: 0xf4efc0, // soft warm white
+  },
+
   camera: {
     batter: { pos: [0.0, 13.5, 24.0], pitch: -14.5, fov: 36 }, // camera behind the plate; pitch in degrees
     fovMin: 24,

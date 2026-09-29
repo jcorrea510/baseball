@@ -136,6 +136,11 @@ const scenarios = [
       if (await page.evaluate(() => window.__app.settings.pitchGuide)) throw new Error('the pitch guide switch did not turn it off');
       await click('#ui .screen.show .switch[data-set="pitchGuide"]');
       if (!(await page.evaluate(() => window.__app.settings.pitchGuide))) throw new Error('the pitch guide switch did not turn it back on');
+      // the landing ring switch too
+      if (!(await page.evaluate(() => document.querySelector('#ui .screen.show .switch[data-set="landingRing"]')?.classList.contains('on')))) throw new Error('the landing ring switch is missing or off by default');
+      await click('#ui .screen.show .switch[data-set="landingRing"]');
+      if (await page.evaluate(() => window.__app.settings.landingRing)) throw new Error('the landing ring switch did not turn it off');
+      await click('#ui .screen.show .switch[data-set="landingRing"]');
       await click('#ui .screen.show button[data-a="resume"]');
       await waitFor(page, () => !document.querySelector('#ui .screen.show'), 5000, 'the pause menu to close');
       if (problems.length) throw new Error('console/network problems:\n    ' + problems.join('\n    '));

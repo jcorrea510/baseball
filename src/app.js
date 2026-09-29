@@ -19,6 +19,8 @@ import { clamp, lerp, smoothstep } from './util/math.js';
 import { zoneRatio } from './physics/pitch.js';
 import { PitchGuide } from './render/pitchGuide.js';
 import { pitchGuide } from './game/pitchGuide.js';
+import { LandingRing } from './render/landingRing.js';
+import { landingSpot, landingRing } from './game/landing.js';
 
 const LABEL = { fastball: 'Fastball', changeup: 'Changeup', curveball: 'Curveball', slider: 'Slider', heater: 'Heater' };
 
@@ -83,6 +85,7 @@ export class App {
     if (params.get('diff')) this.prog.settings.difficulty = params.get('diff');
     if (params.get('zone')) this.prog.settings.zone = params.get('zone') === '1';
     if (params.get('guide')) this.prog.settings.pitchGuide = params.get('guide') === '1';
+    if (params.get('ring')) this.prog.settings.landingRing = params.get('ring') === '1';
     if (qm) { this.prog.settings.howtoSeen = true; setTimeout(() => this.startGame(qm), 50); }
   }
 
@@ -127,6 +130,8 @@ export class App {
     this.pitchMarker = ring;
     this.markerT = 0;
     this.guide = new PitchGuide(this.S.scene); // the soft circle that guesses where the pitch will cross the plate
+    this.landing = null; // where the ball in the air will come down (see onContact)
+    this.landRing = new LandingRing(this.S.scene); // ...and the ring on the grass that shows it
   }
 
   applyStadiumMood() {
@@ -225,7 +230,7 @@ export class App {
     this.goModes();
   }
 
-  hideOverlays() { this.zone.visible = false; this.pitchMarker.visible = false; this.guide.hide(); }
+  hideOverlays() { this.zone.visible = false; this.pitchMarker.visible = false; this.guide.hide(); this.landRing.hide(); this.landing = null; }
 
   // ---------------------------------------------------------------- starting a game
   startGame(mode) {
@@ -342,6 +347,7 @@ export class App {
 
   onContact(c) {
     const e = this.engine, ui = this.ui, audio = this.audio, F = CONFIG.feel;
+    this.landing = landingSpot(c.sim, c.plan, CONFIG); // (null for grounders, home runs and balls that hit the wall first)
     const grade = c.grade;
     const q = grade === 'perfect' ? 1 : grade === 'good' ? 0.62 : 0.25;
     audio.batCrack(q, c.exitVelocity);
@@ -718,6 +724,10 @@ export class App {
     if (e && e.phase === 'pitch' && e.pitch && e.time < e.pitch.tCross && this.settings.pitchGuide && e.mode !== 'derby' && this.screen === 'game') {
       this.guide.show(pitchGuide(e.pitch, e.time - e.pitch.tRelease, CONFIG, e.difficulty));
     } else this.guide.hide();
+    // landing spot ring: shrinks as the ball in the air comes down; gone when it lands or is caught
+    if (this.landing && e && e.phase === 'play' && e.play && this.settings.landingRing && this.screen === 'game') {
+      this.landRing.show(landingRing(this.landing, e.time - e.play.t0, CONFIG), cam);
+    } else { this.landRing.hide(); if (!(e && e.phase === 'play')) this.landing = null; }
     // pitch marker fade
     if (this.pitchMarker.visible) {
       this.markerT += realDt;

@@ -36,6 +36,7 @@ const ICONS = {
   phone: '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
   sliders: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
   zone: '<rect x="6" y="4" width="12" height="16" rx="1.5"/><path d="M10 4v16M14 4v16M6 9.3h12M6 14.7h12"/>',
+  landing: '<ellipse cx="12" cy="15" rx="8" ry="3.6"/><circle cx="12" cy="6.5" r="2.2"/>',
   guide: '<circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="2.6"/>',
   shake: '<path d="M3 9l2 3-2 3M21 9l-2 3 2 3M8 7v10M12 4v16M16 7v10"/>',
   mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4"/>',
@@ -260,6 +261,7 @@ export class UI {
         <div class="grp"><span class="label">Bats</span>${seg('hand', [['auto', 'Mixed'], ['R', 'Right'], ['L', 'Left']], st.hand)}</div>
         <div class="grp"><span class="label">Zone</span><button class="switch ${st.zone ? 'on' : ''}" data-set="zone" data-bool="1" aria-label="Strike zone"></button></div>
         <div class="grp"><span class="label">Guide</span><button class="switch ${st.pitchGuide ? 'on' : ''}" data-set="pitchGuide" data-bool="1" aria-label="Pitch guide"></button></div>
+        <div class="grp"><span class="label">Ring</span><button class="switch ${st.landingRing ? 'on' : ''}" data-set="landingRing" data-bool="1" aria-label="Landing ring"></button></div>
       </div>`;
     s.appendChild(wrap);
     if (prev) wrap.scrollTop = prev.scrollTop;
@@ -292,15 +294,18 @@ export class UI {
   // ---------------- pause
   buildPause(st) {
     const s = this.fresh('pause');
-    const d = h('div', 'dialog panel rise');
+    const d = h('div', 'dialog panel pause rise');
     const sw = (key, ic, label, on) => `<div class="setrow"><span class="nm">${icon(ic)}${label}</span><button class="switch ${on ? 'on' : ''}" data-set="${key}" data-bool="1" aria-label="${label}"></button></div>`;
     d.innerHTML = `<h2>Paused</h2>
       <button class="btn" data-a="resume">${icon('play')}Resume</button>
-      ${sw('zone', 'zone', 'Strike zone', st.zone)}
-      ${sw('pitchGuide', 'guide', 'Pitch guide', st.pitchGuide)}
-      ${sw('sound', 'soundOn', 'Sound', st.sound)}
-      ${sw('shake', 'shake', 'Shake', st.shake)}
-      <div class="setrow stack"><span class="nm">${icon('mic')}Umpire</span><div class="seg" data-set="umpire">${[['synth', 'Voice'], ['speech', 'Browser'], ['off', 'Off']].map(([v, l]) => `<button data-v="${v}" class="${st.umpire === v ? 'on' : ''}">${l}</button>`).join('')}</div></div>
+      <div class="setgrid">
+        ${sw('zone', 'zone', 'Strike zone', st.zone)}
+        ${sw('pitchGuide', 'guide', 'Pitch guide', st.pitchGuide)}
+        ${sw('landingRing', 'landing', 'Landing ring', st.landingRing)}
+        ${sw('sound', 'soundOn', 'Sound', st.sound)}
+        ${sw('shake', 'shake', 'Shake', st.shake)}
+        <div class="setrow stack"><span class="nm">${icon('mic')}Umpire</span><div class="seg" data-set="umpire">${[['synth', 'Voice'], ['speech', 'Browser'], ['off', 'Off']].map(([v, l]) => `<button data-v="${v}" class="${st.umpire === v ? 'on' : ''}">${l}</button>`).join('')}</div></div>
+      </div>
       <div class="row"><button class="btn small ghost" data-a="restart">${icon('restart')}Restart</button><button class="btn small ghost" data-a="howtoPause">${icon('help')}Help</button><button class="btn small ghost warn" data-a="quit">${icon('home')}Quit</button></div>`;
     s.appendChild(d);
     s.onclick = (e) => {

@@ -269,6 +269,7 @@ body.touch .aimgauge { display: none; }
 .dialog { width: min(440px, 100%); max-height: 100%; overflow: auto; padding: var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-3); align-items: stretch; scrollbar-width: none; }
 .dialog::-webkit-scrollbar { display: none; }
 .dialog h2 { margin: 0 0 var(--sp-1); text-align: center; font-size: 22px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+.setgrid { display: flex; flex-direction: column; gap: var(--sp-3); }
 .dialog .sep { height: 1px; background: var(--line); margin: 2px 0; }
 .summary { width: min(520px, 100%); max-height: 100%; overflow: auto; padding: var(--sp-5); }
 .summary h2 { margin: 2px 0 0; font-size: 26px; font-weight: 900; letter-spacing: .02em; }
@@ -377,7 +378,17 @@ body.touch .aimgauge { display: none; }
   .touchaim { bottom: calc(var(--safe-b) + 112px); }
   .meter { bottom: calc(var(--safe-b) + 84px); }
 }
-@media (max-height: 340px) { .banner { top: 41%; } }
+/* phones held sideways: the pause switches sit in two columns so everything (Restart, Help, Quit too) fits without scrolling */
+@media (max-height: 520px) and (min-width: 480px) {
+  .dialog.pause { width: min(600px, 100%); }
+  .setgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .setgrid .setrow.stack { grid-column: 1 / -1; }
+}
+@media (max-height: 360px) {
+  .dialog.pause h2 { display: none; }
+  .dialog.pause .btn { min-height: 38px; } .dialog.pause .setrow { min-height: 34px; } .dialog.pause .setrow.stack { padding-top: 2px; padding-bottom: 2px; }
+  .banner { top: 41%; }
+}
 @media (max-width: 480px) {
   .title-stack .btn.small { padding: 0 10px; font-size: 11px; gap: 6px; }
 }
