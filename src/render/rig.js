@@ -63,16 +63,27 @@ export function getMat(hex, rough = 0.88, metal = 0) {
   }
   return m;
 }
+// Jersey materials are shared by everybody wearing the same shirt and counted: when the last figure wearing one is
+// disposed (a new game builds new teams), its texture is freed from the graphics card too.
 const jerseyCache = new Map();
 function getJerseyMat(u, mirror) {
   const key = [u.primary, u.secondary, u.trim, u.text, u.number, u.stripe, mirror].join('|');
-  let m = jerseyCache.get(key);
-  if (!m) {
-    m = new THREE.MeshStandardMaterial({ map: jerseyTexture({ primary: u.primary, secondary: u.secondary, trim: u.trim, text: u.text || '', number: u.number || 0, stripe: !!u.stripe, mirror }), roughness: 0.9 });
-    jerseyCache.set(key, m);
+  let e = jerseyCache.get(key);
+  if (!e) {
+    const m = new THREE.MeshStandardMaterial({ map: jerseyTexture({ primary: u.primary, secondary: u.secondary, trim: u.trim, text: u.text || '', number: u.number || 0, stripe: !!u.stripe, mirror }), roughness: 0.9 });
+    e = { m, key, users: 0 };
+    jerseyCache.set(key, e);
   }
-  return m;
+  e.users++;
+  return e;
 }
+function releaseJersey(e) {
+  if (!e || --e.users > 0) return;
+  jerseyCache.delete(e.key);
+  if (e.m.map) e.m.map.dispose();
+  e.m.dispose();
+}
+export const jerseyCacheSize = () => jerseyCache.size;
 let blobTex = null;
 function blobTexture() {
   if (blobTex) return blobTex;
@@ -279,6 +290,7 @@ export class Person {
   // Each part: { geo, color, x, y, z, sx, sy, sz, rx, ry, rz }
   _merged(parent, parts, mat = vertexMat()) {
     const geo = mergeParts(parts);
+    this.ownGeos.push(geo); // made for this figure only: freed in dispose()
     const m = new THREE.Mesh(geo, mat);
     m.castShadow = true;
     parent.add(m);
@@ -289,7 +301,9 @@ export class Person {
   _buildMeshes(o) {
     const u = o.uniform;
     const skinHex = o.skin || '#e0ac82';
-    const shirt = getJerseyMat(u, this.mirror);
+    this.ownGeos = [];
+    this.jersey = getJerseyMat(u, this.mirror);
+    const shirt = this.jersey.m;
     const pantsHex = u.pants || '#f2f2ee';
     // Jersey sleeves are short; where a team wears a contrasting long-sleeve undershirt (u.sleeve) it shows on the arms.
     const underHex = u.sleeve && u.sleeve !== u.primary ? u.sleeve : null;
@@ -378,8 +392,9 @@ export class Person {
       ]);
     }
     if (isCatcher || isUmpire) {
-      const mask = this._mesh(new THREE.SphereGeometry(R + 0.08, 14, 10, -Math.PI * 0.55, Math.PI * 1.1, Math.PI * 0.25, Math.PI * 0.55), getMat('#1c1f24', 0.5, 0.3), this.headG, 0, 0.1, 0.05);
-      void mask;
+      const key = 'mask' + R;
+      const maskGeo = geoCache[key] || (geoCache[key] = new THREE.SphereGeometry(R + 0.08, 14, 10, -Math.PI * 0.55, Math.PI * 1.1, Math.PI * 0.25, Math.PI * 0.55));
+      this._mesh(maskGeo, getMat('#1c1f24', 0.5, 0.3), this.headG, 0, 0.1, 0.05);
     }
 
     // --- arms (left = +x, right = -x): short jersey sleeve over (undershirt | bare) arm, forearm, hand / glove
@@ -482,11 +497,20 @@ export class Person {
     if (!blobShared) {
       blobShared = new THREE.MeshBasicMaterial({ map: blobTexture(), transparent: true, depthWrite: false, opacity: 0.6, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
     }
-    this.blob = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 3.4), blobShared);
+    this.blob = new THREE.Mesh(geoCache.blob || (geoCache.blob = new THREE.PlaneGeometry(3.4, 3.4)), blobShared);
     this.blob.rotation.x = -Math.PI / 2;
     this.blob.position.y = 0.04;
     this.blob.renderOrder = 2;
     this.root.add(this.blob);
+  }
+
+  // Free everything made for this figure alone (shared shapes and colours stay cached). Call once it leaves the scene.
+  dispose() {
+    for (const g of this.ownGeos) g.dispose();
+    this.ownGeos = [];
+    releaseJersey(this.jersey);
+    this.jersey = null;
+    if (this.bat) { disposeBat(this.bat); this.bat = null; }
   }
 
   setShadows(on) {
@@ -616,6 +640,9 @@ export function makeBat(styleKey = 'ash') {
   grp.userData.material = m;
   grp.userData.gripMaterial = grip.material;
   return grp;
+}
+export function disposeBat(grp) {
+  grp.traverse((o) => { if (o.isMesh) { o.geometry.dispose(); o.material.dispose(); } });
 }
 export function restyleBat(grp, styleKey) {
   const st = BAT_STYLES[styleKey] || BAT_STYLES.ash;

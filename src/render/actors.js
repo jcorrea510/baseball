@@ -1,7 +1,7 @@
 // Actors: every visible person and the ball, driven each frame by the game engine's state.
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
-import { Person, makeBat, restyleBat, mixPose, makePose, copyPose } from './rig.js';
+import { Person, makeBat, restyleBat, disposeBat, mixPose, makePose, copyPose } from './rig.js';
 import { batterPose, pitcherPose, catcherPose, fielderReady, runPose, runReachPose, runCadence, runnerLeadPose, slidePose, slideGetUp, throwPose, catchPose, divePose, celebratePose, standingPose, umpirePose, THROW_RELEASE_U } from './poses.js';
 import { UNIFORMS } from '../game/teams.js';
 import { BASE_XZ, MOUND_XZ, clampToField } from '../physics/field.js';
@@ -60,13 +60,12 @@ export class Actors {
     this.batStyle = batStyle;
     if (key === this.cfgKey) return;
     this.cfgKey = key;
-    // dispose old
-    for (const p of Object.values(this.fielders)) this.group.remove(p.root);
-    for (const p of this.players.values()) this.group.remove(p.root);
-    for (const c of this.coaches) this.group.remove(c.root);
-    if (this.umpire) this.group.remove(this.umpire.root);
-    this.fielders = {}; this.players.clear(); this.coaches = [];
-    if (this.looseBat) { this.group.remove(this.looseBat); this.looseBat = null; }
+    // take the old figures off the field and free their graphics memory (every game builds new teams)
+    const old = [...Object.values(this.fielders), ...this.players.values(), ...this.coaches];
+    if (this.umpire) old.push(this.umpire);
+    for (const p of old) { this.group.remove(p.root); p.dispose(); }
+    this.fielders = {}; this.players.clear(); this.coaches = []; this.umpire = null;
+    if (this.looseBat) { this.group.remove(this.looseBat); disposeBat(this.looseBat); this.looseBat = null; }
 
     const opp = engine.opponent.uniform;
     this.playerUniform = UNIFORMS[playerUniformKey] || UNIFORMS.classic;
