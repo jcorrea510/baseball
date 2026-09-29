@@ -1,9 +1,9 @@
 // Fielder movement: the run profile, the steering mover, and the intercept prediction that ties them to the ball.
 import { describe, it, expect } from 'vitest';
 import { CONFIG } from '../src/config.js';
-import { planRun, planDiveRun, sampleRun, samplePath, Mover, turnToward, timeToCover, covered } from '../src/game/fielderMotion.js';
+import { planRun, planDiveRun, sampleRun, samplePath, Mover, turnToward, timeToCover, covered, moverTravelTime, moverReturnTime } from '../src/game/fielderMotion.js';
 import { simulateBattedBall, sampleBall } from '../src/physics/ballistics.js';
-import { createDefense, planPlay, fielderFreeTime, POSITIONS } from '../src/game/fielding.js';
+import { createDefense, planPlay, fielderFreeTime, fielderBackTime, POSITIONS } from '../src/game/fielding.js';
 import { fenceDistance, sprayOf } from '../src/physics/field.js';
 import { createRng } from '../src/util/rng.js';
 
@@ -518,5 +518,67 @@ describe('when a fielder dives', () => {
     const a = mk(), b = mk();
     expect(JSON.stringify(a.paths)).toBe(JSON.stringify(b.paths));
     expect(a.events).toEqual(b.events);
+  });
+});
+
+describe('how long the jog home takes (the engine waits for it)', () => {
+  const jog = { vmax: 21, accel: 34, brake: 42, wake: 0.9 };
+  it('grows with the distance and is never shorter than running it flat out', () => {
+    let prev = 0;
+    for (const d of [2, 5, 10, 20, 40, 65]) {
+      const t = moverTravelTime(d, jog);
+      expect(t).toBeGreaterThan(prev);
+      expect(t).toBeGreaterThanOrEqual(d / 21);
+      prev = t;
+    }
+    expect(moverTravelTime(0, jog)).toBe(0);
+  });
+  it('matches what the Mover really does', () => {
+    const m = new Mover(0, 0, jog);
+    m.tx = 30; m.tz = 0; m.parked = false;
+    let t = 0;
+    while (!m.parked && t < 30) { m.update(1 / 60); t += 1 / 60; }
+    expect(moverTravelTime(30, jog)).toBeCloseTo(t, 6);
+  });
+  it('is longer when he is still running away from home, and equal from a standstill', () => {
+    const still = moverReturnTime(0, 0, 0, 0, 30, 0, jog);
+    expect(still).toBeCloseTo(moverTravelTime(30, jog), 6);
+    expect(moverReturnTime(0, 0, -18, 0, 30, 0, jog)).toBeGreaterThan(still + 0.3);
+    expect(moverReturnTime(0, 0, 18, 0, 30, 0, jog)).toBeLessThan(still);
+  });
+});
+
+describe('show-only runs do not hold up the game', () => {
+  it('backups and shading finish by the time the play is over, and a fielder is never "back" before his run ends', () => {
+    const rng = createRng(19);
+    const defense = createDefense(CONFIG, createRng(5));
+    let checked = 0;
+    for (let i = 0; i < 300; i++) {
+      const params = { exitVelocity: rng.range(60, 108), launchAngle: rng.range(-6, 34), sprayAngle: rng.range(-42, 42), backspin: 1500, hook: 0, start: { x: 0, y: 2.6, z: -1 } };
+      const sim = simulateBattedBall(params);
+      const bases = [rng.next() < 0.5 ? {} : null, rng.next() < 0.4 ? {} : null, rng.next() < 0.3 ? {} : null];
+      const plan = planPlay({ sim, contact: { grade: 'good', ...params }, bases, outs: 0, defense, simple: false }, CONFIG);
+      for (const m of plan.fielderMoves) {
+        if (m.role === 'backup' || m.role === 'shade') { expect(m.run.tStop).toBeLessThanOrEqual(plan.endTime + 0.9); checked++; }
+      }
+      for (const pos of POSITIONS) {
+        const runs = plan.paths[pos];
+        const back = fielderBackTime(plan, pos, defense, CONFIG, plan.endTime);
+        if (!runs || !runs.length) { expect(back).toBe(0); continue; }
+        expect(back).toBeGreaterThanOrEqual(Math.min(runs[runs.length - 1].tStop, plan.endTime) - 1e-6);
+      }
+    }
+    expect(checked).toBeGreaterThan(30);
+  });
+
+  it('a pitcher who broke toward first or backed up home is back soon enough to keep the game quick', () => {
+    const defense = createDefense(CONFIG, createRng(5));
+    for (const [ev, la, sp, bs] of [[84, -4, 34, [0, 0, 0]], [88, 6, -6, [0, 0, 1]], [45, -6, 22, [0, 0, 0]]]) {
+      const params = { exitVelocity: ev, launchAngle: la, sprayAngle: sp, backspin: 1200, hook: 0, start: { x: 0, y: 2.6, z: -1 } };
+      const sim = simulateBattedBall(params);
+      const plan = planPlay({ sim, contact: { grade: 'good', ...params }, bases: bs.map((b) => (b ? {} : null)), outs: 0, defense, simple: false }, CONFIG);
+      const back = fielderBackTime(plan, 'P', defense, CONFIG, plan.endTime);
+      expect(back - plan.endTime).toBeLessThan(3.6);
+    }
   });
 });

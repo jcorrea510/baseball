@@ -6,7 +6,7 @@ import { CONFIG } from '../config.js';
 import { sampleBall, judgeFairFoul, battedBallType } from '../physics/ballistics.js';
 import { BASE_XZ, polar, fenceDistance, sprayOf, clampToField, distanceToWall, isInsideField } from '../physics/field.js';
 import { runnerArrival, runnerFinish, runnerState } from './runnerMotion.js';
-import { planRun, planDiveRun, sampleRun, samplePath, covered, timeToCover } from './fielderMotion.js';
+import { planRun, planDiveRun, sampleRun, samplePath, covered, timeToCover, moverReturnTime, TAIL_MAX } from './fielderMotion.js';
 
 export const POSITIONS = ['P', 'C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF'];
 const INFIELDERS = ['1B', '2B', 'SS', '3B'];
@@ -457,6 +457,29 @@ export function fielderFreeTime(plan, pos) {
   return t;
 }
 
+/**
+ * When (seconds after the play began) is this fielder back on his spot and standing still again? A fielder's planned run ends
+ * where it ends (say, the pitcher after fielding a comebacker, or the catcher after covering the plate); when the play is over
+ * he jogs home (the same steering the renderer uses). The engine waits for this before the next pitch.
+ * @param {number} playEnd  when the play ended, in the same seconds (the jog starts then, or when his run ends if that is later)
+ */
+export function fielderBackTime(plan, pos, defense, cfg, playEnd = 0) {
+  const runs = plan.paths && plan.paths[pos];
+  if (!runs || !runs.length) return 0;
+  const last = runs[runs.length - 1];
+  const f = defense[pos];
+  const jog = { vmax: cfg.fielding.jogHome.speed, accel: cfg.fielding.jogHome.accel, brake: cfg.fielding.jogHome.brake, wake: 0.9 };
+  if (last.tStop - playEnd > TAIL_MAX) {
+    // the play ends while he is still running: he turns around at once, carrying the speed he has (that is what is drawn)
+    const q = samplePath(runs, playEnd);
+    return playEnd + moverReturnTime(q.x, q.z, q.ux * q.speed, q.uz * q.speed, f.homeX, f.homeZ, jog);
+  }
+  const d = Math.hypot(last.xStop - f.homeX, last.zStop - f.homeZ);
+  if (d < 1.0) return last.tStop; // he never really left
+  const start = Math.max(last.tStop, Math.min(fielderFreeTime(plan, pos), playEnd)); // he heads home once his job is done (or the play is over)
+  return start + moverReturnTime(last.xStop, last.zStop, 0, 0, f.homeX, f.homeZ, jog);
+}
+
 // Where a fielder stands when he "covers" a base: just inside the bag, on the infield side.
 function standAt(base) {
   const [bx, bz] = BASE_XZ[base];
@@ -485,6 +508,12 @@ function addSupport(plan, i, cfg) {
     busy.add(pos);
     let tx = x, tz = z;
     const d = dist(f.x, f.z, x, z);
+    // These runs are only for show, so none of them may outlast the play: he goes as far as he can get (and brake) by the time
+    // it is over - the pitcher breaks toward first on a grounder to the right side, he does not run all the way there and hold up
+    // the next pitch while he walks back.
+    const vmaxS = f.speed * F.supportSpeed;
+    const reach = covered(vmaxS, Math.max(0.2, plan.endTime + 0.1 - f.react - vmaxS / (2 * F.brake)), F.accel);
+    limit = Math.min(limit, Math.max(3, reach));
     if (d > limit) { tx = f.x + ((x - f.x) / d) * limit; tz = f.z + ((z - f.z) / d) * limit; }
     if (dist(f.x, f.z, tx, tz) < 1.5) return;
     addMove(plan, f, tx, tz, tArrive, { role, vmax: f.speed * F.supportSpeed, minEffort: 0.75 }, cfg);
@@ -516,8 +545,9 @@ function addSupport(plan, i, cfg) {
     }
     if (lead >= 3 && !busy.has('3B')) cover('3B', 3, 2.6);
     if (lead >= 3 && !busy.has('P')) {
-      if (c.tgtBase === 4) go('P', -7, 11, 2.4, 'backup');
-      else if (c.tgtBase === 3) go('P', BASE_XZ[3][0] - 14, BASE_XZ[3][1] + 14, 2.4, 'backup');
+      // (he breaks toward the spot - not all the way: he has to be back on the rubber for the next pitch)
+      if (c.tgtBase === 4) go('P', -7, 11, 2.4, 'backup', F.pitcherBackupTravel);
+      else if (c.tgtBase === 3) go('P', BASE_XZ[3][0] - 14, BASE_XZ[3][1] + 14, 2.4, 'backup', F.pitcherBackupTravel);
     }
     if ((bases[1] || bases[2] || lead >= 4) && !busy.has('C')) cover('C', 4, 2.2);
   }

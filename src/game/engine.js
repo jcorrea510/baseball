@@ -8,7 +8,7 @@ import { simulateBattedBall, projectDistance } from '../physics/ballistics.js';
 import { resolveSwingTimes, describeError } from './timing.js';
 import { computeContact } from './contact.js';
 import { choosePitch, pitchWindowScale } from './pitcherAI.js';
-import { createDefense, planPlay } from './fielding.js';
+import { createDefense, planPlay, fielderBackTime } from './fielding.js';
 import * as rules from './rules.js';
 import { simulateHalf } from './aiHalf.js';
 import { makeLineup, makePitcher, OPPONENTS, PLAYER_TEAM } from './teams.js';
@@ -44,6 +44,7 @@ export class Engine {
     this.time = 0;
     this.phase = 'idle';
     this.phaseSince = 0;
+    this.fieldersSetAt = 0; // no pitch before this time: the pitcher and catcher are back in place and set (see finishPlay)
     this.listeners = {};
     this.aim = 0;
     this.pitch = null;
@@ -125,7 +126,8 @@ export class Engine {
     this.time += dt;
     switch (this.phase) {
       case 'ready':
-        if (this.time >= this.readyUntil) this.startWindup();
+        // the next pitch waits for the batter AND for the pitcher (and catcher) to be back in place and set
+        if (this.time >= this.readyUntil && this.time >= this.fieldersSetAt) this.startWindup();
         break;
       case 'windup':
         if (this.time >= this.pitch.tRelease) this.release();
@@ -356,6 +358,11 @@ export class Engine {
     const p = this.play;
     const plan = p.plan;
     const c = p.contact;
+    // The pitcher may have fielded the ball or backed up a base, the catcher may have covered the plate: the next pitch must not
+    // start until both are back where they belong (the jog home is the same one the picture shows) and have a moment to get set.
+    const playEnd = this.time - p.t0;
+    const back = Math.max(fielderBackTime(plan, 'P', this.defense, this.cfg, playEnd), fielderBackTime(plan, 'C', this.defense, this.cfg, playEnd));
+    this.fieldersSetAt = back > 0 ? p.t0 + back + this.cfg.pace.pitcherSet : 0;
     const summary = {
       plan, contact: c, distance: p.distance, exitVelocity: c.exitVelocity, launchAngle: c.launchAngle,
       grade: c.grade, batter: this.batter,

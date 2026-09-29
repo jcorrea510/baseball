@@ -204,6 +204,7 @@ export const CONFIG = {
     nextPitchDelay: 0.22, // gap between the call and the pitcher starting again
     callDisplay: 0.55, // how long the ball/strike call is shown
     playEndPause: 0.5, // pause after a play finishes
+    pitcherSet: 0.4, // s the pitcher (and catcher) need to be set once they are back in place: no pitch before it
     fastForward: 4.5, // speed multiplier when you tap to skip a play
     inningBreak: 1.1,
     aiSummaryLine: 0.55, // seconds per line of the computer's half-inning highlights
@@ -256,6 +257,7 @@ export const CONFIG = {
     supportSpeed: 0.85, // backups and base-coverers run at this fraction of top speed
     backupDepth: 24, // ft behind the fielder's spot where a teammate backs him up
     backupTravel: 48, // an outfielder backing up an infield play charges in at most this far
+    pitcherBackupTravel: 32, // the pitcher backing up home or third goes at most this far (he has to be back on the rubber for the next pitch)
     // The wall: a fielder's centre never gets closer than `wallMargin` ft to a wall (his glove still reaches it). Running at
     // the wall he brakes at up to `wallBrake` ft/s^2 (bracing against it), so he stops in front of it instead of through it.
     wallMargin: 1.8,

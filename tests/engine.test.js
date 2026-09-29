@@ -3,6 +3,7 @@ import { CONFIG } from '../src/config.js';
 import { Engine } from '../src/game/engine.js';
 import { createBot } from '../src/game/bot.js';
 import { resolveSwingTimes } from '../src/game/timing.js';
+import { fielderBackTime } from '../src/game/fielding.js';
 
 const DT = 1 / 120;
 function drive(e, seconds, bot) {
@@ -262,5 +263,44 @@ describe('whole games', () => {
     expect(e.phase).toBe('ready');
     expect(e.game.half).toBe('top');
     expect(e.game.inning).toBe(2);
+  });
+});
+
+describe('the next pitch waits for the pitcher and catcher', () => {
+  const rollUpTheLine = () => ({ exitVelocity: 45, launchAngle: -6, sprayAngle: 22, backspin: 1200, hook: 0, errorMs: 0 });
+  it('does not start the windup until the pitcher is back on the rubber and set', () => {
+    const e = new Engine({ mode: 'quick', seed: 5 });
+    e.pitchOverride = strikePitch;
+    e.contactOverride = rollUpTheLine;
+    e.start();
+    expect(untilPhase(e, 'pitch')).toBe(true);
+    while (e.time < e.pitch.tCross - e.cfg.timing.swingDelay) e.update(DT);
+    e.swingPressed(0);
+    expect(untilPhase(e, 'play')).toBe(true);
+    const plan = e.play.plan;
+    const t0 = e.play.t0;
+    expect((plan.paths.P || []).length).toBeGreaterThan(0); // the pitcher is involved in this play
+    e.contactOverride = null;
+    // watch the next windup
+    let windupAt = null;
+    e.on('windup', () => { if (windupAt === null) windupAt = e.time; });
+    let endedAt = null;
+    for (let t = 0; t < 30 && windupAt === null; t += DT) { e.update(DT); if (endedAt === null && e.phase !== 'play') endedAt = e.time; }
+    expect(windupAt).not.toBeNull();
+    // he needs at least his jog home (a lot more than the usual gap) and then a moment to get set
+    expect(windupAt).toBeGreaterThanOrEqual(t0 + fielderBackTime(plan, 'P', e.defense, e.cfg, endedAt - t0) + e.cfg.pace.pitcherSet - 1e-6);
+    expect(windupAt - endedAt).toBeGreaterThan(1.5);
+    expect(windupAt - endedAt).toBeLessThan(5); // ... but it stays quick
+  });
+
+  it('over a whole game no windup ever starts before the fielders are set, and nobody waits long for nothing', () => {
+    const e = new Engine({ mode: 'quick', seed: 11 });
+    const bot = createBot(e, { errSd: 30, seed: 3 });
+    const windups = [];
+    e.on('windup', () => windups.push({ t: e.time, set: e.fieldersSetAt, since: e.time - e.phaseSince }));
+    e.start();
+    drive(e, 900, bot);
+    expect(windups.length).toBeGreaterThan(20);
+    for (const w of windups) expect(w.t + 1e-9).toBeGreaterThanOrEqual(w.set);
   });
 });

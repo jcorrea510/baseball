@@ -8,7 +8,7 @@ import { BASE_XZ, MOUND_XZ, clampToField } from '../physics/field.js';
 import { sampleBall } from '../physics/ballistics.js';
 import { POSITIONS, fielderFreeTime } from '../game/fielding.js';
 import { runnerState, runnerProfile, leadSpot } from '../game/runnerMotion.js';
-import { Mover, samplePath, turnToward } from '../game/fielderMotion.js';
+import { Mover, samplePath, turnToward, TAIL_MAX } from '../game/fielderMotion.js';
 import { clamp, lerp, smoothstep, damp, wrapAngle, TAU, DEG } from '../util/math.js';
 
 const P0 = CONFIG.field;
@@ -221,8 +221,10 @@ export class Actors {
         st.tail = { runs, t: playT, move };
       } else if (!live && st.tail) {
         st.tail.t += dt;
-        p = samplePath(st.tail.runs, st.tail.t);
-        if (p.done) st.tail = null;
+        const lastRun = st.tail.runs[st.tail.runs.length - 1];
+        // a run that is nearly over is finished; a long one is dropped (the jog takes over, braking from the speed he has)
+        if (st.tail.t === undefined || lastRun.tStop - st.tail.t + dt > TAIL_MAX + 1e-6 && !st.tail.ok) st.tail = null;
+        else { st.tail.ok = true; p = samplePath(st.tail.runs, st.tail.t); if (p.done) st.tail = null; }
       } else st.tail = null;
       if (p) {
         const tm = live ? move : st.tail ? st.tail.move : move;
@@ -285,6 +287,7 @@ export class Actors {
 
   pitcherPoseUpdate(E, person, P, time, pitch, plan, playT, move, moving, speed, st, dt) {
     if (move && playT >= 0 && (moving || playT > move.keys[1].t)) return false; // fielding the ball: generic fielder logic
+    if (speed > 1.0) return false; // jogging back to the rubber: he runs, he does not glide in his set pose
     const phase = E.phase;
     const relW = this.tmpV;
     let u = 0, post = 0;
@@ -315,6 +318,7 @@ export class Actors {
 
   catcherPoseUpdate(E, person, P, time, pitch, plan, playT, move, moving, speed, st, dt) {
     if (move && playT >= 0 && moving) return false;
+    if (speed > 1.5) return false; // jogging back to the plate
     const cfg = E.cfg;
     let mx = 0, my = 2.4, mz = cfg.pitch.catchZ;
     if (pitch) {

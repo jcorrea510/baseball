@@ -364,3 +364,27 @@ export class Mover {
     return this;
   }
 }
+
+/**
+ * How long does the jog take (`Mover` steering, same numbers the renderer uses) from (x, z) - moving at (vx, vz) - to come to
+ * rest on the spot (hx, hz)? The engine uses this to know when a fielder is back where he belongs.
+ */
+export function moverReturnTime(x, z, vx, vz, hx, hz, opts = {}) {
+  const m = new Mover(x, z, opts);
+  m.reset(x, z, vx, vz);
+  m.tx = hx; m.tz = hz; m.parked = false;
+  if (Math.hypot(hx - x, hz - z) < 0.05 && Math.hypot(vx, vz) < 0.5) return 0;
+  const dt = 1 / 60;
+  let t = 0;
+  while (!m.parked && t < 60) { m.update(dt); t += dt; }
+  return t;
+}
+/** The same from a standstill, `distance` feet away. */
+export function moverTravelTime(distance, opts = {}) {
+  if (!(distance > 0.05)) return 0;
+  return moverReturnTime(0, 0, 0, 0, distance, 0, opts);
+}
+
+// If the play ends while a planned run still has this long to go, the fielder is handed to the jog at once (see Actors.updateFielders);
+// a run that is nearly done is finished first (so he does not carry his speed through a wall or lurch to a stop).
+export const TAIL_MAX = 0.7;
