@@ -54,7 +54,7 @@ export const CONFIG = {
     groundRestitution: 0.42, // how bouncy the grass is
     groundFriction: 0.8, // fraction of sideways speed kept each bounce
     rollDecel: 13, // ft/s^2 slowing of a rolling ball
-    stopSpeed: 2.5, // ft/s: below this a rolling ball is "stopped"
+    stopSpeed: 0.8, // ft/s: below this a rolling ball is "stopped"
     wallRestitution: 0.34,
     wallFriction: 0.72,
     dt: 1 / 240, // fixed physics step (do not tie to frame rate)
@@ -93,10 +93,10 @@ export const CONFIG = {
   //  negative = early, positive = late
   // --------------------------------------------------------------------------
   timing: {
-    perfectMs: 22,
-    goodMs: 50,
-    earlyMs: 92, // beyond "good", up to here = weak/foul contact
-    lateMs: 66, // late window is shorter (the catcher has the ball by then)
+    perfectMs: 20,
+    goodMs: 42,
+    earlyMs: 80, // beyond "good", up to here = weak/foul contact
+    lateMs: 56, // late window is shorter (the catcher has the ball by then)
     swingDelay: 0.115, // seconds from pressing the button until the bat is at the plate
     followThrough: 0.42,
     // Visual limits on how far in front of / behind the plate the bat can meet the ball
@@ -118,12 +118,12 @@ export const CONFIG = {
     exitVelocityFloor: 38,
     pitchSpeedBonus: 0.16, // extra mph of exit velocity per mph of pitch speed above 85
     qualityPerfect: [0.93, 1.0], // quality range inside each window
-    qualityGood: [0.72, 0.93],
-    qualityWeak: [0.28, 0.72],
+    qualityGood: [0.66, 0.93],
+    qualityWeak: [0.25, 0.66],
     qualityCurve: 0.9,
     launch: {
-      perfect: { center: 22, spread: 5.5 },
-      good: { center: 17, spread: 9.5 },
+      perfect: { center: 26, spread: 5 },
+      good: { center: 18, spread: 9 },
       weak: { center: 8, spread: 19 },
       heightEffect: 8.5, // degrees of launch angle per foot of pitch height below the zone center
     },
@@ -131,7 +131,7 @@ export const CONFIG = {
       timingMax: 56, // degrees at the edge of the weak window
       timingCurve: 1.15,
       aimMax: 13, // degrees you can steer with A/D or arrows
-      noise: { perfect: 2.6, good: 4.5, weak: 8 },
+      noise: { perfect: 6, good: 8, weak: 10 },
     },
     backspin: { base: 900, perLaunchDeg: 55, max: 3400 }, // rpm
     sidespinMax: 750, // rpm at 45 degrees of spray (ball hooks toward the nearest foul line)
@@ -156,7 +156,8 @@ export const CONFIG = {
       windup: 1.05,
       zoneDefault: true,
       derbyFoulIsOut: false,
-      ai: { contact: 0.6, power: 0.05 }, // used for the computer's half-innings
+      // Odds for each plate appearance when the computer bats (its half-innings are simulated).
+      ai: { k: 0.26, bb: 0.06, groundout: 0.21, flyout: 0.18, single: 0.15, double: 0.04, triple: 0.005, hr: 0.02 },
     },
     pro: {
       label: 'Pro',
@@ -172,12 +173,12 @@ export const CONFIG = {
       windup: 0.92,
       zoneDefault: true,
       derbyFoulIsOut: true,
-      ai: { contact: 0.68, power: 0.08 },
+      ai: { k: 0.22, bb: 0.08, groundout: 0.19, flyout: 0.16, single: 0.19, double: 0.06, triple: 0.008, hr: 0.035 },
     },
     allstar: {
       label: 'All-Star',
       blurb: 'Fast, tricky, tiny windows. Watch for the pitcher\'s tells.',
-      windowScale: 0.8,
+      windowScale: 0.7,
       fastball: [88, 98],
       mix: { fastball: 0.36, changeup: 0.18, curveball: 0.17, slider: 0.19, heater: 0.1 },
       strikeRate: 0.55,
@@ -188,7 +189,7 @@ export const CONFIG = {
       windup: 0.85,
       zoneDefault: false,
       derbyFoulIsOut: true,
-      ai: { contact: 0.74, power: 0.11 },
+      ai: { k: 0.19, bb: 0.09, groundout: 0.17, flyout: 0.15, single: 0.21, double: 0.075, triple: 0.01, hr: 0.05 },
     },
   },
 
@@ -229,24 +230,26 @@ export const CONFIG = {
     // Where each defender stands. Outfielders are given as [spray degrees, feet from home].
     positions: {
       P: [0, -60.5],
-      C: [0, 2.6],
+      C: [0, 4.0],
       '1B': [54, -70],
       '2B': [26, -113],
       SS: [-27, -113],
       '3B': [-54, -70],
     },
-    outfield: { LF: [-24, 262], CF: [0, 300], RF: [24, 262] },
-    speed: { IF: 24.5, OF: 27.5, P: 19, C: 20 }, // ft/s, average
-    reaction: { IF: 0.17, OF: 0.26, P: 0.3, C: 0.3 }, // seconds before a fielder reads the ball
-    glove: 3.1, // ft: how far a fielder can reach without diving
-    diveExtra: 4.6, // extra ft when diving (dive only on low balls)
+    outfield: { LF: [-24, 272], CF: [0, 308], RF: [24, 272] },
+    speed: { IF: 20, OF: 22, P: 16, C: 16 }, // ft/s, average (effective, includes getting up to speed)
+    reaction: { IF: 0.24, OF: 0.36, P: 0.36, C: 0.36 }, // seconds before a fielder reads the ball
+    glove: 2.4, // ft: how far a fielder can reach without diving
+    diveExtra: 3.0, // extra ft when diving (dive only on low balls)
     reachHeight: 9.0, // highest catchable point (ft)
     groundHeight: 3.2, // a ball this low counts as a ground ball for fielding
-    transfer: { IF: 0.36, OF: 0.5, C: 0.4 }, // catch-to-throw time
+    transfer: { IF: 0.36, OF: 0.5, C: 0.4, P: 0.42 }, // catch-to-throw time
     throwSpeed: { IF: 120, OF: 132, C: 112, P: 100 }, // ft/s
     relayDistance: 200, // outfield throws longer than this use a cut-off man
     relayTransfer: 0.3,
-    coverDelay: 0.0,
+    accel: 0.42, // seconds fielders take to get up to running speed (they cannot cover ground instantly)
+    tagTime: 0.4, // extra time for the catcher to receive a throw and apply the tag at home
+    fastBallPenalty: 0.27, // extra reaction (s) fielders need on the hardest-hit grounders
     outMargin: 0.02, // a throw must beat the runner by this many seconds
     runnerMargin: 0.1, // a runner must beat the throw by this to take an extra base
     // Fun-factor tweak: fielders are a little less sure-handed on the hardest line drives
@@ -269,6 +272,7 @@ export const CONFIG = {
     derby: {
       outs: 10,
       pitchSpeed: { rookie: 58, pro: 66, allstar: 74 }, // batting-practice fastballs
+    evBonus: 7, // extra exit velocity (mph): batting-practice balls jump off the bat
       strikeChance: 1,
       locationSigma: 0.24,
       hrStreakBonus: 0, // (no bonus in scoring - just tracked)
@@ -280,7 +284,7 @@ export const CONFIG = {
   //  Camera and visuals
   // --------------------------------------------------------------------------
   camera: {
-    batter: { pos: [0.0, 6.6, 14.5], look: [0.0, 3.3, -30], fov: 27 },
+    batter: { pos: [0.0, 13.5, 24.0], pitch: -14.5, fov: 36 }, // camera behind the plate; pitch in degrees
     fovMin: 24,
     followLag: 5.5, // higher = camera follows the ball more tightly
     snapBackTime: 0.7,
