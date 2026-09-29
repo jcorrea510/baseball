@@ -84,11 +84,11 @@ function blobTexture() {
   return blobTex;
 }
 const geoCache = {};
-function capsule(r, len, ss = 6, rs = 12) {
+function capsuleGeo(r, len, ss = 6, rs = 12) {
   const key = `c${r}|${len}|${ss}|${rs}`;
   return geoCache[key] || (geoCache[key] = new THREE.CapsuleGeometry(r, len, ss, rs));
 }
-function sphere(r, w = 16, h = 12) {
+function sphereGeo(r, w = 16, h = 12) {
   const key = `s${r}|${w}|${h}`;
   return geoCache[key] || (geoCache[key] = new THREE.SphereGeometry(r, w, h));
 }
@@ -98,10 +98,11 @@ function vertexMat() {
   if (!_vertexMat) _vertexMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0 });
   return _vertexMat;
 }
-function cyl(rt, rb, h, seg = 12) {
+function cylGeo(rt, rb, h, seg = 12) {
   const key = `y${rt}|${rb}|${h}|${seg}`;
   return geoCache[key] || (geoCache[key] = new THREE.CylinderGeometry(rt, rb, h, seg));
 }
+const capsule = capsuleGeo, sphere = sphereGeo, cyl = cylGeo;
 function box(w, h, d) {
   const key = `b${w}|${h}|${d}`;
   return geoCache[key] || (geoCache[key] = new THREE.BoxGeometry(w, h, d));
@@ -114,6 +115,31 @@ function cylHalf(r, h) {
   const key = `ch${r}|${h}`;
   return geoCache[key] || (geoCache[key] = new THREE.CylinderGeometry(r, r, h, 18, 1, false, 0, Math.PI));
 }
+function torus(r, tube, arc = Math.PI * 2, ts = 6, rs = 16) {
+  const key = `t${r}|${tube}|${arc}|${ts}|${rs}`;
+  return geoCache[key] || (geoCache[key] = new THREE.TorusGeometry(r, tube, ts, rs, arc));
+}
+// A jersey torso: a lathe (so it can carry the jersey texture, front at u = 0.25 like the old capsule) whose half-width
+// follows a real V-taper - broad chest and shoulders narrowing to the waist. Scaled in z for the body's depth.
+const TORSO_PROFILE = [[0, 0.34], [0.06, 0.46], [0.22, 0.5], [0.5, 0.55], [0.8, 0.63], [1.1, 0.7], [1.35, 0.75], [1.52, 0.73], [1.62, 0.62], [1.7, 0.36], [1.76, 0.16], [1.79, 0.0]];
+function torsoGeometry(dl = 1) {
+  const key = 'torso' + Math.round(dl * 10);
+  if (geoCache[key]) return geoCache[key];
+  const P = TORSO_PROFILE, top = P[P.length - 1][0], N = Math.max(10, Math.round(26 * dl));
+  const r = (y) => { // smooth interpolation through the profile
+    let i = 0;
+    while (i < P.length - 2 && y > P[i + 1][0]) i++;
+    const [y0, r0] = P[i], [y1, r1] = P[i + 1];
+    const t = (y - y0) / (y1 - y0);
+    const m0 = i > 0 ? (r1 - P[i - 1][1]) / (y1 - P[i - 1][0]) : (r1 - r0) / (y1 - y0);
+    const m1 = i + 2 < P.length ? (P[i + 2][1] - r0) / (P[i + 2][0] - y0) : (r1 - r0) / (y1 - y0);
+    const h = y1 - y0, t2 = t * t, t3 = t2 * t;
+    return (2 * t3 - 3 * t2 + 1) * r0 + (t3 - 2 * t2 + t) * h * m0 + (-2 * t3 + 3 * t2) * r1 + (t3 - t2) * h * m1;
+  };
+  const pts = [];
+  for (let i = 0; i < N; i++) { const y = (top * i) / (N - 1); pts.push(new THREE.Vector2(Math.max(0.001, r(y)), y)); }
+  return (geoCache[key] = new THREE.LatheGeometry(pts, Math.max(12, Math.round(28 * dl)), -Math.PI / 2, Math.PI * 2));
+}
 const _mm = new THREE.Matrix4(), _mq = new THREE.Quaternion(), _me = new THREE.Euler(), _mp = new THREE.Vector3(), _ms = new THREE.Vector3();
 const _mc = new THREE.Color();
 // Bake primitives into one geometry with per-vertex colours.
@@ -125,20 +151,33 @@ function mergeParts(parts) {
     _mq.setFromEuler(_me);
     _ms.set(p.sx ?? 1, p.sy ?? 1, p.sz ?? 1);
     _mm.compose(_mp, _mq, _ms);
+    // baked ambient occlusion: the ends of a part (where it meets the next one) are darkened a little
+    let shade = null;
+    if (p.ao) {
+      const gl = p.geo;
+      if (!gl.boundingBox) gl.computeBoundingBox();
+      const cy = (gl.boundingBox.max.y + gl.boundingBox.min.y) / 2, hy = Math.max(1e-6, (gl.boundingBox.max.y - gl.boundingBox.min.y) / 2);
+      const pa = gl.getAttribute('position');
+      shade = new Float32Array(pa.count);
+      for (let i = 0; i < pa.count; i++) shade[i] = 1 - p.ao * Math.pow(Math.min(1, Math.abs(pa.getY(i) - cy) / hy), 3);
+    }
     const g = p.geo.clone().applyMatrix4(_mm);
     vCount += g.getAttribute('position').count;
     iCount += g.index.count;
-    return { g, color: p.color };
+    return { g, color: p.color, shade };
   });
   const pos = new Float32Array(vCount * 3), nor = new Float32Array(vCount * 3), col = new Float32Array(vCount * 3);
   const idx = new Uint32Array(iCount);
   let vo = 0, io = 0;
-  for (const { g, color } of baked) {
+  for (const { g, color, shade } of baked) {
     const n = g.getAttribute('position').count;
     pos.set(g.getAttribute('position').array, vo * 3);
     nor.set(g.getAttribute('normal').array, vo * 3);
     _mc.set(color);
-    for (let i = 0; i < n; i++) { col[(vo + i) * 3] = _mc.r; col[(vo + i) * 3 + 1] = _mc.g; col[(vo + i) * 3 + 2] = _mc.b; }
+    for (let i = 0; i < n; i++) {
+      const k = shade ? shade[i] : 1;
+      col[(vo + i) * 3] = _mc.r * k; col[(vo + i) * 3 + 1] = _mc.g * k; col[(vo + i) * 3 + 2] = _mc.b * k;
+    }
     const gi = g.index.array;
     for (let i = 0; i < gi.length; i++) idx[io + i] = gi[i] + vo;
     vo += n; io += gi.length;
@@ -186,6 +225,16 @@ export function solveTwoBone(len1, len2, from, target, poleDir, qUpper, qLower) 
 }
 
 // ---------------------------------------------------------------- the person
+// Hair colour from skin tone and jersey number (deterministic, so a player always looks the same).
+function hairColor(skinHex, number = 0) {
+  _mc.set(skinHex);
+  const lum = 0.3 * _mc.r + 0.59 * _mc.g + 0.11 * _mc.b;
+  const dark = ['#0e0b09', '#17110d', '#241a12'];
+  const mid = ['#1a120c', '#2b1d12', '#3a2716', '#5b3a1e', '#0e0b09'];
+  const light = ['#2b1d12', '#5b3a1e', '#8a5a2b', '#b8863f', '#d4b56a', '#7a2f1a', '#4a4a4e'];
+  const list = lum < 0.27 ? dark : lum < 0.5 ? mid : light;
+  return list[(Math.abs(number) * 13 + Math.round(lum * 97)) % list.length];
+}
 let blobShared = null;
 
 export class Person {
@@ -242,95 +291,152 @@ export class Person {
     const skinHex = o.skin || '#e0ac82';
     const shirt = getJerseyMat(u, this.mirror);
     const pantsHex = u.pants || '#f2f2ee';
-    const sleeveHex = u.sleeve || u.primary;
+    // Jersey sleeves are short; where a team wears a contrasting long-sleeve undershirt (u.sleeve) it shows on the arms.
+    const underHex = u.sleeve && u.sleeve !== u.primary ? u.sleeve : null;
+    const armHex = o.armSkin === false ? (u.sleeve || u.primary) : (underHex || skinHex);
     const socksHex = u.socks || u.secondary;
+    const trimHex = u.trim || u.secondary;
     const capHex = u.cap || u.primary;
-    const shoeHex = '#16181c';
+    const shoeHex = u.shoes || '#15171b';
     const beltHex = '#141414';
     const helmHex = u.helmet || u.cap || u.primary;
+    const hairHex = hairColor(skinHex, u.number);
+    const isCatcher = this.role === 'catcher', isUmpire = this.role === 'umpire';
     this.meshes = [];
+    // level of detail: 1 = full, lower = fewer polygons (distant fielders, phones)
+    const dl = o.detail ?? 1;
+    const sphere = (r, w = 16, h = 12) => sphereGeo(r, Math.max(6, Math.round(w * dl)), Math.max(4, Math.round(h * dl)));
+    const capsule = (r, len, ss = 6, rs = 12) => capsuleGeo(r, len, Math.max(2, Math.round(ss * dl)), Math.max(6, Math.round(rs * dl)));
+    const cyl = (rt, rb, h, seg = 12) => cylGeo(rt, rb, h, Math.max(6, Math.round(seg * dl)));
 
-    // --- pelvis group (hip height is animated): pelvis + belt as one mesh
+    // --- pelvis group (hip height is animated): hips, seat, belt and buckle as one mesh
     this.pelvisG = new THREE.Group();
     this.root.add(this.pelvisG);
     this._merged(this.pelvisG, [
-      { geo: sphere(0.5, 16, 10), color: pantsHex, y: 0.02, sx: 0.9, sy: 0.62, sz: 0.68 },
-      { geo: cyl(0.5, 0.5, 0.12, 20), color: beltHex, y: 0.12, sx: 0.98, sy: 1, sz: 0.68 },
+      { geo: sphere(0.5, 16, 10), color: pantsHex, y: 0.02, sx: 0.9, sy: 0.62, sz: 0.68, ao: 0.08 },
+      { geo: sphere(0.3, 10, 8), color: pantsHex, x: 0.2, y: -0.12, z: -0.13, sy: 0.9 },
+      { geo: sphere(0.3, 10, 8), color: pantsHex, x: -0.2, y: -0.12, z: -0.13, sy: 0.9 },
+      { geo: cyl(0.5, 0.5, 0.12, 22), color: beltHex, y: 0.12, sx: 0.98, sz: 0.68 },
+      { geo: box(0.15, 0.1, 0.04), color: '#c8ccd2', y: 0.12, z: 0.345 },
     ]);
 
-    // --- spine / torso (textured jersey)
+    // --- spine / torso: a V-tapered jersey (textured) plus a collar
     this.spine = new THREE.Group();
     this.spine.position.set(0, 0.1, 0);
     this.pelvisG.add(this.spine);
-    const torso = this._mesh(capsule(0.5, 0.62, 6, 16), shirt, this.spine, 0, 0.82, 0);
-    torso.scale.set(0.97, 1, 0.66);
+    const torso = this._mesh(torsoGeometry(dl), shirt, this.spine, 0, 0, 0);
+    torso.scale.set(1.0, 1, 0.62);
     this.torsoMesh = torso;
-    if (this.role === 'catcher' || this.role === 'umpire') {
-      const chest = this._mesh(capsule(0.52, 0.5, 6, 16), getMat(u.gear || '#20242b', 0.7), this.spine, 0, 0.9, 0.08);
-      chest.scale.set(0.98, 1, 0.78);
+    this._merged(this.spine, [
+      { geo: torus(0.2, 0.05, Math.PI * 2, 6, 18), color: trimHex, y: 1.7, rx: Math.PI / 2, sx: 1.08, sy: 1, sz: 0.85 },
+    ]);
+    if (isCatcher || isUmpire) {
+      const chest = this._mesh(capsule(0.66, 0.4, 6, 18), getMat(u.gear || '#20242b', 0.7), this.spine, 0, 0.98, 0.04);
+      chest.scale.set(1.03, 1, 0.72);
     }
 
-    // --- head group: neck, head, face, ears, cap - one mesh
+    // --- head group: neck, skull, face, ears, hair, cap - one mesh
     this.headG = new THREE.Group();
     this.headG.position.set(0, DIM.spine + DIM.neck * 0.5 + 0.2, 0);
     this.spine.add(this.headG);
+    const R = DIM.headR;
     const headParts = [
-      { geo: cyl(0.12, 0.14, DIM.neck + 0.08, 10), color: skinHex, y: -0.19 },
-      { geo: sphere(DIM.headR, 18, 14), color: skinHex, y: 0.14, z: 0.02, sx: 0.9, sy: 1.06, sz: 1.0 },
-      { geo: sphere(0.045, 8, 6), color: skinHex, y: 0.1, z: 0.37 },
+      { geo: cyl(0.125, 0.145, DIM.neck + 0.12, 10), color: skinHex, y: -0.2, ao: 0.2 },
+      { geo: sphere(R, 22, 16), color: skinHex, y: 0.14, z: 0.02, sx: 0.88, sy: 1.08, sz: 1.0 },
+      { geo: sphere(0.24, 14, 10), color: skinHex, y: 0.02, z: 0.14, sx: 0.85, sy: 0.9, sz: 0.85 }, // jaw and chin
+      { geo: sphere(0.05, 8, 6), color: skinHex, y: 0.09, z: 0.375, sx: 0.9, sy: 1.15, sz: 1.2 }, // nose
+      { geo: box(0.13, 0.02, 0.03), color: '#8a4b3d', y: -0.02, z: 0.335 }, // mouth
+      { geo: hemi(R + 0.022, 0.64), color: hairHex, y: 0.14, z: -0.03, rx: -0.3, sx: 0.9, sy: 1.08, sz: 1.0 }, // hair: a cap of hair over the top and back (shows under the cap at the back and sides)
     ];
     for (const sd of [-1, 1]) {
-      headParts.push({ geo: sphere(0.03, 8, 6), color: '#1b1512', x: sd * 0.13, y: 0.2, z: 0.33 });
-      headParts.push({ geo: box(0.13, 0.025, 0.03), color: '#2a1d14', x: sd * 0.13, y: 0.27, z: 0.335 });
-      headParts.push({ geo: sphere(0.07, 8, 6), color: skinHex, x: sd * 0.33, y: 0.12, sx: 0.5, sy: 1, sz: 0.8 });
+      headParts.push({ geo: sphere(0.052, 10, 8), color: '#f4f1ea', x: sd * 0.13, y: 0.2, z: 0.325, sz: 0.5 }); // eye white
+      headParts.push({ geo: sphere(0.03, 8, 6), color: '#2a1d14', x: sd * 0.13, y: 0.2, z: 0.348 }); // iris
+      headParts.push({ geo: box(0.14, 0.028, 0.04), color: hairHex, x: sd * 0.13, y: 0.275, z: 0.328, rz: -sd * 0.12 }); // eyebrow
+      headParts.push({ geo: sphere(0.07, 8, 6), color: skinHex, x: sd * 0.325, y: 0.13, sx: 0.5, sy: 1, sz: 0.8 }); // ear
+      headParts.push({ geo: box(0.05, 0.15, 0.06), color: hairHex, x: sd * 0.315, y: 0.2, z: 0.1 }); // sideburn
     }
     if (!o.helmet) {
-      headParts.push({ geo: hemi(DIM.headR + 0.03, 0.52), color: capHex, y: 0.2, sx: 0.93, sy: 1.05, sz: 1.06 });
-      headParts.push({ geo: cylHalf(0.4, 0.025), color: u.capBill || capHex, y: 0.28, z: 0.06, ry: -Math.PI * 0.5, rx: 0.16, sz: 0.8 });
+      headParts.push({ geo: hemi(R + 0.035, 0.53), color: capHex, y: 0.2, sx: 0.93, sy: 1.05, sz: 1.06 });
+      headParts.push({ geo: sphere(0.045, 8, 6), color: capHex, y: 0.62 }); // button
+      headParts.push({ geo: sphere(0.09, 10, 8), color: trimHex, y: 0.35, z: 0.385, sx: 1.05, sy: 0.9, sz: 0.2 }); // team badge
+      headParts.push({ geo: torus(0.375, 0.014, Math.PI * 2, 4, 20), color: capHex, y: 0.235, rx: Math.PI / 2, sx: 0.93, sz: 1.04 }); // band
+      headParts.push({ geo: cylHalf(0.4, 0.028), color: u.capBill || capHex, y: 0.28, z: 0.06, ry: -Math.PI * 0.5, rx: 0.16, sz: 0.8 });
     }
     this._merged(this.headG, headParts);
     if (o.helmet) {
-      const hm = getMat(helmHex, 0.35, 0.05);
-      const helm = this._mesh(hemi(DIM.headR + 0.045, 0.62), hm, this.headG, 0, 0.19, 0.0);
+      const hm = getMat(helmHex, 0.32, 0.06);
+      const helm = this._mesh(hemi(R + 0.045, 0.62), hm, this.headG, 0, 0.19, 0.0);
       helm.scale.set(0.95, 1.08, 1.05);
       const brim = this._mesh(cylHalf(0.42, 0.03), hm, this.headG, 0, 0.27, 0.05);
       brim.rotation.x = 0.08; brim.scale.set(0.9, 1, 1.0); brim.rotation.y = Math.PI;
       const flap = this._mesh(sphere(0.2, 12, 8), hm, this.headG, 0.34, 0.08, 0.02);
       flap.scale.set(0.35, 0.9, 0.9);
+      // team badge on the front and a stripe over the top
+      this._merged(this.headG, [
+        { geo: sphere(0.085, 10, 8), color: trimHex, y: 0.42, z: 0.4, sx: 1.05, sy: 0.9, sz: 0.2 },
+        { geo: box(0.05, 0.02, 0.86), color: trimHex, y: 0.62, z: 0.0, rx: 0.0 },
+      ]);
     }
-    if (this.role === 'catcher' || this.role === 'umpire') {
-      const mask = this._mesh(new THREE.SphereGeometry(DIM.headR + 0.08, 14, 10, -Math.PI * 0.55, Math.PI * 1.1, Math.PI * 0.25, Math.PI * 0.55), getMat('#1c1f24', 0.5, 0.3), this.headG, 0, 0.1, 0.05);
+    if (isCatcher || isUmpire) {
+      const mask = this._mesh(new THREE.SphereGeometry(R + 0.08, 14, 10, -Math.PI * 0.55, Math.PI * 1.1, Math.PI * 0.25, Math.PI * 0.55), getMat('#1c1f24', 0.5, 0.3), this.headG, 0, 0.1, 0.05);
       void mask;
     }
 
-    // --- arms (left = +x, right = -x): upper (sleeve + shoulder) and forearm (skin + hand / glove)
+    // --- arms (left = +x, right = -x): short jersey sleeve over (undershirt | bare) arm, forearm, hand / glove
     this.arms = [];
+    const gloveLeather = ['#6b4226', '#7a4a2a', '#4a3020', '#8a5a2e'][(u.number || 0) % 4];
     for (const side of [1, -1]) {
       const sh = new THREE.Group();
       sh.position.set(side * DIM.shoulderW, DIM.shoulderY, 0);
       this.spine.add(sh);
       const upper = new THREE.Group(); sh.add(upper);
       this._merged(upper, [
-        { geo: sphere(0.25, 12, 10), color: u.primary },
-        { geo: capsule(0.17, DIM.upperArm - 0.34, 4, 10), color: sleeveHex, y: -DIM.upperArm / 2 },
+        { geo: sphere(0.235, 12, 10), color: u.primary, sy: 0.95 }, // shoulder
+        { geo: capsule(0.152, DIM.upperArm - 0.3, 4, 10), color: armHex, y: -DIM.upperArm / 2, ao: 0.1 },
+        { geo: capsule(0.2, 0.42, 4, 12), color: u.primary, y: -0.33 }, // short sleeve
+        { geo: cyl(0.205, 0.205, 0.05, 12), color: trimHex, y: -0.7 }, // sleeve piping
       ]);
       const elbow = new THREE.Group(); elbow.position.set(0, -DIM.upperArm, 0); upper.add(elbow);
       const wrist = new THREE.Group(); wrist.position.set(0, -DIM.foreArm, 0); elbow.add(wrist);
-      const foreParts = [{ geo: capsule(0.135, DIM.foreArm - 0.27, 4, 10), color: o.armSkin === false ? sleeveHex : skinHex, y: -DIM.foreArm / 2 }];
-      const isGloveHand = side === 1 && (o.glove || this.role === 'catcher');
+      const foreParts = [
+        { geo: sphere(0.15, 10, 8), color: armHex }, // elbow
+        { geo: cyl(0.138, 0.1, DIM.foreArm - 0.24, 10), color: armHex, y: -DIM.foreArm / 2 - 0.02, ao: 0.08 }, // tapered forearm
+      ];
+      const isGloveHand = side === 1 && (o.glove || isCatcher);
       if (isGloveHand) {
-        const gcol = this.role === 'catcher' ? '#3a2416' : '#6b4226';
-        const size = this.role === 'catcher' ? 0.42 : 0.3;
-        foreParts.push({ geo: sphere(size, 12, 10), color: gcol, y: -DIM.foreArm - 0.08, z: 0.12, sx: 0.9, sy: 1.05, sz: 0.55 });
+        const big = isCatcher;
+        const gcol = big ? '#3a2416' : gloveLeather;
+        const lace = big ? '#7a5a3a' : '#d2b070';
+        const k = big ? 1.45 : 1;
+        const gy = -DIM.foreArm;
+        foreParts.push(
+          { geo: cyl(0.125, 0.13, 0.09, 10), color: '#2b1c12', y: gy + 0.05 }, // wrist strap
+          { geo: sphere(0.3 * k, 14, 10), color: gcol, y: gy - 0.1 * k, z: 0.1 * k, sx: 0.95, sy: 1.2, sz: 0.42, ao: 0.12 }, // palm / heel
+          { geo: sphere(0.28 * k, 14, 10), color: gcol, y: gy - 0.36 * k, z: 0.13 * k, sx: 0.98, sy: 1.0, sz: 0.4 }, // finger stall
+          { geo: capsule(0.075 * k, 0.26 * k, 4, 8), color: gcol, x: -0.19 * k, y: gy - 0.08 * k, z: 0.2 * k, rz: 0.55 }, // thumb
+          { geo: torus(0.15 * k, 0.026 * k, Math.PI, 5, 12), color: lace, y: gy - 0.46 * k, z: 0.2 * k, rx: 0.35, rz: Math.PI }, // laced webbing
+          { geo: box(0.02, 0.5 * k, 0.03), color: lace, x: 0.0, y: gy - 0.2 * k, z: 0.238 * k }, // palm lace (sits on the leather)
+        );
       } else {
-        const handHex = this.role === 'batter' ? (u.gloves || '#f0f0f0') : skinHex;
-        foreParts.push({ geo: sphere(0.14, 10, 8), color: handHex, y: -DIM.foreArm - 0.06 });
+        const hand = this.role === 'batter' ? (u.gloves || '#f0f0f0') : skinHex;
+        const gy = -DIM.foreArm;
+        foreParts.push(
+          { geo: sphere(0.13, 10, 8), color: hand, y: gy - 0.08, sx: 1.05, sy: 1.15, sz: 0.85 }, // hand
+          { geo: sphere(0.06, 8, 6), color: hand, x: -0.1 * side, y: gy - 0.05, z: 0.09 }, // thumb
+        );
+        if (this.role === 'batter') {
+          foreParts.push(
+            { geo: cyl(0.122, 0.122, 0.07, 10), color: '#22252b', y: gy + 0.02 }, // glove cuff
+            { geo: box(0.13, 0.16, 0.03), color: u.trim || '#c62828', y: gy - 0.05, z: -0.1 }, // strap
+          );
+          if (side === 1) foreParts.push({ geo: capsule(0.165, 0.22, 4, 10), color: '#191b20', y: -0.16, sz: 1.05, ao: 0.1 }); // elbow guard on the lead arm
+        }
       }
       this._merged(elbow, foreParts);
       this.arms.push({ side, sh, upper, elbow, wrist, len1: DIM.upperArm, len2: DIM.foreArm });
     }
 
-    // --- legs: thigh (+ knee), shin (socks) and foot
+    // --- legs: baggy pants with a side stripe, stirrup socks with bands, and molded cleats
     this.legs = [];
     for (const side of [1, -1]) {
       const hip = new THREE.Group();
@@ -338,15 +444,30 @@ export class Person {
       this.pelvisG.add(hip);
       const thigh = new THREE.Group(); hip.add(thigh);
       this._merged(thigh, [
-        { geo: capsule(0.245, DIM.thigh - 0.42, 4, 10), color: pantsHex, y: -DIM.thigh / 2 + 0.03 },
-        { geo: sphere(0.235, 10, 8), color: pantsHex, y: -DIM.thigh },
+        { geo: capsule(0.27, DIM.thigh - 0.45, 4, 12), color: pantsHex, y: -DIM.thigh / 2 + 0.03, ao: 0.06 },
+        { geo: sphere(0.245, 10, 8), color: pantsHex, y: -DIM.thigh },
+        { geo: box(0.045, DIM.thigh - 0.34, 0.16), color: trimHex, x: side * 0.262, y: -DIM.thigh / 2 - 0.02 }, // side stripe
       ]);
       const knee = new THREE.Group(); knee.position.set(0, -DIM.thigh, 0); thigh.add(knee);
-      const shinParts = [{ geo: capsule(0.185, DIM.shin - 0.4, 4, 10), color: socksHex, y: -DIM.shin / 2 + 0.03 }];
-      if (this.role === 'catcher' || this.role === 'umpire') shinParts.push({ geo: capsule(0.23, DIM.shin - 0.5, 4, 10), color: u.gear || '#20242b', y: -DIM.shin / 2 + 0.05, z: 0.1, sz: 0.8 });
+      const shinParts = [
+        { geo: capsule(0.172, DIM.shin - 0.4, 4, 10), color: socksHex, y: -DIM.shin / 2 + 0.03, ao: 0.1 },
+        { geo: cyl(0.268, 0.236, 0.19, 14), color: pantsHex, y: -0.1 }, // pant cuff below the knee (a touch wider than the knee so the two never z-fight)
+        { geo: cyl(0.176, 0.176, 0.07, 10), color: trimHex, y: -0.62 }, // sock bands
+        { geo: cyl(0.176, 0.176, 0.05, 10), color: u.secondary || '#ffffff', y: -0.74 },
+      ];
+      if (isCatcher || isUmpire) shinParts.push({ geo: capsule(0.23, DIM.shin - 0.5, 4, 10), color: u.gear || '#20242b', y: -DIM.shin / 2 + 0.05, z: 0.1, sz: 0.8 });
       this._merged(knee, shinParts);
       const ankle = new THREE.Group(); ankle.position.set(0, -DIM.shin, 0); knee.add(ankle);
-      this._merged(ankle, [{ geo: box(0.3, 0.2, 0.72), color: shoeHex, y: -0.16, z: 0.16 }]);
+      const accent = u.secondary && u.secondary !== shoeHex ? u.secondary : '#d8dbe0';
+      this._merged(ankle, [
+        { geo: box(0.29, 0.07, 0.86), color: '#0b0c0f', y: -0.225, z: 0.2 }, // sole
+        { geo: capsule(0.13, 0.4, 4, 10), color: shoeHex, y: -0.1, z: 0.16, rx: Math.PI / 2, sx: 1.05, sy: 0.9 }, // upper
+        { geo: sphere(0.135, 10, 8), color: shoeHex, y: -0.13, z: 0.5, sy: 0.75 }, // toe cap
+        { geo: sphere(0.12, 10, 8), color: shoeHex, y: -0.13, z: -0.12 }, // heel
+        { geo: cyl(0.115, 0.13, 0.12, 10), color: '#0e1013', y: 0.0 }, // shoe collar
+        { geo: box(0.018, 0.07, 0.34), color: accent, x: 0.138, y: -0.1, z: 0.2 }, // side accent
+        { geo: box(0.018, 0.07, 0.34), color: accent, x: -0.138, y: -0.1, z: 0.2 },
+      ]);
       this.legs.push({ side, hip, thigh, knee, ankle });
     }
 

@@ -229,6 +229,10 @@ export function fielderReady(P, time, kind = 'IF') {
   P.headPitch = 0.1;
   set3(P.kneeL, 0.4, 0.05, 1); set3(P.kneeR, -0.4, 0.05, 1);
   P.poleL = [0.9, -0.6, -0.1]; P.poleR = [-0.9, -0.6, -0.1];
+  // a living stance: a slow weight shift from foot to foot and an occasional glance around (feet stay planted)
+  const sway = Math.sin(time * 0.6);
+  P.pelvis[0] = sway * 0.06; P.pelvisRoll = sway * 0.02; P.torsoRoll = -sway * 0.03;
+  P.headYaw = Math.sin(time * 0.35 + 1.3) * 0.16;
   return P;
 }
 

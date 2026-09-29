@@ -43,6 +43,11 @@ Feet. Origin = back tip of home plate. `+x` = right-field side (screen-right fro
 - Renderer rules: facing only re-aims with a reason and turns at `fielding.turnRate`; every pose change cross-fades (`crossfadePose`); never use the ball's position as a facing target once it is in his glove.
 - QA: `engine.contactOverride = () => ({exitVelocity, launchAngle, sprayAngle, backspin, hook})` forces an exact batted ball; `person.animState` names the current pose. `tests/fielderMotion.test.js` covers the run profile, mover, intercept prediction and dives.
 
+### The players (rig.js)
+- Same skeleton, IK and poses as always; only the shapes changed. Torso = a V-tapered lathe carrying the jersey texture (front at u = 0.25); short jersey sleeves over the team's undershirt colour (`uniform.sleeve`) or bare arms; side-striped pants, banded stirrup socks, molded cleats; a real glove (pocket, finger stall, thumb, laced webbing) and a bigger catcher's mitt; batting gloves, wristbands and elbow guard on batters; face with eyes/brows/nose/jaw, hair colour from skin tone + number, paneled cap with button and badge.
+- Parts are merged into few meshes with vertex colours; `ao` on a part bakes a little ambient occlusion at its ends. `detail` (0..1) lowers polygon counts: fielders/coaches 0.62, everybody x0.75 on phones (`Actors.detailScale`). Keep full detail for batter/catcher/pitcher/umpire - they fill the screen.
+- Caution: never make one part's surface coincide with another's (z-fighting shows as dotted rings) - make the outer part a touch wider.
+
 ### Startup and the boot guard (do not bypass)
 - `index.html` has an **inline classic script** (`window.__sandlotBoot`) that owns the "Warming up the ballpark" splash and the `#boot-error` screen. It works even when the game's own files never load. `done()` hides the splash; `fail(kind, err)` shows a readable error (kinds: `load`, `start`, `frame`, `timeout`). State is mirrored in `<html data-boot="loading|ready|failed:<kind>">`.
 - It catches: the module script failing to load (capture-phase `error` on `<script>`), uncaught exceptions / rejected promises while starting, and a 45 s timeout (soft "still loading" note at 12 s).

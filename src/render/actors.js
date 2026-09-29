@@ -35,6 +35,7 @@ export class Actors {
     this.coaches = [];
     this.tmpV = V(); this.tmpV2 = V(); this.tmpV3 = V();
     this.cfgKey = '';
+    this.detailScale = 1; // set below 1 on phones (fewer polygons per figure)
     this.ballPos = V();
     this.looseBat = null;
     this.batStyle = 'ash';
@@ -73,7 +74,7 @@ export class Actors {
     const opts = (pos, i) => ({
       role: pos === 'P' ? 'pitcher' : pos === 'C' ? 'catcher' : 'fielder',
       uniform: { ...opp, number: pos === 'P' ? engine.pitcher.number : 10 + i * 4 },
-      glove: true, skin: pos === 'P' ? engine.pitcher.skin : skins[(i * 3 + 1) % skins.length],
+      glove: true, detail: (pos === 'P' || pos === 'C' ? 1 : 0.62) * this.detailScale, skin: pos === 'P' ? engine.pitcher.skin : skins[(i * 3 + 1) % skins.length],
       scale: pos === 'P' ? engine.pitcher.scale : 0.97 + ((i * 7) % 6) * 0.012,
       build: 0.97 + ((i * 5) % 5) * 0.02,
       mirror: pos === 'P' ? engine.pitcher.hand === 'L' : false,
@@ -87,7 +88,7 @@ export class Actors {
       this.state.set(person, { phase: Math.random() * TAU, x: 0, z: 0, yaw: 0, init: false });
     });
     // plate umpire (dark uniform), crouched behind the catcher
-    this.umpire = new Person({ role: 'umpire', uniform: { primary: '#22262e', secondary: '#c9d1dc', trim: '#c9d1dc', pants: '#5c6473', cap: '#171a20', capBill: '#171a20', socks: '#171a20', gear: '#1a1d24', text: '', number: 23 }, skin: '#e0ac82', scale: 1.02 });
+    this.umpire = new Person({ role: 'umpire', detail: this.detailScale, uniform: { primary: '#22262e', secondary: '#c9d1dc', trim: '#c9d1dc', pants: '#5c6473', cap: '#171a20', capBill: '#171a20', socks: '#171a20', gear: '#1a1d24', text: '', number: 23 }, skin: '#e0ac82', scale: 1.02 });
     this.umpire.place(1.95, 0, 6.6, Math.PI);
     this.umpire.root.updateMatrixWorld(true);
     this.group.add(this.umpire.root);
@@ -96,7 +97,7 @@ export class Actors {
     for (const b of engine.lineup) this.getPlayer(b, engine);
     // base coaches
     for (const [i, base] of [[1, 1], [3, 3]]) {
-      const c = new Person({ role: 'runner', uniform: { ...this.playerUniform, number: 60 + i }, helmet: true, skin: skins[i], scale: 1 });
+      const c = new Person({ role: 'runner', detail: 0.62 * this.detailScale, uniform: { ...this.playerUniform, number: 60 + i }, helmet: true, skin: skins[i], scale: 1 });
       const bx = BASE_XZ[base][0], bz = BASE_XZ[base][1];
       const side = base === 1 ? 1 : -1;
       c.place(bx + side * 9, 0, bz - 9, Math.atan2(-side, 0.6));
@@ -118,7 +119,7 @@ export class Actors {
       const ghost = !entry || entry.ghost;
       const u = { ...this.playerUniform, number: ghost ? 0 : entry.number };
       p = new Person({
-        role: 'batter', uniform: u, helmet: true, skin: ghost ? '#d9a066' : entry.skin, scale: ghost ? 1 : entry.scale, build: ghost ? 1 : entry.build,
+        role: 'batter', detail: this.detailScale, uniform: u, helmet: true, skin: ghost ? '#d9a066' : entry.skin, scale: ghost ? 1 : entry.scale, build: ghost ? 1 : entry.build,
         mirror: !ghost && entry.hand === 'L', batStyle: this.batStyle,
       });
       p.entry = entry;

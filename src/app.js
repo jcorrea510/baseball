@@ -36,6 +36,7 @@ export class App {
     this.ball = createBall(this.S.scene);
     this.fx = createEffects(this.S.scene);
     this.actors = new Actors(this.S.scene, this.ball, this.fx);
+    if (this.S.isMobile) this.actors.detailScale = 0.75;
     this.cam = new CameraRig(this.S.camera);
     this.cam.title = true;
     this.makeZoneOverlay();
