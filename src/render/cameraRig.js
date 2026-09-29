@@ -23,6 +23,7 @@ export class CameraRig {
     this.interest = new THREE.Vector3(0, 3, -60);
     this.title = false;
     this.titleT = 0;
+    this.override = null; // { pos:[x,y,z], look:[x,y,z], fov } - used by automated screenshots
   }
 
   shake(amount) { this.shakeAmt = Math.min(1.6, Math.max(this.shakeAmt, amount)); }
@@ -48,6 +49,15 @@ export class CameraRig {
   update(dt, E, actors, aspect) {
     this.aspect = aspect;
     const cam = this.camera;
+    if (this.override) {
+      const o = this.override;
+      const tgt = o.follow ? actors.ballPos : null;
+      cam.position.set(...o.pos);
+      if (tgt) cam.lookAt(tgt.x, tgt.y, tgt.z); else cam.lookAt(...o.look);
+      cam.fov = o.fov || 40;
+      cam.updateProjectionMatrix();
+      return;
+    }
     const cfg = CONFIG.camera;
     let tPos = this.basePos;
     let tFov = cfg.batter.fov;

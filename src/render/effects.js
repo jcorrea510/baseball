@@ -157,6 +157,7 @@ export function createEffects(scene) {
       glow.update(dt, sub);
     },
     clear() { dust.n = 0; glow.n = 0; },
+    pools: { dust, glow },
   };
   return api;
 }

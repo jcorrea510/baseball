@@ -55,6 +55,8 @@ export class Engine {
     this.resultUntil = 0;
     this.summaryUntil = 0;
     this.pendingNext = null;
+    this.paEnded = false;
+    this.lastPA = null;
     this.pitchOverride = null;
     this.aiSummary = null;
     this.lastPlayResult = null;
@@ -270,17 +272,20 @@ export class Engine {
         kind: 'pa', result: res.result, text: rules.RESULT_TEXT[res.result], runs: res.runs, outs: g.outs, halfOver: res.halfOver,
         batter: this.batter, ...info,
       });
-      this.finishPitch(this.cfg.pace.callDisplay + 0.45, res.halfOver);
+      this.finishPitch(this.cfg.pace.callDisplay + 0.45, res.halfOver, true, res.result);
     } else {
       this.emit('result', { kind: 'pitch', call, text: rules.RESULT_TEXT[res.result], ...info });
       this.finishPitch(this.cfg.pace.callDisplay);
     }
   }
 
-  finishPitch(pause, halfOver = false) {
+  finishPitch(pause, halfOver = false, paEnded = false, kind = null) {
+    this.paEnded = paEnded;
+    this.lastPA = paEnded ? { result: kind, time: this.time } : this.lastPA;
     this.setPhase('result');
     this.resultUntil = this.time + pause;
-    this.pendingNext = halfOver ? 'half' : 'pitch';
+    // a finished plate appearance brings up the next batter; otherwise the same batter sees another pitch
+    this.pendingNext = halfOver ? 'half' : paEnded && this.game ? 'pa' : 'pitch';
   }
 
   afterResult() {
@@ -403,7 +408,7 @@ export class Engine {
       runs: res.runs, outs: g.outs, outsBefore, halfOver: res.halfOver, walkOff: res.walkOff, batter: this.batter,
       ...summary,
     });
-    this.finishPitch(this.cfg.pace.playEndPause + (res.runs > 0 ? 0.35 : 0), res.halfOver || g.over);
+    this.finishPitch(this.cfg.pace.playEndPause + (res.runs > 0 ? 0.35 : 0), res.halfOver || g.over, true, play.result);
     if (g.over) this.pendingNext = 'half';
   }
 

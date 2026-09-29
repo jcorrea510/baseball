@@ -164,24 +164,34 @@ export class Actors {
       const move = plan ? plan.fielderMoves.find((m) => m.pos === pos) : null;
       const root = person.root;
 
-      // ---- position
-      let x = def.homeX, z = def.homeZ, moving = false, speed = 0;
+      // ---- position (follows the play's path, then jogs back to the fielder's spot)
+      let hx = def.homeX, hz = def.homeZ, moving = false, speed = 0;
       let vx = 0, vz = 0;
-      if (pos === 'P') { x = (E.pitcher.hand === 'R' ? -0.35 : 0.35); z = -P0.moundDistance; }
+      if (pos === 'P') { hx = (E.pitcher.hand === 'R' ? -0.35 : 0.35); hz = -P0.moundDistance; }
       if (pos === 'C') {
         const tx = pitch ? pitch.target.x : 0;
-        x = clamp(tx * 0.5, -1.0, 1.0) * (phase === 'ready' ? 0 : 1);
-        z = def.homeZ;
+        hx = clamp(tx * 0.5, -1.0, 1.0) * (phase === 'ready' ? 0 : 1);
+        hz = def.homeZ;
       }
+      if (!st.init) { st.cx = hx; st.cz = hz; st.init = true; }
       if (move && playT >= 0) {
         const k = move.keys;
         let i = 0;
         while (i < k.length - 2 && playT > k[i + 1].t) i++;
         const a = k[i], b = k[i + 1];
         const u = b.t > a.t ? clamp((playT - a.t) / (b.t - a.t), 0, 1) : 1;
-        x = lerp(a.x, b.x, u); z = lerp(a.z, b.z, u);
+        st.cx = lerp(a.x, b.x, u); st.cz = lerp(a.z, b.z, u);
         if (u > 0 && u < 1) { moving = true; const dtt = Math.max(1e-3, b.t - a.t); vx = (b.x - a.x) / dtt; vz = (b.z - a.z) / dtt; speed = Math.hypot(vx, vz); }
+      } else if (!plan) {
+        const dx = hx - st.cx, dz = hz - st.cz;
+        const d = Math.hypot(dx, dz);
+        if (d > 0.02) {
+          const step = Math.min(d, 40 * dt);
+          st.cx += (dx / d) * step; st.cz += (dz / d) * step;
+          if (d > 0.7) { moving = true; speed = 18; vx = (dx / d) * speed; vz = (dz / d) * speed; }
+        }
       }
+      const x = st.cx, z = st.cz;
       const y = pos === 'P' ? moundY(x, z) : 0;
 
       // ---- facing
@@ -343,15 +353,23 @@ export class Actors {
     let batterMove = null;
     if (inPlay) batterMove = plan.moves.find((m) => m.from === 0) || null;
     // For fair balls the batter always runs (even on outs) unless it is a foul ball.
-    const runsOnPlay = inPlay && plan.result !== 'foul' && plan.result !== 'foulOut';
+    const runsOnPlay = inPlay && plan.result !== 'foul' && plan.result !== 'foulOut' && plan.result !== 'hitSimple';
     const tRunStart = cfg.runner.timeToFirst - cfg.field.baseDistance / cfg.runner.speed;
     const tRun = plan && plan.homer ? 1.0 : tRunStart;
 
-    const showBatter = phase !== 'aiSummary' && phase !== 'idle' && phase !== 'gameOver';
+    const quick = E.mode === 'quick';
+    const paDone = quick && phase === 'result' && E.paEnded;
+    const lastKind = paDone && E.lastPA ? E.lastPA.result : '';
+    const isK = /strikeout/.test(lastKind);
+    const isWalk = lastKind === 'walk';
+    let showBatter = phase !== 'aiSummary' && phase !== 'idle' && phase !== 'gameOver';
+    if (paDone) showBatter = isWalk || (isK && E.time - E.phaseSince < 0.55);
     batterP.active = showBatter;
     if (showBatter) {
       const yawBox = hand === 'R' ? Math.PI / 2 : -Math.PI / 2;
-      if (runsOnPlay && playT >= tRun) {
+      if (isWalk) {
+        this.batterWalk(E, batterP, stB, dt, boxX, yawBox);
+      } else if (quick && runsOnPlay && playT >= tRun) {
         batterRunning = true;
         this.batterRun(E, batterP, stB, plan, batterMove, playT, dt, boxX, yawBox, hand, tRun);
       } else {
@@ -360,7 +378,7 @@ export class Actors {
         batterP.root.updateMatrixWorld(true);
         this.batterAtPlate(E, batterP, time, swing, pitch, phase);
         stB.running = false;
-        if (this.loose.active && (phase === 'ready' || phase === 'windup')) { this.loose.active = false; this.looseBat.visible = false; }
+        if (this.loose.active && (phase === 'ready' || phase === 'windup')) { this.loose.active = false; this.loose.spent = false; this.looseBat.visible = false; }
       }
       batterP.setShadows(true);
       batterP.apply();
@@ -373,7 +391,7 @@ export class Actors {
         const r = onBase[b - 1];
         if (!r) continue;
         const rp = this.getPlayer(r, E);
-        if (rp === batterP) continue; // safety
+        if (rp === batterP && batterP.active) continue; // (drawn as the batter this frame)
         rp.active = true;
         const st = this.state.get(rp);
         const mv = inPlay ? plan.moves.find((m) => m.from === b) : null;
@@ -418,6 +436,19 @@ export class Actors {
         const stance = makePose();
         batterPose(stance, time, null);
         mixPose(P, P, stance, k);
+      }
+    }
+    // Derby / practice: after a home run the batter flips the bat and celebrates instead of running.
+    const pl = E.play;
+    if (E.mode !== 'quick' && pl && pl.plan.homer && (phase === 'play' || phase === 'result')) {
+      const tt = time - pl.t0;
+      if (tt > 0.7) {
+        if (!this.loose.spent) this.spawnLooseBat(person, (E.batter.hand || 'R'), pl.plan);
+        const c = makePose();
+        celebratePose(c, time, 2);
+        c.batVis = 0;
+        mixPose(P, P, c, smoothstep(0.7, 1.3, tt) * (phase === 'result' ? 1 - smoothstep(0.1, 0.5, E.time - E.phaseSince) : 1));
+        P.batVis = 0;
       }
     }
     if (person.bat) person.bat.visible = P.batVis > 0.5 && !(this.loose.active && this.loose.owner === person);
@@ -480,7 +511,26 @@ export class Actors {
       mixPose(person.pose, swingPose, person.pose, early);
     }
     person.pose.batVis = 0;
+    st.x = x; st.z = z; st.yaw = yaw; st.init = true;
     this.fx && speed > 8 && Math.random() < dt * 10 && this.fx.dustPuff(x, z, 0.3);
+  }
+
+  batterWalk(E, person, st, dt, boxX, yawBox) {
+    // ball four: toss the bat aside and jog toward first
+    const t = Math.max(0, E.time - E.phaseSince);
+    if (t > 0.12 && !this.loose.spent) this.spawnLooseBat(person, (E.batter.hand || 'R'), null);
+    if (person.bat) person.bat.visible = false;
+    const d = Math.min(90, Math.max(0, t - 0.15) * 22);
+    const pp = pathPoint(0, d);
+    const blend = smoothstep(0, 16, d);
+    const x = lerp(boxX, pp.x, blend), z = lerp(BOX_Z, pp.z, blend);
+    const yaw = lerpAngle(yawBox, Math.atan2(pp.dir[0], pp.dir[1]), smoothstep(0, 8, d));
+    person.place(x, 0, z, yaw);
+    person.root.updateMatrixWorld(true);
+    if (d > 0.5) { st.phase += runCadence(20) * TAU * dt; runPose(person.pose, st.phase, 20); }
+    else standingPose(person.pose, t);
+    person.pose.batVis = 0;
+    st.x = x; st.z = z; st.yaw = yaw; st.init = true;
   }
 
   batterFollowPose(E, person, out, sw) {

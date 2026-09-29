@@ -63,6 +63,45 @@ describe('one pitch at a time', () => {
   });
 });
 
+describe('batting order', () => {
+  it('the next batter steps in after each plate appearance (walk, strikeout, ball in play)', () => {
+    const e = new Engine({ mode: 'quick', seed: 12 });
+    e.pitchOverride = ballPitch;
+    const seen = [];
+    e.on('paStart', (p) => seen.push(p.batter.name));
+    e.start();
+    drive(e, 25);
+    expect(seen.length).toBeGreaterThanOrEqual(3);
+    expect(new Set(seen.slice(0, 3)).size).toBe(3);
+    expect(seen[0]).toBe(e.lineup[0].name);
+    expect(seen[1]).toBe(e.lineup[1].name);
+    expect(seen[2]).toBe(e.lineup[2].name);
+  });
+
+  it('the count starts fresh for every batter', () => {
+    const e = new Engine({ mode: 'quick', seed: 13 });
+    e.pitchOverride = strikePitch;
+    const counts = [];
+    e.on('paStart', (p) => counts.push(p.count));
+    e.start();
+    drive(e, 40);
+    for (const c of counts) expect(c).toEqual({ balls: 0, strikes: 0 });
+  });
+
+  it('the same batter sees the next pitch after a ball or strike', () => {
+    const e = new Engine({ mode: 'quick', seed: 14 });
+    e.pitchOverride = strikePitch;
+    let starts = 0;
+    e.on('paStart', () => starts++);
+    const calls = [];
+    e.on('pitchCall', (c) => calls.push(c.call));
+    e.start();
+    while (calls.length < 2) e.update(DT);
+    expect(starts).toBe(1); // one batter has seen two pitches
+    expect(e.count.strikes).toBe(2);
+  });
+});
+
 describe('swing timing is frame-rate independent', () => {
   const errorAt = (dt, lateBySec) => {
     const e = new Engine({ mode: 'practice', seed: 9 });
