@@ -1,0 +1,307 @@
+// ============================================================================
+//  SANDLOT - config.js
+//  EVERY tunable number in the game lives here. If something feels too hard,
+//  too easy, too slow or too fast, this is the file to change.
+//
+//  Units: distances in FEET, speeds in MPH unless a name says "fps" (feet per
+//  second), times in SECONDS unless a name ends in "Ms" (milliseconds).
+//
+//  Coordinate system (used everywhere in the game code):
+//    origin  = back tip of home plate
+//    +x      = toward first base / right field   (left of the screen when you
+//              look from the pitcher's side; RIGHT of the screen from behind
+//              the plate)
+//    -z      = toward the pitcher / center field (the way the camera looks)
+//    +y      = up
+//    spray angle: 0 = straight to center, negative = left field, positive = right field
+// ============================================================================
+
+export const MPH = 1.4666667; // feet per second in one mph
+
+export const CONFIG = {
+  // --------------------------------------------------------------------------
+  //  Ballpark geometry
+  // --------------------------------------------------------------------------
+  field: {
+    baseDistance: 90,
+    moundDistance: 60.5, // from the back tip of the plate to the rubber
+    moundHeight: 0.85,
+    plateWidth: 17 / 12,
+    // Fence distance (ft) at a few spray angles; the game smooths between them.
+    // Make the numbers smaller to make home runs easier.
+    fencePoints: [
+      [-45, 315],
+      [-22.5, 362],
+      [0, 390],
+      [22.5, 362],
+      [45, 315],
+    ],
+    fenceHeight: 10, // ball must clear this to be a home run
+    warningTrack: 18, // dirt strip in front of the wall
+    foulPoleHeight: 48,
+    // Grandstand behind the fence (drives both the drawing and where a home run lands)
+    stands: { slope: 0.62, depth: 70, topHeight: 52 },
+  },
+
+  // --------------------------------------------------------------------------
+  //  Physics for the batted ball
+  // --------------------------------------------------------------------------
+  physics: {
+    gravity: 32.174, // ft/s^2
+    ballRadius: 0.1208, // ft (1.45 in)
+    dragK: 0.0019, // air drag (higher = ball dies in the air sooner)
+    magnusK: 2.55e-5, // lift from backspin (higher = ball carries farther)
+    groundRestitution: 0.42, // how bouncy the grass is
+    groundFriction: 0.8, // fraction of sideways speed kept each bounce
+    rollDecel: 13, // ft/s^2 slowing of a rolling ball
+    stopSpeed: 2.5, // ft/s: below this a rolling ball is "stopped"
+    wallRestitution: 0.34,
+    wallFriction: 0.72,
+    dt: 1 / 240, // fixed physics step (do not tie to frame rate)
+    maxTime: 16,
+  },
+
+  // --------------------------------------------------------------------------
+  //  Pitching
+  // --------------------------------------------------------------------------
+  pitch: {
+    releaseZ: -54.5, // ball leaves the hand ~6 ft in front of the rubber
+    contactZ: -1.0, // the plane where timing is measured (front-center of plate)
+    catchZ: 1.15, // where the catcher's mitt sits
+    drag: 0.085, // fraction of speed a pitch loses on the way to the plate
+    zoneBottom: 1.55, // strike zone (ft above ground)
+    zoneTop: 3.4,
+    zoneHalfWidth: 0.708 + 0.121, // half the plate + one ball radius (edge counts)
+    ballScale: 1.35, // pitches are drawn a bit bigger so they are easy to track
+    // Movement is measured at the plate. breakArm: feet toward the pitcher's
+    // throwing-arm side (negative = glove side). hop: feet of "extra rise"
+    // (negative = extra drop) compared with plain gravity.
+    types: {
+      fastball: { label: 'Fastball', code: 'FB', speedDelta: 0, breakArm: 0.32, hop: 0.55, spinRpm: 2200, spin: 'back', armSlot: 0, glove: 0 },
+      changeup: { label: 'Changeup', code: 'CH', speedDelta: -12, breakArm: 0.85, hop: -0.15, spinRpm: 1400, spin: 'back', armSlot: -0.05, glove: 1 },
+      curveball: { label: 'Curveball', code: 'CB', speedDelta: -17, breakArm: -0.55, hop: -1.95, spinRpm: 2500, spin: 'top', armSlot: 0.22, glove: 2 },
+      slider: { label: 'Slider', code: 'SL', speedDelta: -7, breakArm: -0.95, hop: -0.5, spinRpm: 2400, spin: 'side', armSlot: -0.16, glove: 3 },
+      heater: { label: 'Heater', code: 'HT', speedDelta: 0, breakArm: 0.1, hop: 0.9, spinRpm: 2500, spin: 'back', armSlot: 0.05, glove: 0 },
+    },
+    heaterSpeed: [100, 104],
+    windup: { ready: 0.3 }, // (per-difficulty windup lengths are below)
+  },
+
+  // --------------------------------------------------------------------------
+  //  Swing timing  (the heart of the game)
+  //  errorMs = (when the bat reaches the plate) - (when the ball crosses it)
+  //  negative = early, positive = late
+  // --------------------------------------------------------------------------
+  timing: {
+    perfectMs: 22,
+    goodMs: 50,
+    earlyMs: 92, // beyond "good", up to here = weak/foul contact
+    lateMs: 66, // late window is shorter (the catcher has the ball by then)
+    swingDelay: 0.115, // seconds from pressing the button until the bat is at the plate
+    followThrough: 0.42,
+    // Visual limits on how far in front of / behind the plate the bat can meet the ball
+    reachEarly: 0.03,
+    reachLate: 0.012,
+    minSwingTime: 0.05,
+    // Contact zone: how far outside the strike zone the bat can still reach
+    reachRatio: 1.48, // 1.0 = zone edge. beyond this the bat whiffs
+    chaseRatio: 1.14, // beyond this, contact is capped at "weak"
+    zoneHalfHeight: 0.92,
+    zoneCenterY: 2.5,
+  },
+
+  // --------------------------------------------------------------------------
+  //  Contact: how timing + pitch location become exit velocity / angles
+  // --------------------------------------------------------------------------
+  contact: {
+    maxExitVelocity: 109, // mph on a perfect hit
+    exitVelocityFloor: 38,
+    pitchSpeedBonus: 0.16, // extra mph of exit velocity per mph of pitch speed above 85
+    qualityPerfect: [0.93, 1.0], // quality range inside each window
+    qualityGood: [0.72, 0.93],
+    qualityWeak: [0.28, 0.72],
+    qualityCurve: 0.9,
+    launch: {
+      perfect: { center: 22, spread: 5.5 },
+      good: { center: 17, spread: 9.5 },
+      weak: { center: 8, spread: 19 },
+      heightEffect: 8.5, // degrees of launch angle per foot of pitch height below the zone center
+    },
+    spray: {
+      timingMax: 56, // degrees at the edge of the weak window
+      timingCurve: 1.15,
+      aimMax: 13, // degrees you can steer with A/D or arrows
+      noise: { perfect: 2.6, good: 4.5, weak: 8 },
+    },
+    backspin: { base: 900, perLaunchDeg: 55, max: 3400 }, // rpm
+    sidespinMax: 750, // rpm at 45 degrees of spray (ball hooks toward the nearest foul line)
+    locationFalloff: 0.55, // ratio (0..1) of the zone where contact stays full power
+  },
+
+  // --------------------------------------------------------------------------
+  //  Difficulty levels
+  // --------------------------------------------------------------------------
+  difficulty: {
+    rookie: {
+      label: 'Rookie',
+      blurb: 'Slow pitches, big timing windows, pitch names shown.',
+      windowScale: 1.5,
+      fastball: [62, 72],
+      mix: { fastball: 0.62, changeup: 0.12, curveball: 0.13, slider: 0.13, heater: 0 },
+      strikeRate: 0.8,
+      commandSigma: 0.12, // ft of pitcher inaccuracy
+      movementScale: 0.6,
+      tellStrength: 1.0,
+      announcePitch: true,
+      windup: 1.05,
+      zoneDefault: true,
+      derbyFoulIsOut: false,
+      ai: { contact: 0.6, power: 0.05 }, // used for the computer's half-innings
+    },
+    pro: {
+      label: 'Pro',
+      blurb: 'Real speeds and a mix of pitches. The sweet spot.',
+      windowScale: 1.0,
+      fastball: [80, 90],
+      mix: { fastball: 0.46, changeup: 0.18, curveball: 0.18, slider: 0.18, heater: 0 },
+      strikeRate: 0.64,
+      commandSigma: 0.28,
+      movementScale: 1.0,
+      tellStrength: 0.6,
+      announcePitch: false,
+      windup: 0.92,
+      zoneDefault: true,
+      derbyFoulIsOut: true,
+      ai: { contact: 0.68, power: 0.08 },
+    },
+    allstar: {
+      label: 'All-Star',
+      blurb: 'Fast, tricky, tiny windows. Watch for the pitcher\'s tells.',
+      windowScale: 0.8,
+      fastball: [88, 98],
+      mix: { fastball: 0.36, changeup: 0.18, curveball: 0.17, slider: 0.19, heater: 0.1 },
+      strikeRate: 0.55,
+      commandSigma: 0.42,
+      movementScale: 1.25,
+      tellStrength: 0.28,
+      announcePitch: false,
+      windup: 0.85,
+      zoneDefault: false,
+      derbyFoulIsOut: true,
+      ai: { contact: 0.74, power: 0.11 },
+    },
+  },
+
+  // --------------------------------------------------------------------------
+  //  Pacing (seconds). Keep these short: the game is meant to feel snappy.
+  // --------------------------------------------------------------------------
+  pace: {
+    firstPitchDelay: 0.85, // batter walks up to the plate
+    nextPitchDelay: 0.22, // gap between the call and the pitcher starting again
+    callDisplay: 0.55, // how long the ball/strike call is shown
+    playEndPause: 0.5, // pause after a play finishes
+    fastForward: 4.5, // speed multiplier when you tap to skip a play
+    inningBreak: 1.1,
+    aiSummaryLine: 0.55, // seconds per line of the computer's half-inning highlights
+    homerunFreeze: 0.0,
+  },
+
+  // --------------------------------------------------------------------------
+  //  Game feel
+  // --------------------------------------------------------------------------
+  feel: {
+    hitStopPerfect: 0.075, // freeze frame on perfect contact (seconds of real time)
+    hitStopGood: 0.035,
+    shakePerfect: 1.0,
+    shakeGood: 0.5,
+    shakeHomer: 0.7,
+    slowMoScale: 0.28, // home-run slow motion speed (1 = normal)
+    slowMoDuration: 0.85, // real seconds of slow-mo
+    trailMinExitVelocity: 88, // mph needed to get a ball trail
+    bigHitExitVelocity: 95, // mph at which the exit velocity/distance callout appears
+    bigHitDistance: 250, // ft
+  },
+
+  // --------------------------------------------------------------------------
+  //  Fielding and baserunning (used to decide hit / out / extra bases)
+  // --------------------------------------------------------------------------
+  fielding: {
+    // Where each defender stands. Outfielders are given as [spray degrees, feet from home].
+    positions: {
+      P: [0, -60.5],
+      C: [0, 2.6],
+      '1B': [54, -70],
+      '2B': [26, -113],
+      SS: [-27, -113],
+      '3B': [-54, -70],
+    },
+    outfield: { LF: [-24, 262], CF: [0, 300], RF: [24, 262] },
+    speed: { IF: 24.5, OF: 27.5, P: 19, C: 20 }, // ft/s, average
+    reaction: { IF: 0.17, OF: 0.26, P: 0.3, C: 0.3 }, // seconds before a fielder reads the ball
+    glove: 3.1, // ft: how far a fielder can reach without diving
+    diveExtra: 4.6, // extra ft when diving (dive only on low balls)
+    reachHeight: 9.0, // highest catchable point (ft)
+    groundHeight: 3.2, // a ball this low counts as a ground ball for fielding
+    transfer: { IF: 0.36, OF: 0.5, C: 0.4 }, // catch-to-throw time
+    throwSpeed: { IF: 120, OF: 132, C: 112, P: 100 }, // ft/s
+    relayDistance: 200, // outfield throws longer than this use a cut-off man
+    relayTransfer: 0.3,
+    coverDelay: 0.0,
+    outMargin: 0.02, // a throw must beat the runner by this many seconds
+    runnerMargin: 0.1, // a runner must beat the throw by this to take an extra base
+    // Fun-factor tweak: fielders are a little less sure-handed on the hardest line drives
+    // (0 = perfect defense). Kept at 0 so results are fully deterministic.
+    errorRate: 0,
+  },
+  runner: {
+    speed: 27.0, // ft/s while running the bases
+    timeToFirst: 3.95, // batter, contact -> first base
+    startDelay: 0.12, // runners on base react after contact
+    trotSpeed: 21, // ft/s on a home-run trot
+    trotSpeedup: 2.2, // home-run trots are sped up this much for pacing
+  },
+
+  // --------------------------------------------------------------------------
+  //  Modes
+  // --------------------------------------------------------------------------
+  modes: {
+    quick: { innings: 3, extraInningRunner: true },
+    derby: {
+      outs: 10,
+      pitchSpeed: { rookie: 58, pro: 66, allstar: 74 }, // batting-practice fastballs
+      strikeChance: 1,
+      locationSigma: 0.24,
+      hrStreakBonus: 0, // (no bonus in scoring - just tracked)
+    },
+    practice: { speedMin: 45, speedMax: 105, speedDefault: 85 },
+  },
+
+  // --------------------------------------------------------------------------
+  //  Camera and visuals
+  // --------------------------------------------------------------------------
+  camera: {
+    batter: { pos: [0.0, 6.6, 14.5], look: [0.0, 3.3, -30], fov: 27 },
+    fovMin: 24,
+    followLag: 5.5, // higher = camera follows the ball more tightly
+    snapBackTime: 0.7,
+    minHorizontalFov: 38, // narrow (portrait) screens widen the view to keep this
+  },
+  quality: {
+    crowdCount: 6500,
+    crowdCountMobile: 3200,
+    shadowMapSize: 2048,
+    shadowMapSizeMobile: 1024,
+    maxPixelRatio: 2,
+    maxPixelRatioMobile: 1.6,
+    targetFrameMs: 18.5, // if frames are slower than this, resolution scales down
+    minPixelRatio: 0.7,
+  },
+
+  // --------------------------------------------------------------------------
+  //  Progression
+  // --------------------------------------------------------------------------
+  storageKey: 'sandlot.save.v1',
+};
+
+export const PITCH_ORDER = ['fastball', 'changeup', 'curveball', 'slider', 'heater'];
+export const DIFFICULTIES = ['rookie', 'pro', 'allstar'];
