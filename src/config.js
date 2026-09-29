@@ -287,11 +287,24 @@ export const CONFIG = {
     errorRate: 0,
   },
   runner: {
-    speed: 27.0, // ft/s while running the bases
-    timeToFirst: 3.95, // batter, contact -> first base
-    startDelay: 0.12, // runners on base react after contact
+    speed: 30.2, // ft/s top running speed
+    accelTime: 0.42, // s a runner takes to get up to speed from a standstill
+    brake: 55, // ft/s^2: how hard he can slow down (he brakes into a base, or slides)
+    turnBrake: 30, // ft/s^2: how firmly he eases off for a corner (gentler than the stop at a bag)
+    latAccel: 50, // ft/s^2: sideways grip in a turn. Speed in a turn is at most sqrt(latAccel / curvature), so he slows for the corner
+    lead: 5.5, // ft: how far off the bag a runner stands before the pitch
+    // Rounding a base he keeps running through: he drifts out from the baseline over `turnLen` ft, goes round an arc of radius
+    // `turnRadius` ft that touches the bag, and drifts back onto the next baseline over `turnLen` ft. (A smaller radius = a
+    // sharper corner; he slows to at most sqrt(latAccel * radius) ft/s there.)
+    turnRadius: 11,
+    turnLen: 28,
+    overrun: 22, // ft the batter runs on past first base when he is running through it (an out)
+    batterStart: 0.34, // s after contact the batter leaves the box
+    startDelay: 0.04, // runners on base leave almost as soon as the ball is hit (they are already leading off)
     trotSpeed: 21, // ft/s on a home-run trot
     trotSpeedup: 2.2, // home-run trots are sped up this much for pacing
+    jogSpeed: 20, // ft/s: the walk to first after ball four
+    slide: 0.6, // s: a play is 'close' (he slides) when the throw arrives within this of him (either side)
   },
 
   // --------------------------------------------------------------------------

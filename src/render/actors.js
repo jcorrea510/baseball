@@ -2,11 +2,12 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { Person, makeBat, restyleBat, mixPose, makePose, copyPose } from './rig.js';
-import { batterPose, pitcherPose, catcherPose, fielderReady, runPose, runReachPose, runCadence, runnerLeadPose, throwPose, catchPose, divePose, celebratePose, standingPose, umpirePose, THROW_RELEASE_U } from './poses.js';
+import { batterPose, pitcherPose, catcherPose, fielderReady, runPose, runReachPose, runCadence, runnerLeadPose, slidePose, slideGetUp, throwPose, catchPose, divePose, celebratePose, standingPose, umpirePose, THROW_RELEASE_U } from './poses.js';
 import { UNIFORMS } from '../game/teams.js';
 import { BASE_XZ, MOUND_XZ, clampToField } from '../physics/field.js';
 import { sampleBall } from '../physics/ballistics.js';
-import { runnerPosition, pathPoint, POSITIONS, fielderFreeTime } from '../game/fielding.js';
+import { POSITIONS, fielderFreeTime } from '../game/fielding.js';
+import { runnerState, runnerProfile, leadSpot } from '../game/runnerMotion.js';
 import { Mover, samplePath, turnToward } from '../game/fielderMotion.js';
 import { clamp, lerp, smoothstep, damp, wrapAngle, TAU, DEG } from '../util/math.js';
 
@@ -450,7 +451,7 @@ export class Actors {
     if (inPlay) batterMove = plan.moves.find((m) => m.from === 0) || null;
     // For fair balls the batter always runs (even on outs) unless it is a foul ball.
     const runsOnPlay = inPlay && plan.result !== 'foul' && plan.result !== 'foulOut' && plan.result !== 'hitSimple';
-    const tRunStart = cfg.runner.timeToFirst - cfg.field.baseDistance / cfg.runner.speed;
+    const tRunStart = cfg.runner.batterStart;
     const tRun = plan && plan.homer ? 1.0 : tRunStart;
 
     const quick = E.mode === 'quick';
@@ -559,45 +560,41 @@ export class Actors {
       this.spawnLooseBat(person, hand, plan);
     }
     if (person.bat) person.bat.visible = false;
-    // ---- path
-    let x, z, dirx = 0, dirz = 0, speed = 0;
-    const to = move ? (move.out && move.to === 0 ? move.outBase : move.to) : plan.homer ? 4 : 1;
-    const elapsed = Math.max(0, playT - tRun);
-    let sp = trot ? R.trotSpeed : R.speed;
-    let d;
+    // ---- path: the same route and speed profile the planner used (see game/runnerMotion.js)
+    let x, z, speed = 0, accel = 0, side = 0, heading = 0, d = 0, r = null;
     if (!move && !trot) {
-      // out on a fly ball etc.: run a few strides then ease up when the ball is caught
+      // out on a fly ball etc.: run a few strides, then ease up when the ball is caught
       const stopAt = (plan.catchT ?? plan.pickupT ?? 2.0) + 0.5;
-      const e = Math.max(0, Math.min(playT, stopAt) - tRun);
-      const slow = playT > stopAt ? Math.max(0, 1 - (playT - stopAt) * 1.6) : 1;
-      d = Math.min(e * sp * 0.92, 60) ;
-      sp = sp * slow;
-      speed = slow > 0.02 ? sp : 0;
-      d = Math.min(d, 55);
+      const prof = runnerProfile(0, 1, 'run', cfg);
+      const q = prof.at(Math.min(playT, stopAt) - tRun, st.rs || (st.rs = {}));
+      const after = Math.max(0, playT - stopAt);
+      const tau = 0.35;
+      const extra = q.speed * tau * (1 - Math.exp(-after / tau)); // coasts to a stop
+      x = q.x + Math.sin(q.heading) * extra; z = q.z + Math.cos(q.heading) * extra;
+      speed = after > 0 ? q.speed * Math.exp(-after / tau) : q.speed;
+      accel = after > 0 ? -speed / tau : q.accel; side = q.side; heading = q.heading; d = q.s + extra;
+      if (speed < 0.8) speed = 0;
     } else {
-      d = Math.min(elapsed * sp, to * cfg.field.baseDistance);
-      const total = to * cfg.field.baseDistance;
-      speed = d < total ? sp : 0;
+      const mv = st.mv || (st.mv = {});
+      Object.assign(mv, move || { from: 0, to: 4, out: false });
+      mv.trot = trot; mv.tStart = tRun;
+      r = runnerState(mv, playT, cfg, st.rs || (st.rs = {}));
+      x = r.x; z = r.z; speed = r.speed; accel = r.accel; side = r.side; heading = r.heading; d = r.s;
     }
-    const pp = pathPoint(0, d);
-    // blend from the box to the base path
-    const blend = smoothstep(0, 22, d);
-    x = lerp(boxX, pp.x, blend); z = lerp(BOX_Z, pp.z, blend);
-    dirx = pp.dir[0]; dirz = pp.dir[1];
-    const yawRun = Math.atan2(dirx, dirz);
-    st.yaw = speed > 1 ? yawRun : st.yaw || yawRun;
+    // he starts in the box, a little beside the plate; that offset fades out over his first strides (added to the route, so it
+    // never makes him move faster than his legs)
+    const fade = 1 - smoothstep(0, 22, d);
+    x += boxX * fade; z += BOX_Z * fade;
     const yawBlend = smoothstep(0, 10, d);
-    const yaw = speed > 0.5 || d > 0 ? lerpAngle(yawBox, st.yaw, yawBlend) : yawBox;
+    const yaw = speed > 0.5 || d > 0 ? lerpAngle(yawBox, heading, yawBlend) : yawBox;
     person.place(x, 0, z, yaw);
     person.root.updateMatrixWorld(true);
-    if (speed > 1) {
+    const slide = r ? this.wantsSlide(plan, r.kind === 'through' ? { ...move, out: false } : (move || { from: 0, to: 4 })) : false;
+    if (r) this.runnerPoseFrame(person, st, r, dt, playT, slide, plan.homer);
+    else if (speed > 1) {
       st.phase += runCadence(speed) * TAU * dt;
-      runPose(person.pose, st.phase, speed);
-    } else if (plan.homer && playT > 3) {
-      celebratePose(person.pose, playT, 1);
-    } else {
-      standingPose(person.pose, playT);
-    }
+      runPose(person.pose, st.phase, speed, 0, { accel, side });
+    } else standingPose(person.pose, playT);
     // very first strides: still in the follow-through pose
     const early = smoothstep(tRun, tRun + 0.25, playT);
     if (early < 1 && d < 3) {
@@ -616,14 +613,13 @@ export class Actors {
     const t = Math.max(0, E.time - E.phaseSince);
     if (t > 0.12 && !this.loose.spent) this.spawnLooseBat(person, (E.batter.hand || 'R'), null);
     if (person.bat) person.bat.visible = false;
-    const d = Math.min(90, Math.max(0, t - 0.15) * 22);
-    const pp = pathPoint(0, d);
-    const blend = smoothstep(0, 16, d);
-    const x = lerp(boxX, pp.x, blend), z = lerp(BOX_Z, pp.z, blend);
-    const yaw = lerpAngle(yawBox, Math.atan2(pp.dir[0], pp.dir[1]), smoothstep(0, 8, d));
+    const q = runnerProfile(0, 1, 'jog', E.cfg).at(Math.max(0, t - 0.15), st.rs || (st.rs = {}));
+    const fade = 1 - smoothstep(0, 16, q.s);
+    const x = q.x + boxX * fade, z = q.z + BOX_Z * fade;
+    const yaw = lerpAngle(yawBox, q.heading, smoothstep(0, 8, q.s));
     person.place(x, 0, z, yaw);
     person.root.updateMatrixWorld(true);
-    if (d > 0.5) { st.phase += runCadence(20) * TAU * dt; runPose(person.pose, st.phase, 20); }
+    if (q.speed > 0.5) { st.phase += runCadence(q.speed) * TAU * dt; runPose(person.pose, st.phase, q.speed, 0, { accel: q.accel, side: q.side }); }
     else standingPose(person.pose, t);
     person.pose.batVis = 0;
     st.x = x; st.z = z; st.yaw = yaw; st.init = true;
@@ -669,39 +665,65 @@ export class Actors {
     }
   }
 
+  // Should this runner slide into his base? (a close play: he is out there or the throw is only just late)
+  wantsSlide(plan, move) {
+    const to = move.out && move.to === 0 ? move.outBase : move.to;
+    if (!(to >= 2)) return false;
+    return plan.events.some((e) => (e.type === 'out' || e.type === 'safe') && e.base === to);
+  }
+
+  // The pose for a runner following a runnerState `r`: standing, running (with the lean / bob / arm drive that goes with his speed,
+  // acceleration and turning), sliding into the bag, getting up, celebrating.
+  runnerPoseFrame(person, st, r, dt, time, slide, homer = false) {
+    const P = person.pose;
+    const brake = r.profile.brake;
+    if (st.rsKey !== r.profile) { st.rsKey = r.profile; st.sliding = false; st.getT = undefined; }
+    if (r.waiting) { runnerLeadPose(P, time); st.sliding = false; st.getT = undefined; return; }
+    if (!st.prevRun) st.prevRun = makePose();
+    if (!r.done && slide && !st.sliding && r.speed > 7 && r.sLeft <= (r.speed * r.speed) / (2 * brake) * 1.06 + 0.4) {
+      st.sliding = true; st.slideStart = Math.max(1, r.sLeft); st.getT = undefined; // start the slide as the braking begins
+    }
+    if (!r.done) {
+      if (st.sliding) {
+        slidePose(P, 1 - r.sLeft / st.slideStart, st.prevRun, time);
+      } else if (r.speed > 0.5) {
+        st.phase += runCadence(r.speed) * TAU * dt;
+        runPose(P, st.phase, r.speed, 0, { accel: r.accel, side: r.side });
+        copyPose(st.prevRun, P);
+      } else standingPose(P, time);
+      return;
+    }
+    // he has stopped
+    if (st.sliding) {
+      st.getT = (st.getT ?? -0.55) + dt; // sits there a moment, then gets up
+      if (st.getT < 0) slidePose(P, 1, null, time); else slideGetUp(P, st.getT / 0.8, time);
+    } else if (homer && time > 3) celebratePose(P, time, 1);
+    else standingPose(P, time);
+  }
+
   runnerUpdate(E, rp, st, base, move, plan, playT, dt, time) {
     const cfg = E.cfg;
-    const R = cfg.runner;
-    const baseXZ = BASE_XZ[base];
     // resting spot: a short lead toward the next base
-    const nb = BASE_XZ[base === 3 ? 4 : base + 1];
-    const ldx = nb[0] - baseXZ[0], ldz = nb[1] - baseXZ[1];
-    const ll = Math.hypot(ldx, ldz);
-    const lead = 5.5;
-    const sideOff = base === 1 ? 1.2 : base === 3 ? -1.2 : 0;
-    const leadX = baseXZ[0] + (ldx / ll) * lead + sideOff, leadZ = baseXZ[1] + (ldz / ll) * lead;
+    const [leadX, leadZ] = leadSpot(base, cfg);
     const face = Math.atan2(MOUND_XZ[0] - leadX, MOUND_XZ[1] - leadZ);
     if (!st.init) { st.x = leadX; st.z = leadZ; st.yaw = face; st.init = true; }
     if (move && playT >= 0) {
-      const t0 = move.tStart ?? R.startDelay;
-      const to = move.out && move.to === 0 ? move.outBase : move.to;
-      const total = Math.max(0, to - base) * cfg.field.baseDistance;
-      const el = Math.max(0, playT - t0);
-      const sp = plan.trot ? R.trotSpeed : R.speed;
-      const d = Math.min(total, el * sp);
-      const pp = pathPoint(base, d);
-      const speed = d > 0 && d < total ? sp : 0;
-      st.x = pp.x; st.z = pp.z;
-      if (speed > 1) st.yaw = Math.atan2(pp.dir[0], pp.dir[1]);
+      const r = runnerState(move, playT, cfg, st.rs || (st.rs = {}));
+      st.x = r.x; st.z = r.z;
+      // he turns from watching the pitcher to running as he takes off
+      const tRun = r.waiting ? 0 : smoothstep(0, 0.4, playT - r.tStart);
+      if (r.waiting) st.yaw = face;
+      else st.yaw = lerpAngle(face, r.heading, tRun);
+      if (r.done && !r.waiting && st.getT === undefined && !st.sliding) st.yaw = r.heading;
       rp.place(st.x, 0, st.z, st.yaw);
       rp.root.updateMatrixWorld(true);
-      if (speed > 1) { st.phase += runCadence(speed) * TAU * dt; runPose(rp.pose, st.phase, speed); }
-      else if (d === 0) runnerLeadPose(rp.pose, time);
-      else standingPose(rp.pose, time);
+      this.runnerPoseFrame(rp, st, r, dt, time, this.wantsSlide(plan, move), plan.homer);
       rp.pose.batVis = 0;
       if (rp.bat) rp.bat.visible = false;
-      st.running = speed > 0;
+      st.running = r.running;
+      this.fx && r.speed > 8 && Math.random() < dt * 8 && this.fx.dustPuff(st.x, st.z, 0.25);
     } else {
+      st.sliding = false; st.getT = undefined;
       // relax to the lead-off spot (players who just arrived at base ease into it)
       st.x = damp(st.x, leadX, 5, dt); st.z = damp(st.z, leadZ, 5, dt);
       st.yaw = lerpAngle(st.yaw, face, Math.min(1, dt * 6));

@@ -257,11 +257,18 @@ export function runnerLeadPose(P, time) {
 }
 
 // ---------------------------------------------------------------- running
-// phase: radians (advance by cadence * dt), speed: ft/s
-export function runPose(P, phase, speed, look = 0) {
+// phase: radians (advance by cadence * dt), speed: ft/s.
+// o (optional): { accel: ft/s^2 (+ speeding up, - slowing down), side: sideways ft/s^2 (+ = pulled toward his right, i.e. turning right) }.
+//  * bob: the body is lowest when a foot is planted under it and rises in the flight between strides (twice per cycle)
+//  * lean: forward at speed, a lot more while he is getting up to speed, back while he is braking
+//  * arms drive harder when accelerating; the pelvis and shoulders counter-rotate; he banks into a turn
+export function runPose(P, phase, speed, look = 0, o = null) {
   resetPose(P);
-  const sp = clamp(speed, 0, 32);
+  const sp = clamp(speed, 0, 34);
   const k = clamp(sp / 27, 0, 1.15);
+  const acc = o ? clamp(o.accel / 70, -1, 1) : 0;
+  const drive = Math.max(0, acc), sit = Math.max(0, -acc);
+  const bank = o ? clamp(o.side / 55, -1, 1) : 0;
   const A = 0.25 + sp * 0.078; // forward/back reach of the foot
   const H = 0.22 + sp * 0.03;  // knee lift
   const sL = Math.sin(phase), cL = Math.cos(phase);
@@ -270,13 +277,17 @@ export function runPose(P, phase, speed, look = 0) {
   set3(P.footR, -0.28, ANK + H * Math.max(0, cR), 0.15 + A * sR);
   P.footLTilt = -0.35 * Math.max(0, cL) + 0.25 * Math.max(0, -cL) * (sL > 0 ? 1 : 0);
   P.footRTilt = -0.35 * Math.max(0, cR) + 0.25 * Math.max(0, -cR) * (sR > 0 ? 1 : 0);
-  P.hipY = STAND - 0.3 - 0.35 * k - 0.07 * Math.abs(Math.cos(phase)) * (0.4 + k);
-  P.pelvisPitch = 0.05 + 0.13 * k; P.torsoPitch = 0.1 + 0.16 * k;
+  const bob = (0.05 + 0.14 * k) * (0.5 + 0.5 * k); // vertical travel of the hips (about a third of a foot at a sprint)
+  P.hipY = STAND - 0.3 - 0.33 * k - 0.32 * sit - bob * Math.pow(Math.abs(Math.cos(phase)), 0.85) + 0.05 * drive;
+  P.pelvisPitch = 0.05 + 0.13 * k + 0.16 * drive - 0.14 * sit;
+  P.torsoPitch = 0.1 + 0.16 * k + 0.4 * drive - 0.3 * sit;
   P.pelvisYaw = -0.18 * k * sL; P.torsoYaw = 0.3 * k * sL;
-  P.headYaw = -(P.pelvisYaw + P.torsoYaw) * 0.9; P.headPitch = -0.05;
-  const swing = 0.5 + 0.55 * k;
-  set3(P.handL, 0.68, 3.35 + 0.45 * Math.max(0, -sL) * k, 0.3 - swing * sL);
-  set3(P.handR, -0.68, 3.35 + 0.45 * Math.max(0, -sR) * k, 0.3 - swing * sR);
+  P.pelvisRoll = 0.07 * k * sL + bank * 0.14; P.torsoRoll = -0.05 * k * sL + bank * 0.24;
+  P.headYaw = -(P.pelvisYaw + P.torsoYaw) * 0.9; P.headPitch = -0.05 - 0.2 * drive;
+  const swing = 0.5 + 0.55 * k + 0.3 * drive;
+  const fwdL = -sL, fwdR = -sR; // the hand on the opposite side of the front foot is the one going forward
+  set3(P.handL, 0.68, 3.0 + (0.4 + 0.3 * drive) * (0.5 + 0.5 * fwdL) * (0.5 + k), 0.3 + swing * fwdL);
+  set3(P.handR, -0.68, 3.0 + (0.4 + 0.3 * drive) * (0.5 + 0.5 * fwdR) * (0.5 + k), 0.3 + swing * fwdR);
   P.poleL = [1.0, -0.2, -0.8]; P.poleR = [-1.0, -0.2, -0.8];
   set3(P.kneeL, 0.1, 0.05, 1); set3(P.kneeR, -0.1, 0.05, 1);
   // eyes on the ball: a running fielder keeps his body pointed where he is going but turns his head (and a little torso)
@@ -293,6 +304,34 @@ export function runReachPose(P, phase, speed, target, look = 0) {
 }
 export function runCadence(speed) {
   return clamp(0.5 + speed * 0.066, 0.6, 2.5); // full cycles per second
+}
+
+// ---------------------------------------------------------------- sliding into a base
+// Feet-first hook slide: sitting back, one leg stretched out toward the bag, the other tucked, hands up and back.
+const _slEnd = makePose(), _slStand = makePose();
+function slideLayout(P, breathe = 0) {
+  resetPose(P);
+  P.hipY = 0.7 + breathe; P.pelvisPitch = -1.3; P.torsoPitch = -0.45; P.headPitch = 0.3;
+  set3(P.footL, 0.28, 0.55, 3.0); P.footLTilt = -0.5;
+  set3(P.footR, -0.4, 0.85, 1.55); P.footRTilt = -0.15;
+  set3(P.kneeL, 0.15, 0.3, 1); set3(P.kneeR, -0.35, 1, 0.5);
+  set3(P.handL, 0.85, 2.3, -0.9); set3(P.handR, -0.85, 2.3, -0.9);
+  P.poleL = [1, 0.4, -0.3]; P.poleR = [-1, 0.4, -0.3];
+  return P;
+}
+/** u 0..1 while he goes down (`from` = the pose the instant he starts sliding, so nothing pops); after that he stays sat on the bag. */
+export function slidePose(P, u, from = null, time = 0) {
+  slideLayout(_slEnd, Math.sin(time * 5) * 0.01);
+  const k = smoothstep(0, 0.45, clamp(u, 0, 1));
+  if (from) return mixPose(P, from, _slEnd, k);
+  return copyPose(P, _slEnd);
+}
+/** After the slide: brushes himself off and gets to his feet (u 0..1), ready to lead off. */
+export function slideGetUp(P, u, time = 0) {
+  slideLayout(_slEnd, 0);
+  runnerLeadPose(_slStand, time);
+  const k = smoothstep(0, 1, clamp(u, 0, 1));
+  return mixPose(P, _slEnd, _slStand, k);
 }
 
 // ---------------------------------------------------------------- throwing (right-handed pose space)

@@ -5,6 +5,7 @@
 import { CONFIG } from '../config.js';
 import { sampleBall, judgeFairFoul, battedBallType } from '../physics/ballistics.js';
 import { BASE_XZ, polar, fenceDistance, sprayOf, clampToField, distanceToWall, isInsideField } from '../physics/field.js';
+import { runnerArrival, runnerFinish, runnerState } from './runnerMotion.js';
 import { planRun, planDiveRun, sampleRun, samplePath, covered, timeToCover } from './fielderMotion.js';
 
 export const POSITIONS = ['P', 'C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF'];
@@ -225,20 +226,6 @@ function addMove(plan, f, toX, toZ, tArrive, opts = {}, cfg = CONFIG) {
   return move;
 }
 
-function runnerPathTimes(fromBase, toBase, startDelay, cfg, isBatter = false) {
-  // Returns array of {base, t} arrival times at each base passed.
-  const R = cfg.runner;
-  const per = cfg.field.baseDistance / R.speed;
-  const out = [];
-  for (let b = fromBase + 1; b <= toBase; b++) {
-    let t;
-    if (isBatter) t = R.timeToFirst + (b - 1) * per;
-    else t = startDelay + (b - fromBase) * per;
-    out.push({ base: b, t });
-  }
-  return out;
-}
-
 const baseDist = (f, base) => dist(f.x, f.z, BASE_XZ[base][0], BASE_XZ[base][1]);
 
 function coverer(base, fielder, defense) {
@@ -301,8 +288,8 @@ function planPlayCore(i, cfg) {
     addMove(plan, best.f, wx, wz, Math.max(tArr, best.f.react + 0.4), { watch: true, role: 'watch', minEffort: 0.5 }, cfg);
     plan.fielder = best.f.pos;
     // everyone circles the bases (trot)
-    for (let b = 0; b < 3; b++) if (bases[b]) plan.moves.push({ from: b + 1, to: 4, out: false });
-    plan.moves.push({ from: 0, to: 4, out: false });
+    for (let b = 0; b < 3; b++) if (bases[b]) plan.moves.push({ from: b + 1, to: 4, out: false, trot: true });
+    plan.moves.push({ from: 0, to: 4, out: false, trot: true });
     plan.endTime = plan.ballHitEnd + 1.6;
     plan.trot = true;
     return plan;
@@ -342,11 +329,11 @@ function planPlayCore(i, cfg) {
       const throwHome = tCatch + F.transfer[f.type] + throwTime(dist(air.ball.x, air.ball.z, home[0], home[1]), f, cfg) + F.tagTime;
       // runner on 3rd
       if (bases[2] && depth > 170) {
-        const arrive = tCatch + 0.15 + cfg.field.baseDistance / R.speed;
+        const arrive = runnerArrival(cfg, 3, 4, tCatch + 0.15);
         if (arrive < throwHome - F.runnerMargin) {
           plan.moves.push({ from: 3, to: 4, out: false, tStart: tCatch + 0.15, tag: true });
           plan.result = 'sacFly';
-          plan.endTime = Math.max(plan.endTime, arrive + 0.4);
+          plan.endTime = Math.max(plan.endTime, runnerFinish(cfg, 3, 4, tCatch + 0.15) + 0.35);
           plan.events.push({ t: throwHome, type: 'throwLate' });
           // the throw home (late)
           const c = defense.C;
@@ -357,8 +344,11 @@ function planPlayCore(i, cfg) {
       if (bases[1] && depth > 250 && !(bases[2] && plan.moves.every((m) => m.from !== 3))) {
         const d3 = dist(air.ball.x, air.ball.z, BASE_XZ[3][0], BASE_XZ[3][1]);
         const throw3 = tCatch + F.transfer[f.type] + throwTime(d3, f, cfg);
-        const arrive = tCatch + 0.15 + cfg.field.baseDistance / R.speed;
-        if (arrive < throw3 - F.runnerMargin - 0.25) plan.moves.push({ from: 2, to: 3, out: false, tStart: tCatch + 0.15, tag: true });
+        const arrive = runnerArrival(cfg, 2, 3, tCatch + 0.15);
+        if (arrive < throw3 - F.runnerMargin - 0.25) {
+          plan.moves.push({ from: 2, to: 3, out: false, tStart: tCatch + 0.15, tag: true });
+          plan.endTime = Math.max(plan.endTime, runnerFinish(cfg, 2, 3, tCatch + 0.15) + 0.35); // the play lasts until he is there
+        }
       }
     }
     return plan;
@@ -431,14 +421,13 @@ export function planPlay(i, cfg = CONFIG) {
 
 // A close play gets a "Safe!" call: the throw reaches the base just AFTER the runner (within a beat).
 function addCalls(plan, cfg) {
-  const R = cfg.runner, per = cfg.field.baseDistance / R.speed;
   for (const th of plan.throws) {
     const base = th.toBase;
     if (!(base >= 1 && base <= 4)) continue;
     if (plan.events.some((e) => e.type === 'out' && e.base === base)) continue; // that one is an out
     for (const m of plan.moves) {
       if (m.out || m.to !== base) continue;
-      const arrive = m.from === 0 ? R.timeToFirst + (base - 1) * per : (m.tStart ?? R.startDelay) + (base - m.from) * per;
+      const arrive = runnerArrival(cfg, m.from, base, m.tStart);
       const margin = th.t1 - arrive;
       if (margin >= 0 && margin <= cfg.fielding.closePlay) { plan.events.push({ t: th.t1 + 0.1, type: 'safe', base }); return; }
     }
@@ -553,9 +542,7 @@ function throwArrival(f, tReady, base, fx, fz, cfg) {
 
 function tryInfieldOut({ f, tF, tReady, pf, bases, forced, outs, defense, cfg }) {
   const F = cfg.fielding;
-  const R = cfg.runner;
-  const per = cfg.field.baseDistance / R.speed;
-  const batterTo1 = R.timeToFirst;
+  const batterTo1 = runnerArrival(cfg, 0, 1);
   const options = [];
 
   // Force play on the lead forced runner (only if fewer than 2 outs makes a double play worth it, or as the sure out)
@@ -563,7 +550,7 @@ function tryInfieldOut({ f, tF, tReady, pf, bases, forced, outs, defense, cfg })
   for (const b of forced) leadForced = Math.max(leadForced, b);
   if (leadForced > 0) {
     const targetBase = leadForced + 1; // runner from `leadForced` heads to the next base
-    const runnerArr = R.startDelay + per;
+    const runnerArr = runnerArrival(cfg, leadForced, Math.min(4, leadForced + 1));
     const th = throwArrival(f, tReady, targetBase > 3 ? 4 : targetBase, pf.x, pf.z, cfg);
     if (th.t + F.outMargin <= runnerArr) options.push({ kind: 'force', base: targetBase > 3 ? 4 : targetBase, t: th.t, margin: runnerArr - th.t, d: th.d });
   }
@@ -584,8 +571,6 @@ function tryInfieldOut({ f, tF, tReady, pf, bases, forced, outs, defense, cfg })
 function finishInfieldOut(plan, at, ctx) {
   const { f, tF, tReady, pf, bases, forced, outs, defense, cfg } = ctx;
   const F = cfg.fielding;
-  const R = cfg.runner;
-  const per = cfg.field.baseDistance / R.speed;
   const { choice, leadForced } = at;
 
   const coverFor = (base) => coverer(base, f, defense);
@@ -624,7 +609,7 @@ function finishInfieldOut(plan, at, ctx) {
       const d = dist(rp.x, rp.z, BASE_XZ[1][0], BASE_XZ[1][1]);
       const t2 = tRelay + d / F.throwSpeed.IF;
       const first = defense['1B'].pos === recv.pos ? defense.P : defense['1B'];
-      const arrival = R.timeToFirst;
+      const arrival = runnerArrival(cfg, 0, 1);
       if (t2 + F.outMargin <= arrival && first.pos !== recv.pos && recv.pos !== '1B') {
         addMove(plan, first, BASE_XZ[1][0], BASE_XZ[1][1] + 0.5, Math.max(first.react + 0.2, t2 - 0.3), { role: 'cover', minEffort: 0.8 }, cfg);
         plan.throws.push({ from: recv.pos, to: first.pos, t0: tRelay, t1: t2, ax: rp.x, az: rp.z, bx: BASE_XZ[1][0], bz: BASE_XZ[1][1], toBase: 1 });
@@ -646,6 +631,8 @@ function finishInfieldOut(plan, at, ctx) {
     delete plan._pendingRunners;
   }
   plan.endTime = endT + 0.8;
+  // the play is not over while a runner who moved up is still running (he would otherwise be cut off mid-stride)
+  for (const m of plan.moves) if (!m.out && m.to > m.from) plan.endTime = Math.max(plan.endTime, runnerFinish(cfg, m.from, m.to, m.tStart) + 0.3);
   void leadForced;
   return plan;
 }
@@ -653,8 +640,6 @@ function finishInfieldOut(plan, at, ctx) {
 function advanceOnGroundout({ bases, forced, outsAfter, f, pf, tReady, cfg, skip }) {
   // Runners move up on a routine groundout when there is room and fewer than two outs.
   const moves = [];
-  const R = cfg.runner;
-  const per = cfg.field.baseDistance / R.speed;
   const F = cfg.fielding;
   const canAdvance = outsAfter < 3;
   const occupied = { 1: !!bases[0], 2: !!bases[1], 3: !!bases[2] };
@@ -666,7 +651,7 @@ function advanceOnGroundout({ bases, forced, outsAfter, f, pf, tReady, cfg, skip
     else if (canAdvance) {
       if (b === 3) {
         const defenseHome = tReady + throwTime(dist(pf.x, pf.z, 0, 0), f, cfg) + F.tagTime;
-        if (R.startDelay + per + F.runnerMargin < defenseHome) d = 4;
+        if (runnerArrival(cfg, 3, 4) + F.runnerMargin < defenseHome) d = 4;
       } else if (b === 2 && f.x > 0 && (dest[3] === 4 || !occupied[3])) d = 3;
     }
     dest[b] = d;
@@ -679,8 +664,6 @@ function advanceOnGroundout({ bases, forced, outsAfter, f, pf, tReady, cfg, skip
 function finishHit(plan, ctx) {
   const { f, tF, tReady, pf, bases, forced, outs, defense, cfg } = ctx;
   const F = cfg.fielding;
-  const R = cfg.runner;
-  const per = cfg.field.baseDistance / R.speed;
 
   // Defense arrival time at each base if the fielder throws there.
   const D = {};
@@ -694,7 +677,7 @@ function finishHit(plan, ctx) {
     let target = b;
     if (forced.has(b)) target = b + 1;
     for (let m = 4; m > target; m--) {
-      const arrive = R.startDelay + (m - b) * per;
+      const arrive = runnerArrival(cfg, b, m);
       if (arrive + F.runnerMargin < D[m]) { target = m; break; }
     }
     if (target < 4 && target >= ceiling) target = Math.max(b, ceiling - 1);
@@ -705,7 +688,7 @@ function finishHit(plan, ctx) {
   // Batter
   let bd = 0;
   for (let m = 4; m >= 1; m--) {
-    const arrive = R.timeToFirst + (m - 1) * per;
+    const arrive = runnerArrival(cfg, 0, m);
     if (arrive + F.runnerMargin < D[m]) { bd = m; break; }
   }
   if (bd === 0) bd = 1; // an infield hit / safe on a close play (we only reach here when no out could be made)
@@ -763,8 +746,7 @@ function finishHit(plan, ctx) {
   // The play ends when every runner has stopped and the throw is in.
   let last = plan.ballEnd;
   for (const m of plan.moves) {
-    if (m.from === 0) last = Math.max(last, R.timeToFirst + (m.to - 1) * per);
-    else last = Math.max(last, R.startDelay + (m.to - m.from) * per);
+    last = Math.max(last, runnerFinish(cfg, m.from, m.to, m.tStart));
   }
   plan.endTime = last + 0.35;
   void outs; void tF;
@@ -776,25 +758,8 @@ function finishHit(plan, ctx) {
 // move = { from, to, out, outAt, tStart } . Returns { x, z, base progress, running }
 // ---------------------------------------------------------------------------
 export function runnerPosition(move, t, cfg = CONFIG) {
-  const R = cfg.runner;
-  const per = cfg.field.baseDistance / R.speed;
-  const isBatter = move.from === 0;
-  let t0, speed = R.speed;
-  const fromBase = isBatter ? 0 : move.from;
-  const toBase = move.out && move.to === 0 ? (move.outBase === 4 ? 4 : move.outBase) : move.to;
-  if (isBatter) {
-    // The batter takes R.timeToFirst to reach first: leaves the box after a short delay.
-    t0 = R.timeToFirst - per;
-    speed = R.speed;
-  } else t0 = move.tStart ?? R.startDelay;
-  if (move.trot) speed = R.trotSpeed;
-  const dist0 = isBatter ? -0 : 0;
-  void dist0;
-  const totalBases = Math.max(0, toBase - fromBase);
-  const total = totalBases * cfg.field.baseDistance;
-  const elapsed = Math.max(0, t - t0);
-  let d = Math.min(total, elapsed * speed);
-  return { ...pathPoint(fromBase, d), running: d > 0 && d < total, done: d >= total, speed: d > 0 && d < total ? speed : 0, distance: d, total };
+  const r = runnerState(move, t, cfg, {});
+  return { x: r.x, z: r.z, heading: r.heading, running: r.running, done: r.done, speed: r.speed, accel: r.accel, distance: r.s, total: r.total };
 }
 
 // Position at `d` feet along the base path starting at base `fromBase` (0 = home plate).

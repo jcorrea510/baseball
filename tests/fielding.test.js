@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { CONFIG } from '../src/config.js';
 import { simulateBattedBall } from '../src/physics/ballistics.js';
 import { createDefense, planPlay, pathPoint, runnerPosition, POSITIONS } from '../src/game/fielding.js';
+import { runnerArrival } from '../src/game/runnerMotion.js';
 import { BASE_XZ } from '../src/physics/field.js';
 import { createRng } from '../src/util/rng.js';
 
@@ -179,8 +180,10 @@ describe('runner paths', () => {
     expect(mid.z).toBeLessThan(BASE_XZ[1][1]);
   });
 
-  it('the batter needs about timeToFirst seconds to reach first base', () => {
-    const t = CONFIG.runner.timeToFirst;
+  it('the batter needs about four seconds to reach first base', () => {
+    const t = runnerArrival(CONFIG, 0, 1);
+    expect(t).toBeGreaterThan(3.6);
+    expect(t).toBeLessThan(4.3);
     const before = runnerPosition({ from: 0, to: 1 }, t - 0.4);
     const after = runnerPosition({ from: 0, to: 1 }, t + 0.05);
     expect(before.done).toBe(false);
