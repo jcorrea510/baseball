@@ -7,6 +7,7 @@ import { damp, clamp, lerp, smoothstep, DEG } from '../util/math.js';
 const FIELD_CAM = new THREE.Vector3(0, 44, 58);
 const _look = new THREE.Vector3();
 const _tmp = new THREE.Vector3();
+const _dir = new THREE.Vector3();
 
 export class CameraRig {
   constructor(camera) {
@@ -37,7 +38,7 @@ export class CameraRig {
 
   batterLook(out) {
     const c = CONFIG.camera.batter;
-    return out.copy(this.basePos).add(_tmp.set(0, Math.sin(c.pitch * DEG), -Math.cos(c.pitch * DEG)).multiplyScalar(60));
+    return out.copy(this.basePos).add(_dir.set(0, Math.sin(c.pitch * DEG), -Math.cos(c.pitch * DEG)).multiplyScalar(60));
   }
 
   // Minimum vertical FOV so that a narrow (portrait) screen still shows enough width.
@@ -62,6 +63,7 @@ export class CameraRig {
     let tPos = this.basePos;
     let tFov = cfg.batter.fov;
     let posL = 4, lookL = 8, fovL = 4;
+    this.followK = 1;
     const look = this.batterLook(_look).clone();
 
     const phase = E ? E.phase : 'title';
@@ -83,7 +85,10 @@ export class CameraRig {
       const ball = actors.ballPos;
       const deep = plan.homer || plan.caught || plan.ballLandDistance > 170 || (plan.pickupPos && Math.hypot(plan.pickupPos.x, plan.pickupPos.z) > 170);
       const homerAfter = plan.homer && t > plan.ballHitEnd;
+      // for a beat after contact the camera stays on the batter, then eases into following the ball
+      const followK = smoothstep(0.1, 0.5, t);
       // interest point: the ball (which is carried by fielders / thrown once the hit is over)
+      this.followK = followK;
       this.interest.set(ball.x, Math.max(1.5, ball.y), ball.z);
       look.copy(this.interest);
       // While the ball is way up, aim between the ball and where it will come down so the fielders stay in frame.
@@ -133,6 +138,10 @@ export class CameraRig {
     }
     if (cfg && E && E.phase === 'aiSummary') { posL = 5; }
 
+    if (this.followK !== undefined && E && E.phase === 'play' && this.followK < 1) {
+      const bl = this.batterLook(new THREE.Vector3());
+      look.lerp(bl, 1 - this.followK);
+    }
     this.pos.set(damp(this.pos.x, tPos.x, posL, dt), damp(this.pos.y, tPos.y, posL, dt), damp(this.pos.z, tPos.z, posL, dt));
     this.look.set(damp(this.look.x, look.x, lookL, dt), damp(this.look.y, look.y, lookL, dt), damp(this.look.z, look.z, lookL, dt));
     this.fov = damp(this.fov, tFov, fovL, dt);

@@ -233,7 +233,7 @@ export class App {
     this.fx.clear();
     this.actors.configure({ engine: eng, playerUniformKey: this.prog.data.equipped.uniform, batStyle: this.prog.data.equipped.bat });
     this.bindEngine(eng);
-    this.S.env.set(st.tod, false);
+    this.S.env.set(st.tod, true);
     this.ui.hideAll();
     this.ui.showHud(mode);
     this.ui.setTeams({ abbr: PLAYER_TEAM.abbr, color: PLAYER_TEAM.color }, { abbr: eng.opponent.abbr, color: eng.opponent.color });
@@ -519,7 +519,8 @@ export class App {
       this.audio.unlock();
       if (this.screen === 'game') { e.preventDefault(); swing(e); }
     });
-    window.addEventListener('pointerdown', () => this.audio.unlock(), { once: false });
+    for (const ev of ['pointerdown', 'touchend', 'click', 'keydown']) window.addEventListener(ev, () => this.audio.unlock(), { passive: true });
+    this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     document.addEventListener('visibilitychange', () => { if (document.hidden && this.screen === 'game' && !this.paused && this.engine && !this.engine.over) this.setPaused(true); });
     window.addEventListener('blur', () => { this.aimKeys.left = this.aimKeys.right = false; });
   }
@@ -611,7 +612,7 @@ export class App {
     this.fx.update(realDt, cam, this.S.size.h);
     this.S.env.update(realDt, cam);
     const night = this.S.env.name === 'night' ? 1 : this.S.env.name === 'dusk' ? 0.4 : 0;
-    void night;
+    this.ball.setHaloBoost(1 + night * 0.6);
     this.S.stadium.update(realDt, this.time, this.S.env);
     // pitch marker fade
     if (this.pitchMarker.visible) {
