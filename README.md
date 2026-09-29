@@ -69,7 +69,7 @@ Every time something is pushed to the **`main`** branch, GitHub automatically te
 3. Under **Build and deployment**, open the **Source** drop-down and choose **GitHub Actions**. **Do not** pick "Deploy from a branch": that publishes the raw source code instead of the finished game, and the page shows an error screen ("The game files didn't load").
 4. Go to the **Actions** tab, click **Deploy to GitHub Pages** in the left list, then **Run workflow** → **Run workflow**. Wait for the green check mark (about two minutes) - the game is then live.
 
-**How to tell it worked:** the run named "Deploy to GitHub Pages" is green. If instead you see a run named "pages build and deployment" (with a "Build with Jekyll" step), Pages is still on "Deploy from a branch" - go back to step 3.
+**How to tell it worked:** the run named "Deploy to GitHub Pages" is green and has no yellow warning. If you still see a second run named "pages build and deployment" (with a "Build with Jekyll" step) after each push, or a yellow "Set GitHub Pages to GitHub Actions" warning on the run, Pages is still on "Deploy from a branch" - go back to step 3.
 
 If the game ever shows an error screen instead of the title screen, read the message on it: it says whether the game files didn't load (the Pages setting above) or the browser couldn't start 3D graphics (turn on hardware acceleration or try another browser).
 

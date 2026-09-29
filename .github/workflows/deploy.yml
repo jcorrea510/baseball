@@ -39,6 +39,22 @@ jobs:
           BASE_PATH: /${{ github.event.repository.name }}/
       - id: pages
         uses: actions/configure-pages@v5
+      # configure-pages only checks that Pages exists, not HOW it publishes. With "Deploy from a branch" GitHub also runs its
+      # own publisher on every push (it copies the raw source files), which races with this workflow's deploy.
+      - name: Check the Pages source setting
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          type=$(gh api "repos/${{ github.repository }}/pages" --jq '.build_type' 2>/dev/null || echo unknown)
+          echo "GitHub Pages build type: $type (it should be: workflow)"
+          if [ "$type" = "legacy" ]; then
+            echo "::warning title=Set GitHub Pages to GitHub Actions::Settings > Pages > Source is 'Deploy from a branch'. GitHub is also publishing the raw un-built source code on every push, which races with this deploy and can leave the game on an error screen. Change Source to 'GitHub Actions' (Settings > Pages > Build and deployment)."
+            {
+              echo "### Action needed: switch GitHub Pages to GitHub Actions"
+              echo "Pages is set to **Deploy from a branch**, so GitHub also publishes the raw source code on every push and it can overwrite this build."
+              echo "Open **Settings, Pages, Build and deployment, Source** and choose **GitHub Actions**."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Explain a Pages settings problem
         if: failure() && steps.pages.outcome == 'failure'
         run: |
