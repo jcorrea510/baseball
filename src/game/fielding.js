@@ -414,7 +414,24 @@ export function planPlay(i, cfg = CONFIG) {
   const plan = planPlayCore(i, cfg);
   addSupport(plan, i, cfg);
   settleThrows(plan);
+  addCalls(plan, cfg);
   return plan;
+}
+
+// A close play gets a "Safe!" call: the throw reaches the base just AFTER the runner (within a beat).
+function addCalls(plan, cfg) {
+  const R = cfg.runner, per = cfg.field.baseDistance / R.speed;
+  for (const th of plan.throws) {
+    const base = th.toBase;
+    if (!(base >= 1 && base <= 4)) continue;
+    if (plan.events.some((e) => e.type === 'out' && e.base === base)) continue; // that one is an out
+    for (const m of plan.moves) {
+      if (m.out || m.to !== base) continue;
+      const arrive = m.from === 0 ? R.timeToFirst + (base - 1) * per : (m.tStart ?? R.startDelay) + (base - m.from) * per;
+      const margin = th.t1 - arrive;
+      if (margin >= 0 && margin <= cfg.fielding.closePlay) { plan.events.push({ t: th.t1 + 0.1, type: 'safe', base }); return; }
+    }
+  }
 }
 
 // When is a fielder finished with his job in this play (so he can start jogging back to his spot)?

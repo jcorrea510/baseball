@@ -428,8 +428,11 @@ export function celebratePose(P, t, seed = 0) {
 }
 
 // ---------------------------------------------------------------- plate umpire
-// `sinceCall` = seconds since the last strike call (or -1). Signals with a raised right fist.
-export function umpirePose(P, time, sinceCall = -1, big = false) {
+// Gestures for each call. `sinceCall` = seconds since the call began (or -1). kinds:
+//   strike / strikeSwing  raised right fist, one punch      strike3 / strike3Swing  a big punch-out, two pumps
+//   ball                  a tiny hand-flick and head shake   foul                    both arms straight up
+//   safe                  both arms swept flat, palms down   out                     right fist hammered down
+export function umpirePose(P, time, sinceCall = -1, kind = 'strike') {
   resetPose(P);
   const b = Math.sin(time * 1.4) * 0.02;
   P.hipY = 2.15 + b;
@@ -438,14 +441,39 @@ export function umpirePose(P, time, sinceCall = -1, big = false) {
   set3(P.kneeL, 0.55, 0.1, 1); set3(P.kneeR, -0.55, 0.1, 1);
   set3(P.handL, 0.62, 2.55, 0.55); set3(P.handR, -0.62, 2.55, 0.55);
   P.poleL = [0.8, -0.5, -0.2]; P.poleR = [-0.8, -0.5, -0.2];
-  if (sinceCall >= 0 && sinceCall < 1.1) {
-    const up = smoothstep(0, 0.16, sinceCall) * (1 - smoothstep(0.8, 1.1, sinceCall));
-    P.hipY = lerp(P.hipY, 2.95, up);
-    P.torsoPitch = lerp(P.torsoPitch, 0.05, up);
-    P.headPitch = lerp(P.headPitch, -0.05, up);
-    const punch = Math.sin(clamp((sinceCall - 0.14) / 0.35, 0, 1) * Math.PI) * (big ? 0.5 : 0.25);
-    set3(P.handR, lerp(-0.62, -0.95, up), lerp(2.55, 5.3, up) + punch, lerp(0.55, 0.45, up));
-    P.poleR = [-1, 0.2, -0.3];
+  if (sinceCall < 0) return P;
+  const stand = (up) => { P.hipY = lerp(P.hipY, 2.95, up); P.torsoPitch = lerp(P.torsoPitch, 0.05, up); P.headPitch = lerp(P.headPitch, -0.05, up); };
+  const dur = kind === 'strike3' || kind === 'strike3Swing' ? 1.6 : kind === 'ball' ? 0.7 : 1.15;
+  if (sinceCall > dur) return P;
+  const env = smoothstep(0, 0.16, sinceCall) * (1 - smoothstep(dur - 0.3, dur, sinceCall));
+  if (kind === 'ball') {
+    // no big signal on a ball: a flat flick of the hand and a small shake of the head
+    P.headYaw = Math.sin(sinceCall * 15) * 0.22 * env;
+    set3(P.handR, lerp(-0.62, -1.15, env), lerp(2.55, 3.1, env), lerp(0.55, 0.75, env));
+    return P;
   }
+  stand(env);
+  if (kind === 'foul') {
+    // both arms straight up
+    set3(P.handR, lerp(-0.62, -1.0, env), lerp(2.55, 6.2, env), lerp(0.55, 0.3, env));
+    set3(P.handL, lerp(0.62, 1.0, env), lerp(2.55, 6.2, env), lerp(0.55, 0.3, env));
+    P.poleR = [-1, 0.3, -0.2]; P.poleL = [1, 0.3, -0.2];
+    return P;
+  }
+  if (kind === 'safe') {
+    // arms swept out flat, palms down
+    const sweep = smoothstep(0.08, 0.3, sinceCall) * env;
+    set3(P.handR, lerp(-0.4, -2.4, sweep), lerp(2.55, 4.1, sweep), 0.35);
+    set3(P.handL, lerp(0.4, 2.4, sweep), lerp(2.55, 4.1, sweep), 0.35);
+    P.poleR = [-0.2, -0.9, -0.4]; P.poleL = [0.2, -0.9, -0.4];
+    return P;
+  }
+  // strike / out: right fist up, then punched. The punch-out (strike three) pumps twice and leans in.
+  const big = kind === 'strike3' || kind === 'strike3Swing';
+  const punchT = clamp((sinceCall - 0.14) / 0.35, 0, 1);
+  const punch = (Math.sin(punchT * Math.PI) + (big ? Math.sin(clamp((sinceCall - 0.62) / 0.35, 0, 1) * Math.PI) : 0)) * (big ? 0.55 : kind === 'out' ? 0.4 : 0.25);
+  set3(P.handR, lerp(-0.62, -0.95, env), lerp(2.55, 5.3, env) + punch, lerp(0.55, 0.45, env));
+  P.poleR = [-1, 0.2, -0.3];
+  if (big) P.torsoPitch += 0.18 * Math.sin(punchT * Math.PI);
   return P;
 }

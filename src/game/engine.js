@@ -264,7 +264,7 @@ export class Engine {
     else if (pitch.isStrike) res = rules.pitchStrike(g, { swinging: false });
     else res = rules.pitchBall(g, this.batter);
     const call = swung ? 'swingingStrike' : pitch.isStrike ? 'calledStrike' : 'ball';
-    this.emit('pitchCall', { ...info, call });
+    this.emit('pitchCall', { ...info, call, result: res.result, strikes: g.strikes, balls: g.balls });
     this.emitCount();
     if (res.paEnded) {
       if (res.result === 'walk') { this.stats.walks++; }

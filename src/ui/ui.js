@@ -230,7 +230,8 @@ export class UI {
       <button class="btn ghost" data-a="restart">Restart game</button>
       <div class="row"><div class="seg" data-set="zone" data-bool="1"><button data-v="true" class="${st.zone ? 'on' : ''}">Zone on</button><button data-v="false" class="${!st.zone ? 'on' : ''}">Zone off</button></div>
       <div class="seg" data-set="sound" data-bool="1"><button data-v="true" class="${st.sound ? 'on' : ''}">Sound on</button><button data-v="false" class="${!st.sound ? 'on' : ''}">Sound off</button></div></div>
-      <div class="row"><div class="seg" data-set="shake" data-bool="1"><button data-v="true" class="${st.shake ? 'on' : ''}">Shake on</button><button data-v="false" class="${!st.shake ? 'on' : ''}">Shake off</button></div></div>
+      <div class="row"><div class="seg" data-set="shake" data-bool="1"><button data-v="true" class="${st.shake ? 'on' : ''}">Shake on</button><button data-v="false" class="${!st.shake ? 'on' : ''}">Shake off</button></div>
+      <div class="seg" data-set="umpire"><button data-v="synth" class="${st.umpire === 'synth' ? 'on' : ''}">Ump voice</button><button data-v="speech" class="${st.umpire === 'speech' ? 'on' : ''}">Ump (browser)</button><button data-v="off" class="${st.umpire === 'off' ? 'on' : ''}">Ump off</button></div></div>
       <div class="row"><button class="btn small ghost" data-a="howtoPause">How to play</button><button class="btn small ghost" data-a="quit">Quit to menu</button></div>`;
     s.appendChild(d);
     s.onclick = (e) => {

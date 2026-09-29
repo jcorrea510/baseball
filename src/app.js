@@ -7,6 +7,7 @@ import { createEffects } from './render/effects.js';
 import { Actors } from './render/actors.js';
 import { CameraRig } from './render/cameraRig.js';
 import { AudioEngine } from './audio/audio.js';
+import { stopBrowserVoice } from './audio/umpireVoice.js';
 import { UI } from './ui/ui.js';
 import { Engine } from './game/engine.js';
 import { Progress } from './game/progression.js';
@@ -26,6 +27,7 @@ export class App {
     this.prog = new Progress();
     this.audio = new AudioEngine();
     this.audio.muted = !this.prog.settings.sound;
+    this.audio.umpireMode = this.prog.settings.umpire || 'synth';
     this.audio.volume = this.prog.settings.volume;
 
     const touch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
@@ -191,6 +193,7 @@ export class App {
     if (key === 'tod') this.S.env.set(value, false);
     if (key === 'sound') { this.audio.setMuted(!value); this.ui.setMuteIcon(!value); }
     if (key === 'zone') { this.zone.visible = !!value && !!this.engine; }
+    if (key === 'umpire') { this.audio.umpireMode = value; if (value !== 'speech') stopBrowserVoice(); }
     if (this.screen === 'modes') { this.ui.buildModes(this.prog); this.ui.show('modes'); }
   }
 
@@ -232,6 +235,7 @@ export class App {
       seed: this.params.get('seed') ? +this.params.get('seed') : undefined,
     });
     this.engine = eng;
+    this.audio.setUmpire(eng.seed); // this game's umpire has his own voice
     this.engine.setAim(0);
     this.pitchesThisGame = 0;
     this.paused = false; this.fast = false; this.slowMo = null; this.hitStop = 0;
@@ -311,10 +315,7 @@ export class App {
       if (this.settings.shake) cam.shake(0.05);
       void swung;
     });
-    e.on('pitchCall', ({ call }) => {
-      if (call === 'ball') audio.ballCue();
-      else if (call === 'calledStrike' || call === 'swingingStrike') { audio.strikeCue(); this.actors.strikeCall(e.time, e.count.strikes >= 2 || call === 'swingingStrike'); }
-    });
+    e.on('pitchCall', (p) => this.onPitchCall(p));
     e.on('contact', (c) => this.onContact(c));
     e.on('playEvent', (ev) => this.onPlayEvent(ev));
     e.on('result', (r) => this.onResult(r));
@@ -358,11 +359,36 @@ export class App {
     this.lastContact = c;
   }
 
+  // What the plate umpire says and does for a pitch: a strike, a ball, strike three, ball four.
+  onPitchCall({ call, result }) {
+    const e = this.engine, audio = this.audio;
+    const struckOut = !!result && /^strikeout/.test(result);
+    let kind = null;
+    if (call === 'ball') kind = result === 'walk' ? 'ball4' : 'ball';
+    else if (call === 'calledStrike') kind = struckOut ? 'strike3' : 'strike';
+    else if (call === 'swingingStrike') kind = struckOut ? 'strike3Swing' : 'strikeSwing';
+    if (!kind) return;
+    this.actors.strikeCall(e.time, kind); // (he always signals, even with the voice off)
+    if (e.mode === 'derby') return; // batting practice: no calls
+    if (audio.umpireMode === 'off') { if (kind === 'ball' || kind === 'ball4') audio.ballCue(); else audio.strikeCue(); }
+    else audio.callUmpire(kind);
+  }
+
+  // A call at a base or a foul ball. Only a play at the plate is signalled by the umpire you can see; bases are voice only,
+  // panned to the side of the field they are on.
+  umpireCall(kind, base = 0) {
+    if (this.engine.mode === 'derby') return;
+    const pan = base === 1 ? 0.55 : base === 3 ? -0.55 : base === 2 ? 0.1 : 0;
+    this.audio.callUmpire(kind, { pan, delay: 0.06 });
+    if (kind === 'foul' || base === 4 || base === 0) this.actors.strikeCall(this.engine.time, kind);
+  }
+
   onPlayEvent(ev) {
     const e = this.engine, audio = this.audio, ui = this.ui;
     const c = this.lastContact;
     switch (ev.type) {
       case 'landed':
+        if (c && c.plan.result === 'foul') this.umpireCall('foul');
         this.fx.dustPuff(ev.x, ev.z, 0.7, [0.6, 0.72, 0.42]);
         this.fx.grassBits(ev.x, ev.z, 1);
         audio.dirtThud(0.6);
@@ -417,7 +443,11 @@ export class App {
         break;
       case 'throw': audio.throwWhoosh(); break;
       case 'glovePop': audio.glovePop(0.9); break;
-      case 'outCall': audio.outCue(); break;
+      case 'outCall':
+        if (audio.umpireMode === 'off' || this.engine.mode === 'derby') audio.outCue();
+        else this.umpireCall('out', ev.base);
+        break;
+      case 'safe': this.umpireCall('safe', ev.base); break;
       default: break;
     }
     void e;

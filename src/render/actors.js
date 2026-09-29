@@ -92,7 +92,7 @@ export class Actors {
     this.umpire.place(1.95, 0, 6.6, Math.PI);
     this.umpire.root.updateMatrixWorld(true);
     this.group.add(this.umpire.root);
-    this.umpCall = { t: -10, big: false };
+    this.umpCall = { t: -10, kind: 'strike' };
     // batters / runners (player's team)
     for (const b of engine.lineup) this.getPlayer(b, engine);
     // base coaches
@@ -133,7 +133,8 @@ export class Actors {
   }
 
   // The umpire punches out strikes.
-  strikeCall(time, big = false) { this.umpCall = { t: time, big }; }
+  // The umpire signals a call (kind: strike | strikeSwing | strike3 | strike3Swing | ball | ball4 | foul | safe | out).
+  strikeCall(time, kind = 'strike') { this.umpCall = { t: time, kind: kind === 'ball4' ? 'ball' : kind }; }
 
   setBatStyle(style) {
     this.batStyle = style;
@@ -160,7 +161,7 @@ export class Actors {
     // ---- plate umpire
     if (this.umpire) {
       const since = this.umpCall.t > -5 ? time - this.umpCall.t : -1;
-      umpirePose(this.umpire.pose, time, since, this.umpCall.big);
+      umpirePose(this.umpire.pose, time, since, this.umpCall.kind);
       this.umpire.apply();
     }
 

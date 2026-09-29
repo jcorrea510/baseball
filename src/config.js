@@ -274,6 +274,7 @@ export const CONFIG = {
     },
     tagTime: 0.4, // extra time for the catcher to receive a throw and apply the tag at home
     fastBallPenalty: 0.27, // extra reaction (s) fielders need on the hardest-hit grounders
+    closePlay: 0.45, // a runner who beats the throw by less than this many seconds gets a 'Safe!' call
     outMargin: 0.02, // a throw must beat the runner by this many seconds
     runnerMargin: 0.1, // a runner must beat the throw by this to take an extra base
     // Fun-factor tweak: fielders are a little less sure-handed on the hardest line drives
@@ -314,6 +315,18 @@ export const CONFIG = {
     snapBackTime: 0.7,
     minHorizontalFov: 38, // narrow (portrait) screens widen the view to keep this
   },
+  // --------------------------------------------------------------------------
+  //  Sound
+  // --------------------------------------------------------------------------
+  audio: {
+    umpire: {
+      voice: 'synth', // 'synth' = built-in voice (recommended), 'speech' = the browser's own voices, 'off'
+      pitchHz: [98, 124], // how deep the umpire's voice is (each game has one umpire; every call varies a little)
+      rasp: [0.55, 0.95], // gruffness 0..1
+      level: 0.9, // loudness of the calls
+    },
+  },
+
   quality: {
     crowdCount: 6500,
     crowdCountMobile: 3200,

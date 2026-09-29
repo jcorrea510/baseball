@@ -1,3 +1,7 @@
+import { planCall, speak, makeUmpireCharacter, speakWithBrowserVoice, stopBrowserVoice } from './umpireVoice.js';
+import { createRng } from '../util/rng.js';
+import { CONFIG } from '../config.js';
+
 // All sound is synthesized live with the Web Audio API - no audio files. The audio context is only created
 // after the first click / key press (browsers require that), so nothing plays before then.
 export class AudioEngine {
@@ -10,6 +14,30 @@ export class AudioEngine {
     this.noiseBuf = null;
     this.reverbBuf = null;
     this.lastCrack = 0;
+    this.umpireMode = CONFIG.audio.umpire.voice; // 'synth' | 'speech' | 'off'
+    this.umpire = null; // this game's umpire (his own voice)
+    this.callRng = createRng(1);
+  }
+
+  // A new game gets a new umpire (a deep, gruff voice of his own).
+  setUmpire(seed) {
+    this.umpire = makeUmpireCharacter(seed);
+    this.callRng = createRng((seed * 2654435761) >>> 0);
+  }
+
+  // The plate umpire calls a pitch / play. kind: strike | strikeSwing | strike3 | strike3Swing | ball | ball4 | foul | safe | out.
+  // Silent when muted or when the umpire voice is off. Every call varies a little.
+  callUmpire(kind, { pan = 0, delay = 0.04 } = {}) {
+    if (this.muted || this.umpireMode === 'off') return false;
+    try {
+      if (this.umpireMode === 'speech') return speakWithBrowserVoice(kind, this.callRng, this.volume);
+      if (!this.ok) return false;
+      if (!this.umpire) this.setUmpire(1);
+      speak(this, planCall(kind, this.umpire, this.callRng), { delay, level: CONFIG.audio.umpire.level, pan });
+      return true;
+    } catch (err) {
+      return false; // a sound problem must never interrupt the game
+    }
   }
 
   // Call from a user gesture (pointerdown / keydown).
@@ -54,6 +82,7 @@ export class AudioEngine {
 
   setMuted(m) {
     this.muted = m;
+    if (m) stopBrowserVoice();
     if (this.master) this.master.gain.setTargetAtTime(m ? 0 : this.volume, this.ctx.currentTime, 0.03);
   }
   setVolume(v) {

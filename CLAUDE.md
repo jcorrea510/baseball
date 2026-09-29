@@ -48,6 +48,12 @@ Feet. Origin = back tip of home plate. `+x` = right-field side (screen-right fro
 - Parts are merged into few meshes with vertex colours; `ao` on a part bakes a little ambient occlusion at its ends. `detail` (0..1) lowers polygon counts: fielders/coaches 0.62, everybody x0.75 on phones (`Actors.detailScale`). Keep full detail for batter/catcher/pitcher/umpire - they fill the screen.
 - Caution: never make one part's surface coincide with another's (z-fighting shows as dotted rings) - make the outer part a touch wider.
 
+### The umpire's voice (audio/umpireVoice.js)
+- No audio files. `planCall(kind, voice, rng)` (pure, unit tested) lays a call out as a timeline of sounds (hiss, pop, voiced vowel with resonances + pitch contour); `speak()` turns it into Web Audio nodes: a raspy glottal source (pitch curve with jitter, loudness curve with shimmer/fry) -> parallel formant filters -> soft-clip "shout" + presence -> pan + a little stadium reverb. Consonants come from filtered noise. `AudioEngine.callUmpire(kind, {pan})` is the only entry point; it swallows any audio error and respects mute / `umpireMode` ('synth' | 'speech' | 'off').
+- Kinds: strike, strikeSwing, strike3, strike3Swing, ball, ball4, foul, safe, out. The app decides which (`App.onPitchCall`, `umpireCall`): strike three and ball four come from the engine's `pitchCall` payload (`result`); fouls from the 'landed' play event; outs from 'outCall'; close plays get a planner event `safe` (`addCalls`, `fielding.closePlay`). Derby has no calls. Gestures (`umpirePose(kind)`) always play, even with the voice off; base calls are voice only (panned), plate calls also gesture.
+- Every game has one umpire character (`AudioEngine.setUmpire(seed)`): pitch/roughness/tempo; each call varies a little around it.
+- QA: render calls offline (OfflineAudioContext + `speak`) and look at a spectrogram - vowels show as moving formant bands.
+
 ### Startup and the boot guard (do not bypass)
 - `index.html` has an **inline classic script** (`window.__sandlotBoot`) that owns the "Warming up the ballpark" splash and the `#boot-error` screen. It works even when the game's own files never load. `done()` hides the splash; `fail(kind, err)` shows a readable error (kinds: `load`, `start`, `frame`, `timeout`). State is mirrored in `<html data-boot="loading|ready|failed:<kind>">`.
 - It catches: the module script failing to load (capture-phase `error` on `<script>`), uncaught exceptions / rejected promises while starting, and a 45 s timeout (soft "still loading" note at 12 s).

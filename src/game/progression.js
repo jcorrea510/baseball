@@ -6,7 +6,7 @@ import { CONFIG } from '../config.js';
 export const DEFAULT_SAVE = () => ({
   v: 1,
   settings: {
-    difficulty: 'pro', tod: 'day', zone: true, hand: 'auto', sound: true, volume: 0.8, shake: true, howtoSeen: false, aimAssistHint: true,
+    difficulty: 'pro', tod: 'day', zone: true, umpire: 'synth', hand: 'auto', sound: true, volume: 0.8, shake: true, howtoSeen: false, aimAssistHint: true,
   },
   career: {
     games: 0, wins: 0, pa: 0, ab: 0, hits: 0, hr: 0, longestHR: 0, maxEV: 0, perfects: 0, swings: 0, contacts: 0,
