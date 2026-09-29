@@ -269,9 +269,9 @@ export class Engine {
     this.emit('pitchCall', { ...info, call, result: res.result, strikes: g.strikes, balls: g.balls });
     this.emitCount();
     if (res.paEnded) {
-      if (res.result === 'walk') { this.stats.walks++; }
+      this.stats.pa++;
+      if (res.result === 'walk') { this.stats.walks++; this.stats.rbi += res.runs; } // a bases-loaded walk drives in a run
       if (res.result.startsWith('strikeout')) { this.stats.strikeouts++; this.stats.ab++; }
-      this.stats.rbi += 0;
       this.emit('result', {
         kind: 'pa', result: res.result, text: rules.RESULT_TEXT[res.result], runs: res.runs, outs: g.outs, halfOver: res.halfOver,
         batter: this.batter, ...info,

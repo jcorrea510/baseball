@@ -40,6 +40,30 @@ describe('one pitch at a time', () => {
     expect(e.game.bases[0]).toBeTruthy();
   });
 
+  it('walks count as plate appearances and a bases-loaded walk is an RBI', () => {
+    const e = new Engine({ mode: 'quick', seed: 2 });
+    e.pitchOverride = ballPitch;
+    e.start();
+    let walks = 0;
+    e.on('result', (r) => { if (r.result === 'walk') walks++; });
+    while (walks < 4 && e.time < 120) e.update(DT);
+    expect(walks).toBe(4);
+    expect(e.stats.pa).toBe(4);
+    expect(e.stats.walks).toBe(4);
+    expect(e.stats.ab).toBe(0);
+    expect(e.stats.rbi).toBe(1); // the fourth walk forced the runner on third home
+    expect(e.game.score.top).toBe(1);
+  });
+
+  it('strikeouts count as plate appearances and at-bats', () => {
+    const e = new Engine({ mode: 'quick', seed: 3 });
+    e.pitchOverride = strikePitch;
+    e.start();
+    while (e.stats.strikeouts < 2 && e.time < 120) e.update(DT);
+    expect(e.stats.pa).toBe(2);
+    expect(e.stats.ab).toBe(2);
+  });
+
   it('three called strikes is a strikeout and the third out ends the half', () => {
     const e = new Engine({ mode: 'quick', seed: 3 });
     e.pitchOverride = strikePitch;
