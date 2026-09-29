@@ -10,7 +10,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const inline = html.match(/<script>([\s\S]*?)<\/script>/);
 
-function makePage() {
+function makePage(hostname = 'example.vercel.app') {
   const els = {};
   const el = (id) => (els[id] = els[id] || { id, textContent: '', hidden: true, style: {}, parentNode: { removeChild(n) { n.removed = true; } } });
   ['boot', 'boot-msg', 'boot-error', 'boot-error-title', 'boot-error-body', 'boot-error-detail'].forEach(el);
@@ -31,6 +31,7 @@ function makePage() {
       addEventListener() {},
     },
     navigator: { userAgent: 'test-agent' },
+    location: { hostname },
     console: { error() {} },
     setTimeout: (fn, ms) => { timers.push({ at: now + ms, fn, live: true }); return timers.length; },
     clearTimeout: (id) => { if (timers[id - 1]) timers[id - 1].live = false; },
@@ -64,13 +65,30 @@ describe('index.html boot guard', () => {
     expect(p.boot).toBeTruthy();
   });
 
-  it('shows "game files didn\'t load" when the game script fails to load (the un-built-source deploy)', () => {
+  it('shows "game files didn\'t load" when the game script fails to load, without GitHub talk for players', () => {
     const p = makePage();
-    p.fire('error', { target: { tagName: 'SCRIPT', src: 'https://example.github.io/src/main.js' } });
+    p.fire('error', { target: { tagName: 'SCRIPT', src: 'https://example.vercel.app/baseball/assets/index.js' } });
     expect(p.state()).toBe('failed:load');
     expect(p.els['boot-error'].hidden).toBe(false);
     expect(p.els['boot-error-title'].textContent).toMatch(/game files/i);
-    expect(p.els['boot-error-body'].textContent).toMatch(/GitHub Actions/);
+    expect(p.els['boot-error-body'].textContent).not.toMatch(/GitHub|Pages|Actions/i);
+    expect(p.els['boot-error-detail'].textContent).toContain('assets/index.js');
+  });
+
+  it('on a non-GitHub host the site-owner hint talks about the build address, never about GitHub Actions', () => {
+    const p = makePage('my-game.vercel.app');
+    p.fire('error', { target: { tagName: 'SCRIPT', src: 'https://my-game.vercel.app/baseball/assets/index.js' } });
+    const detail = p.els['boot-error-detail'].textContent;
+    expect(detail).toMatch(/whoever runs this site/i);
+    expect(detail).toMatch(/Vercel/);
+    expect(detail).not.toMatch(/GitHub Actions/);
+  });
+
+  it('on GitHub Pages the site-owner hint (in the folded details only) explains the Pages source setting', () => {
+    const p = makePage('jcorrea510.github.io');
+    p.fire('error', { target: { tagName: 'SCRIPT', src: 'https://jcorrea510.github.io/src/main.js' } });
+    expect(p.els['boot-error-body'].textContent).not.toMatch(/GitHub/i);
+    expect(p.els['boot-error-detail'].textContent).toMatch(/GitHub Actions/);
     expect(p.els['boot-error-detail'].textContent).toContain('src/main.js');
   });
 

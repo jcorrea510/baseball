@@ -71,7 +71,23 @@ Every time something is pushed to the **`main`** branch, GitHub automatically te
 
 **How to tell it worked:** the run named "Deploy to GitHub Pages" is green and has no yellow warning. If you still see a second run named "pages build and deployment" (with a "Build with Jekyll" step) after each push, or a yellow "Set GitHub Pages to GitHub Actions" warning on the run, Pages is still on "Deploy from a branch" - go back to step 3.
 
-If the game ever shows an error screen instead of the title screen, read the message on it: it says whether the game files didn't load (the Pages setting above) or the browser couldn't start 3D graphics (turn on hardware acceleration or try another browser).
+If the game ever shows an error screen instead of the title screen, read the message on it: it says whether the game files didn't load or the browser couldn't start 3D graphics (turn on hardware acceleration or try another browser). Under **Technical details** on that screen there is a short note for whoever runs the site (on GitHub Pages it points at the Pages setting above).
+
+## Publishing on Vercel (optional second home)
+
+The same code also runs on Vercel. The build works out the right web address layout by itself: on GitHub Pages the game lives under `/baseball/`, on Vercel it lives at the site root `/`. The repository's `vercel.json` already holds the settings, so importing the repo is normally all it takes:
+
+| Vercel setting | Value |
+| --- | --- |
+| Framework Preset | **Vite** |
+| Build Command | `npm run build` |
+| Output Directory | `dist` |
+| Install Command | `npm ci` |
+| Root Directory | (leave empty) |
+| Environment Variables | **none** - do not add `BASE_PATH`. (If one was added earlier, delete it; only the value `/` would be safe.) |
+| Production Branch | `main` |
+
+Every push to `main` then updates both GitHub Pages and Vercel. If the Vercel site ever shows "The game files didn't load", open **Technical details** on that screen: it names the file that was not found. That happens when a build made for another address is deployed, so check that no `BASE_PATH` variable is set and redeploy (Deployments, the three dots, Redeploy, untick "Use existing Build Cache").
 
 ## Tuning the game
 

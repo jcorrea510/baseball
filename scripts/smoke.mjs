@@ -3,15 +3,24 @@
 //   npm run build && npm run smoke
 //
 // It serves the finished site (dist/) exactly the way GitHub Pages does - under the /<repo>/ sub-path, with a 404 for
-// everything outside it - and opens it in headless Chrome. Three scenarios:
+// everything outside it - and opens it in headless Chrome. It also builds the game the way Vercel does (base "/",
+// served at the site root) and the plain default way (served from some other folder). Scenarios:
 //   1. the built game        -> must reach the title screen with no console errors and no failed downloads
-//   2. built game, no WebGL  -> must show the "couldn't start 3D graphics" screen (never a spinner that never ends)
-//   3. raw source files      -> what GitHub publishes if Pages is set to "Deploy from a branch" instead of "GitHub
+//   2. menus                 -> a real click-through of the menus
+//   3. Vercel-style build    -> served at the site root, must reach the title screen
+//   4. default build         -> served from a folder it was not told about, must reach the title screen
+//   5. wrong base path       -> a build made for /baseball/ served at the root of a non-GitHub host must show a
+//                               readable message that does NOT talk about GitHub settings
+//   6. built game, no WebGL  -> must show the "couldn't start 3D graphics" screen (never a spinner that never ends)
+//   7. raw source files      -> what GitHub publishes if Pages is set to "Deploy from a branch" instead of "GitHub
 //                               Actions"; must show the "game files didn't load" screen
-// Scenario 3 is the exact failure that once left the live site stuck on "Warming up the ballpark" forever.
+// Scenario 7 is the exact failure that once left the live site stuck on "Warming up the ballpark" forever; scenarios
+// 3-5 guard the Vercel deployment that once showed a GitHub-only message because the build assumed /baseball/.
 //
 // Browser: CHROME_PATH=/path/to/chrome overrides; on CI the preinstalled Google Chrome is used; otherwise Playwright's own.
 import http from 'node:http';
+import os from 'node:os';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,12 +34,12 @@ const TYPES = {
 };
 
 // A tiny static server that behaves like GitHub Pages: files exist only under BASE, everything else is an HTML 404.
-function serve(dir, { skip = /(^|\/)(node_modules|\.git)(\/|$)/ } = {}) {
+function serve(dir, { skip = /(^|\/)(node_modules|\.git)(\/|$)/, base = BASE } = {}) {
   const server = http.createServer((req, res) => {
     const url = decodeURIComponent(req.url.split('?')[0]);
     let file = null;
-    if (url.startsWith(BASE)) {
-      const rel = url.slice(BASE.length) || 'index.html';
+    if (url.startsWith(base)) {
+      const rel = url.slice(base.length) || 'index.html';
       const p = path.join(dir, rel);
       if (p.startsWith(dir) && !skip.test(rel) && fs.existsSync(p) && fs.statSync(p).isFile()) file = p;
     }
@@ -38,7 +47,7 @@ function serve(dir, { skip = /(^|\/)(node_modules|\.git)(\/|$)/ } = {}) {
     res.writeHead(200, { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream' });
     fs.createReadStream(file).pipe(res);
   });
-  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve({ server, url: `http://127.0.0.1:${server.address().port}${BASE}` })));
+  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve({ server, url: `http://127.0.0.1:${server.address().port}${base}` })));
 }
 
 const LAUNCH_ARGS = ['--no-sandbox', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
@@ -69,6 +78,22 @@ const bootState = (page) => page.evaluate(() => document.documentElement.getAttr
 async function waitFor(page, pred, ms, what) {
   try { await page.waitForFunction(pred, null, { timeout: ms }); } catch { throw new Error(`timed out after ${ms / 1000}s waiting for ${what} (boot state: ${await bootState(page)})`); }
 }
+
+// Builds the game into a temp folder the way a given host would (its environment variables only).
+const tempDirs = [];
+function buildTo(name, env) {
+  const out = path.join(os.tmpdir(), `sandlot-smoke-${process.pid}-${name}`);
+  tempDirs.push(out);
+  const clean = { ...process.env };
+  for (const k of ['BASE_PATH', 'VERCEL', 'VERCEL_ENV', 'NETLIFY', 'CF_PAGES', 'RENDER', 'GITHUB_ACTIONS', 'GITHUB_REPOSITORY']) delete clean[k];
+  execFileSync(process.execPath, [path.join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js'), 'build', '--outDir', out, '--emptyOutDir'], { cwd: ROOT, env: { ...clean, ...env }, stdio: 'ignore' });
+  return out;
+}
+const titleReached = async ({ page, problems }) => {
+  await waitFor(page, () => document.documentElement.getAttribute('data-boot') === 'ready', 90000, 'the game to start');
+  await waitFor(page, () => { const b = document.querySelector('#ui .screen.show button[data-a="play"]'); return b && b.offsetParent !== null; }, 10000, 'the Play Ball button');
+  if (problems.length) throw new Error('console/network problems:\n    ' + problems.join('\n    '));
+};
 
 const scenarios = [
   {
@@ -108,6 +133,33 @@ const scenarios = [
     },
   },
   {
+    name: 'Vercel-style build (base "/") served at the site root reaches the title screen',
+    dir: () => buildTo('vercel', { VERCEL: '1' }),
+    base: '/',
+    run: titleReached,
+  },
+  {
+    name: 'default build works from a folder it was not told about',
+    dir: () => buildTo('default', {}),
+    base: '/some/other/folder/',
+    run: titleReached,
+  },
+  {
+    name: 'wrong base path on a non-GitHub host -> readable message with no GitHub instructions',
+    dir: () => buildTo('wrongbase', { BASE_PATH: '/baseball/' }),
+    base: '/',
+    async run({ page }) {
+      await waitFor(page, () => (document.documentElement.getAttribute('data-boot') || '').startsWith('failed'), 30000, 'the error screen');
+      const title = await page.textContent('#boot-error-title');
+      if (!/game files/i.test(title)) throw new Error(`unexpected error title: "${title}"`);
+      const body = await page.textContent('#boot-error-body');
+      if (/GitHub|Pages|Actions/i.test(body)) throw new Error(`players are shown GitHub instructions: "${body}"`);
+      const detail = await page.textContent('#boot-error-detail');
+      if (/GitHub Actions/.test(detail)) throw new Error('a non-GitHub host is told to switch a GitHub setting');
+      if (!/assets\//.test(detail)) throw new Error('the technical details do not say which file failed');
+    },
+  },
+  {
     name: 'no WebGL -> readable error, not a hang',
     dir: path.join(ROOT, 'dist'),
     noWebGL: true,
@@ -126,7 +178,8 @@ const scenarios = [
       const title = await page.textContent('#boot-error-title');
       if (!/game files/i.test(title)) throw new Error(`unexpected error title: "${title}"`);
       const body = await page.textContent('#boot-error-body');
-      if (!/GitHub Actions/.test(body)) throw new Error('the message does not tell the site owner about the "GitHub Actions" setting');
+      if (/GitHub Actions/.test(body)) throw new Error('players are shown GitHub instructions');
+      if (!/whoever runs this site/i.test(await page.textContent('#boot-error-detail'))) throw new Error('the technical details have no hint for the site owner');
     },
   },
 ];
@@ -136,17 +189,25 @@ if (!fs.existsSync(path.join(ROOT, 'dist', 'index.html'))) { console.error('dist
 const browser = await launch();
 let failed = 0;
 for (const sc of scenarios) {
-  const { server, url } = await serve(sc.dir);
-  const started = Date.now();
+  let server, url;
   try {
-    await sc.run(await open(browser, url, { noWebGL: sc.noWebGL }));
+    ({ server, url } = await serve(typeof sc.dir === 'function' ? sc.dir() : sc.dir, { base: sc.base || BASE }));
+  } catch (err) { failed++; console.log(`  FAIL  ${sc.name}\n    could not set up: ${err.message}`); continue; }
+  const started = Date.now();
+  let opened = null;
+  try {
+    opened = await open(browser, url, { noWebGL: sc.noWebGL });
+    await sc.run(opened);
     console.log(`  ok    ${sc.name} (${((Date.now() - started) / 1000).toFixed(1)}s)`);
   } catch (err) {
     failed++;
     console.log(`  FAIL  ${sc.name}\n    ${err.message}`);
   }
+  // close the page: a finished scenario must not keep drawing the 3D scene and slow the next one down
+  if (opened) await opened.page.close().catch(() => {});
   server.close();
 }
 await browser.close();
+for (const d of tempDirs) fs.rmSync(d, { recursive: true, force: true });
 console.log(failed ? `\n${failed} smoke check(s) failed` : '\nsmoke checks passed');
 process.exit(failed ? 1 : 0);

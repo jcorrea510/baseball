@@ -24,14 +24,25 @@
         var setState = function (s) { state = s; document.documentElement.setAttribute('data-boot', s); };
         setState('loading');
 
+        function hostName() { try { return String(location.hostname || ''); } catch (_) { return ''; } }
+        // Advice for whoever runs the site. Players never see it up front (it sits in the folded "Technical details"),
+        // and it only mentions GitHub when the page really is on GitHub Pages.
+        function ownerHint(kind) {
+          if (kind !== 'load') return '';
+          if (/\.github\.io$/i.test(hostName())) {
+            return 'For whoever runs this site (GitHub Pages): it is most likely publishing the un-built source code instead of the finished game. ' +
+              'On GitHub open Settings → Pages, set Source to “GitHub Actions”, then run the “Deploy to GitHub Pages” workflow again.';
+          }
+          return 'For whoever runs this site: the page loaded, but the game files were not found at the address the page asked for. ' +
+            'Rebuild and publish again so the build matches where the site lives (on Vercel the build uses “/”; see the README).';
+        }
+
         function explain(kind, err) {
           var msg = String((err && err.message) || err || '');
           if (kind === 'load') {
             return {
               title: "The game files didn't load",
-              body: 'The page opened, but the game program itself could not be downloaded or started. Reload the page to try again. ' +
-                'If you run this site: it is most likely publishing the un-built source code instead of the finished game. ' +
-                'On GitHub open Settings → Pages, set Source to “GitHub Actions”, then run the “Deploy to GitHub Pages” workflow again.'
+              body: 'The page opened, but the game program itself could not be downloaded or started. Reload the page to try again.'
             };
           }
           if (/webgl/i.test(msg)) {
@@ -57,6 +68,8 @@
           $('boot-error-title').textContent = e.title;
           $('boot-error-body').textContent = e.body;
           var detail = kind + ': ' + String((err && err.message) || err || 'no message');
+          var hint = ownerHint(kind);
+          if (hint) detail = hint + '\n\n' + detail;
           if (err && err.stack) detail += '\n' + String(err.stack).split('\n').slice(0, 6).join('\n');
           detail += '\n' + navigator.userAgent;
           $('boot-error-detail').textContent = detail;
