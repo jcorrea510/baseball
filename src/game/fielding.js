@@ -237,6 +237,66 @@ function coverer(base, fielder, defense) {
   return pick.pos === fielder.pos ? (pick.pos === 'SS' ? defense['2B'] : defense.SS) : pick;
 }
 
+// Who could take a throw at `base` from `thrower`, in the order a defense would use them.
+function coverCandidates(base, thrower, defense) {
+  const list = [];
+  const add = (pos) => { if (pos !== thrower.pos && !list.some((q) => q.pos === pos)) list.push(defense[pos]); };
+  if (base === 4 || base === 0) add('C');
+  else if (base === 1) { if (thrower.pos === '1B') { add('P'); add('2B'); } else add('1B'); }
+  else if (base === 3) { add('3B'); add('SS'); }
+  else { add(coverer(2, thrower, defense).pos); add('SS'); add('2B'); }
+  return list;
+}
+
+// When can fielder `q` be standing on `base`, if he breaks for it at `tStart`? (Same movement model as every other run.)
+function coverArrival(plan, q, base, tStart, cfg) {
+  const F = cfg.fielding;
+  const runs = plan.paths[q.pos];
+  const last = runs && runs[runs.length - 1];
+  const x0 = last ? last.xStop : q.x, z0 = last ? last.zStop : q.z;
+  const t0 = last ? Math.max(tStart, last.tStop) : tStart;
+  const speed = Math.max(q.speed, F.cover.minSpeed);
+  return { t: t0 + timeToCover(speed, dist(x0, z0, BASE_XZ[base][0], BASE_XZ[base][1]), F.accel), speed, start: t0 };
+}
+
+/**
+ * Every way to record the out at `base`, best first. An option is only real if somebody is on the bag WITH the ball:
+ *   - a throw to a covering fielder: the throw is timed to reach the bag when he does (the ball never goes to an empty base),
+ *     so the out is made at max(when the throw could arrive, when he can get there);
+ *   - the fielder with the ball takes it there himself (unassisted), if he is close enough to be quicker.
+ * @param {object} o
+ * @param {object} o.thrower   the fielder with the ball
+ * @param {number} o.tReady    when he is ready to throw
+ * @param {{x:number,z:number}} o.from  where he throws from
+ * @param {number} [o.tHave]   when he first has the ball (for carrying it himself); omit to rule that out
+ * @param {number} [o.runnerT] when the runner gets there (options that are too late are dropped)
+ */
+function coverOptions(o, plan, defense, cfg) {
+  const F = cfg.fielding;
+  const { base, thrower, tReady, from } = o;
+  const [bx, bz] = BASE_XZ[base === 0 ? 4 : base];
+  const tag = base === 4 ? F.tagTime : 0;
+  const out = [];
+  const flight = throwTime(dist(from.x, from.z, bx, bz), thrower, cfg);
+  coverCandidates(base, thrower, defense).forEach((q, idx) => {
+    const arr = coverArrival(plan, q, base, F.cover.start, cfg);
+    const tOut = Math.max(tReady + flight + tag, arr.t + tag);
+    out.push({ recv: q, self: false, tOut, t1: tOut, t0: Math.max(tReady, tOut - tag - flight), tCover: arr.t, coverStart: arr.start, speed: arr.speed, score: tOut - (idx === 0 ? F.cover.traditionBonus : 0) });
+  });
+  if (o.tHave !== undefined) {
+    // he carries it there from where his own run left him (he cannot start before he has stopped)
+    const runs = plan.paths[thrower.pos];
+    const last = runs && runs[runs.length - 1];
+    const x0 = last ? last.xStop : from.x, z0 = last ? last.zStop : from.z;
+    const start = Math.max(o.tHave + F.cover.selfStart + (o.dive ? F.dive.throwExtra : 0), last ? last.tStop : 0);
+    const d = dist(x0, z0, bx, bz);
+    const tOut = start + timeToCover(thrower.speed, d, F.accel);
+    out.push({ recv: thrower, self: true, tOut, t1: tOut, t0: start, tCover: tOut, coverStart: start, speed: thrower.speed, score: tOut - (d <= F.cover.selfDistance ? F.cover.selfBonus : 0) });
+  }
+  const runnerT = o.runnerT ?? Infinity;
+  return out.filter((c) => c.tOut + F.outMargin <= runnerT).sort((a, b) => a.score - b.score);
+}
+
 // ---------------------------------------------------------------------------
 // The main entry point.
 // ---------------------------------------------------------------------------
@@ -557,6 +617,7 @@ function addSupport(plan, i, cfg) {
 // thrown at an empty base).
 function settleThrows(plan) {
   for (const th of plan.throws) {
+    if (th.toBase >= 1 && th.toBase <= 4) continue; // a throw at a base goes to the base: the man covering it is standing there
     const runs = plan.paths[th.to];
     if (!runs) continue;
     const p = samplePath(runs, th.t1);
@@ -570,23 +631,31 @@ function throwArrival(f, tReady, base, fx, fz, cfg) {
   return { t: tReady + throwTime(d, f, cfg) + (base === 4 ? cfg.fielding.tagTime : 0), d };
 }
 
-function tryInfieldOut({ f, tF, tReady, pf, bases, forced, outs, defense, cfg }) {
-  const F = cfg.fielding;
-  const batterTo1 = runnerArrival(cfg, 0, 1);
+// Can the defense get an out at this base before the runner does? Returns the best way, or null.
+function outAt(base, runnerT, ctx, plan, cfg) {
+  const { f, tF, tReady, pf } = ctx;
+  const dive = !!(plan.fielderMoves[0] && plan.fielderMoves[0].dive);
+  const opts = coverOptions({ base, thrower: f, tReady, from: { x: pf.x, z: pf.z }, tHave: tF, dive, runnerT }, plan, ctx.defense, cfg);
+  return opts[0] || null;
+}
+
+function tryInfieldOut({ f, tF, tReady, pf, bases, forced, outs, defense, cfg, plan }) {
+  const ctx = { f, tF, tReady, pf, defense };
   const options = [];
 
-  // Force play on the lead forced runner (only if fewer than 2 outs makes a double play worth it, or as the sure out)
+  // Force play on the lead forced runner (the sure out with runners on, and it starts a double play)
   let leadForced = 0;
   for (const b of forced) leadForced = Math.max(leadForced, b);
   if (leadForced > 0) {
-    const targetBase = leadForced + 1; // runner from `leadForced` heads to the next base
+    const targetBase = leadForced + 1 > 3 ? 4 : leadForced + 1; // runner from `leadForced` heads to the next base
     const runnerArr = runnerArrival(cfg, leadForced, Math.min(4, leadForced + 1));
-    const th = throwArrival(f, tReady, targetBase > 3 ? 4 : targetBase, pf.x, pf.z, cfg);
-    if (th.t + F.outMargin <= runnerArr) options.push({ kind: 'force', base: targetBase > 3 ? 4 : targetBase, t: th.t, margin: runnerArr - th.t, d: th.d });
+    const way = outAt(targetBase, runnerArr, ctx, plan, cfg);
+    if (way) options.push({ kind: 'force', base: targetBase, t: way.tOut, margin: runnerArr - way.tOut, way });
   }
   // Batter at first
-  const th1 = throwArrival(f, tReady, 1, pf.x, pf.z, cfg);
-  if (th1.t + F.outMargin <= batterTo1) options.push({ kind: 'first', base: 1, t: th1.t, margin: batterTo1 - th1.t, d: th1.d });
+  const batterTo1 = runnerArrival(cfg, 0, 1);
+  const way1 = outAt(1, batterTo1, ctx, plan, cfg);
+  if (way1) options.push({ kind: 'first', base: 1, t: way1.tOut, margin: batterTo1 - way1.tOut, way: way1 });
 
   if (!options.length) return null;
   // With < 2 outs and a force available, prefer the force (starts a double play); else the surest out.
@@ -598,60 +667,75 @@ function tryInfieldOut({ f, tF, tReady, pf, bases, forced, outs, defense, cfg })
   return { choice, force, first, leadForced };
 }
 
+// Put a chosen way of making the out into the plan: the covering fielder runs to the bag, the throw is timed to reach him there
+// (or the fielder carries the ball to the bag himself).
+function planOut(plan, way, base, thrower, from, tReady, cfg, role = 'cover') {
+  const F = cfg.fielding;
+  const [bx, bz] = BASE_XZ[base === 0 ? 4 : base];
+  const recv = way.recv;
+  addMove(plan, recv, bx, bz, Math.max(way.coverStart + 0.05, way.tOut - (base === 4 ? F.tagTime : 0)), { role, start: way.coverStart, vmax: way.speed, minEffort: 0.8 }, cfg);
+  if (way.self) {
+    const carry = plan.carries.find((c) => c.pos === thrower.pos && c.t1 - c.t0 < 5);
+    if (carry) carry.t1 = way.tOut + 99;
+  } else {
+    // he holds the ball until the throw can arrive together with the covering man
+    const carry = plan.carries.find((c) => c.pos === thrower.pos && Math.abs(c.t1 - tReady) < 1e-6);
+    if (carry) carry.t1 = Math.max(carry.t1, way.t0);
+    plan.throws.push({ from: thrower.pos, to: recv.pos, t0: way.t0, t1: way.t1, ax: from.x, az: from.z, bx, bz, toBase: base });
+    plan.carries.push({ pos: recv.pos, t0: way.t1, t1: way.t1 + 99 });
+  }
+  plan.events.push({ t: way.tOut, type: 'out', base: base === 0 ? 4 : base, pos: recv.pos });
+}
+
 function finishInfieldOut(plan, at, ctx) {
   const { f, tF, tReady, pf, bases, forced, outs, defense, cfg } = ctx;
   const F = cfg.fielding;
   const { choice, leadForced } = at;
 
-  const coverFor = (base) => coverer(base, f, defense);
-  const recv = coverFor(choice.base);
+  const way = choice.way;
+  const recv = way.recv;
   const rp = { x: BASE_XZ[choice.base][0], z: BASE_XZ[choice.base][1] };
-  // Receiving fielder covers the bag
-  addMove(plan, recv, rp.x, rp.z, Math.max(recv.react + 0.2, choice.t - 0.25), { role: 'cover', minEffort: 0.8 }, cfg);
+  const tOut = way.tOut;
+  planOut(plan, way, choice.base, f, { x: pf.x, z: pf.z }, tReady, cfg);
   plan.ctx.tgtBase = choice.base;
-  plan.throws.push({ from: f.pos, to: recv.pos, t0: tReady, t1: choice.t, ax: pf.x, az: pf.z, bx: rp.x, bz: rp.z, toBase: choice.base });
-  plan.events.push({ t: choice.t, type: 'out', base: choice.base, pos: recv.pos });
-  plan.carries.push({ pos: recv.pos, t0: choice.t, t1: choice.t + 99 });
   plan.outsMade = 1;
-  let endT = choice.t;
+  let endT = tOut;
 
   if (choice.kind === 'first') {
     // batter out at first; runners advance if they can
-    plan.moves.push({ from: 0, to: 0, out: true, outAt: choice.t, outBase: 1 });
+    plan.moves.push({ from: 0, to: 0, out: true, outAt: tOut, outBase: 1 });
     plan.result = 'groundout';
     plan.batterDest = 0;
     plan.moves.push(...advanceOnGroundout({ bases, forced, outsAfter: outs + 1, f, pf, tReady, cfg }));
   } else {
     // force out at `choice.base`: the runner from base-1 is out
     const outFrom = choice.base === 4 ? 3 : choice.base - 1;
-    plan.moves.push({ from: outFrom, to: 0, out: true, outAt: choice.t, outBase: choice.base });
+    plan.moves.push({ from: outFrom, to: 0, out: true, outAt: tOut, outBase: choice.base });
     // other runners: forced ones advance one base; free ones may take an extra base
     const skip = new Set([outFrom]);
     // (computed after we know whether a second out is made; provisional with one out)
     plan._pendingRunners = { skip };
-    // Try for the second out (double play): relay to first
+    // Try for the second out (double play): the man with the ball relays to first - if someone can be on the bag with it in time
     const secondOutPossible = outs + 1 < 3;
     plan.batterDest = 1;
     plan.moves.push({ from: 0, to: 1, out: false });
     plan.result = 'fieldersChoice';
     if (secondOutPossible) {
-      const tRelay = choice.t + F.transfer.IF * 0.85;
-      const d = dist(rp.x, rp.z, BASE_XZ[1][0], BASE_XZ[1][1]);
-      const t2 = tRelay + d / F.throwSpeed.IF;
-      const first = defense['1B'].pos === recv.pos ? defense.P : defense['1B'];
+      const tRelay = tOut + F.transfer.IF * 0.85;
       const arrival = runnerArrival(cfg, 0, 1);
-      if (t2 + F.outMargin <= arrival && first.pos !== recv.pos && recv.pos !== '1B') {
-        addMove(plan, first, BASE_XZ[1][0], BASE_XZ[1][1] + 0.5, Math.max(first.react + 0.2, t2 - 0.3), { role: 'cover', minEffort: 0.8 }, cfg);
-        plan.throws.push({ from: recv.pos, to: first.pos, t0: tRelay, t1: t2, ax: rp.x, az: rp.z, bx: BASE_XZ[1][0], bz: BASE_XZ[1][1], toBase: 1 });
-        plan.events.push({ t: t2, type: 'out', base: 1, pos: first.pos });
-        plan.carries.push({ pos: first.pos, t0: t2, t1: t2 + 99 });
+      const opts = coverOptions({ base: 1, thrower: recv, tReady: tRelay, from: rp, runnerT: arrival }, plan, defense, cfg);
+      if (opts.length) {
+        const w2 = opts[0];
+        planOut(plan, w2, 1, recv, rp, tRelay, cfg);
+        // (the pivot man holds the ball only until he throws it)
+        for (const c of plan.carries) if (c.pos === recv.pos && c.t0 < w2.t0 && c.t1 > w2.t0) c.t1 = w2.t0;
         // batter is out
         const bm = plan.moves.find((m) => m.from === 0);
-        bm.to = 0; bm.out = true; bm.outAt = t2; bm.outBase = 1;
+        bm.to = 0; bm.out = true; bm.outAt = w2.tOut; bm.outBase = 1;
         plan.batterDest = 0;
         plan.outsMade = 2;
         plan.result = 'doublePlay';
-        endT = t2;
+        endT = w2.tOut;
       }
     }
   }
@@ -663,7 +747,7 @@ function finishInfieldOut(plan, at, ctx) {
   plan.endTime = endT + 0.8;
   // the play is not over while a runner who moved up is still running (he would otherwise be cut off mid-stride)
   for (const m of plan.moves) if (!m.out && m.to > m.from) plan.endTime = Math.max(plan.endTime, runnerFinish(cfg, m.from, m.to, m.tStart) + 0.3);
-  void leadForced;
+  void leadForced; void tF;
   return plan;
 }
 
@@ -740,14 +824,18 @@ function finishHit(plan, ctx) {
   const tgtBase = Math.min(4, leadDest >= 4 ? 4 : leadDest + 0); // throw to the base the lead runner reaches
   plan.ctx.tgtBase = tgtBase;
   const relayNeeded = f.type === 'OF' && dist(pf.x, pf.z, BASE_XZ[tgtBase][0], BASE_XZ[tgtBase][1]) > F.relayDistance;
-  const recv = coverer(tgtBase, f, defense);
   const rp = { x: BASE_XZ[tgtBase][0], z: BASE_XZ[tgtBase][1] };
+  const holdThrow = (thrower, tReadyT, way) => { // he holds the ball until the throw can reach the bag together with the man covering it
+    const carry = plan.carries.find((c) => c.pos === thrower.pos && Math.abs(c.t1 - tReadyT) < 1e-6);
+    if (carry) carry.t1 = Math.max(carry.t1, way.t0);
+  };
   if (relayNeeded) {
     // cut-off man: nearest infielder standing 55% of the way back from the base
     const cx = rp.x + (pf.x - rp.x) * 0.5, cz = rp.z + (pf.z - rp.z) * 0.5;
+    const recvGuess = coverer(tgtBase, f, defense);
     let cut = null;
     for (const pos of ['SS', '2B', '3B', '1B']) {
-      if (pos === recv.pos) continue;
+      if (pos === recvGuess.pos) continue;
       const q = defense[pos];
       const d = dist(q.x, q.z, cx, cz);
       if (!cut || d < cut.d) cut = { q, d };
@@ -755,22 +843,34 @@ function finishHit(plan, ctx) {
     const c = cut.q;
     const t1 = tReady + dist(pf.x, pf.z, cx, cz) / F.throwSpeed.OF;
     const t2 = t1 + F.relayTransfer;
-    const t3 = t2 + dist(cx, cz, rp.x, rp.z) / F.throwSpeed.IF;
+    const way = coverOptions({ base: tgtBase, thrower: c, tReady: t2, from: { x: cx, z: cz } }, plan, defense, cfg).filter((o) => o.recv.pos !== c.pos)[0];
+    const recv = way.recv;
+    const t3 = way.t1;
     addMove(plan, c, cx, cz, Math.max(c.react + 0.3, t1 - 0.4), { role: 'relay', minEffort: 0.8 }, cfg);
-    addMove(plan, recv, rp.x, rp.z, Math.max(recv.react + 0.3, t3 - 0.3), { role: 'cover', minEffort: 0.8 }, cfg);
+    addMove(plan, recv, rp.x, rp.z, Math.max(way.coverStart + 0.05, t3), { role: 'cover', start: way.coverStart, vmax: way.speed, minEffort: 0.8 }, cfg);
     plan.throws.push({ from: f.pos, to: c.pos, t0: tReady, t1, ax: pf.x, az: pf.z, bx: cx, bz: cz, toBase: 0 });
-    plan.throws.push({ from: c.pos, to: recv.pos, t0: t2, t1: t3, ax: cx, az: cz, bx: rp.x, bz: rp.z, toBase: tgtBase });
-    plan.carries.push({ pos: c.pos, t0: t1, t1: t2 });
+    plan.throws.push({ from: c.pos, to: recv.pos, t0: way.t0, t1: t3, ax: cx, az: cz, bx: rp.x, bz: rp.z, toBase: tgtBase });
+    plan.carries.push({ pos: c.pos, t0: t1, t1: way.t0 });
     plan.carries.push({ pos: recv.pos, t0: t3, t1: t3 + 99 });
     plan.events.push({ t: t3, type: 'throwEnd', pos: recv.pos, base: tgtBase });
     plan.ballEnd = t3;
   } else {
-    const t1 = tReady + dist(pf.x, pf.z, rp.x, rp.z) / F.throwSpeed[f.type];
-    addMove(plan, recv, rp.x, rp.z, Math.max(recv.react + 0.3, t1 - 0.3), { role: 'cover', minEffort: 0.8 }, cfg);
-    plan.throws.push({ from: f.pos, to: recv.pos, t0: tReady, t1, ax: pf.x, az: pf.z, bx: rp.x, bz: rp.z, toBase: tgtBase });
-    plan.carries.push({ pos: recv.pos, t0: t1, t1: t1 + 99 });
-    plan.events.push({ t: t1, type: 'throwEnd', pos: recv.pos, base: tgtBase });
-    plan.ballEnd = t1;
+    const way = coverOptions({ base: tgtBase, thrower: f, tReady, from: { x: pf.x, z: pf.z }, tHave: tF, dive: !!(plan.fielderMoves[0] && plan.fielderMoves[0].dive) }, plan, defense, cfg)[0];
+    const recv = way.recv;
+    addMove(plan, recv, rp.x, rp.z, Math.max(way.coverStart + 0.05, way.tOut), { role: 'cover', start: way.coverStart, vmax: way.speed, minEffort: 0.8 }, cfg);
+    if (way.self) {
+      // he takes the ball to the bag himself
+      const carry = plan.carries.find((c) => c.pos === f.pos && Math.abs(c.t1 - tReady) < 1e-6);
+      if (carry) carry.t1 = way.tOut + 99;
+      plan.events.push({ t: way.tOut, type: 'throwEnd', pos: recv.pos, base: tgtBase });
+      plan.ballEnd = way.tOut;
+    } else {
+      holdThrow(f, tReady, way);
+      plan.throws.push({ from: f.pos, to: recv.pos, t0: way.t0, t1: way.t1, ax: pf.x, az: pf.z, bx: rp.x, bz: rp.z, toBase: tgtBase });
+      plan.carries.push({ pos: recv.pos, t0: way.t1, t1: way.t1 + 99 });
+      plan.events.push({ t: way.t1, type: 'throwEnd', pos: recv.pos, base: tgtBase });
+      plan.ballEnd = way.t1;
+    }
   }
 
   // The play ends when every runner has stopped and the throw is in.

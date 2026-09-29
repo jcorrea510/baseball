@@ -285,6 +285,17 @@ export const CONFIG = {
       preferRun: 0.2, // nobody dives for a ball a fielder can simply run to within this many seconds
       highlightSlowMo: { catchScale: 0.36, catchDur: 1.0, stopScale: 0.6, stopDur: 0.6 }, // slow motion on a dive (game feel)
     },
+    // Covering a base: an out needs a fielder standing on the bag WITH the ball before the runner gets there. Whoever is not fielding
+    // the ball and is nearest to the play breaks for the bag; the fielder with the ball either carries it there himself (when he
+    // is close) or throws to the covering man, and the throw is timed to reach the bag when he does.
+    cover: {
+      start: 0.3, // s after contact that a fielder assigned to a bag breaks for it (a pitcher covering first leaves the mound at once)
+      minSpeed: 20, // ft/s: a fielder sprinting to a bag runs at least this fast (a pitcher covering first is not slow, he is hustling)
+      selfDistance: 18, // ft: a fielder who picks the ball up this close to the bag steps on it himself (a first baseman near the bag)
+      selfStart: 0.12, // s after he fields it before he starts for the bag with the ball
+      selfBonus: 0.25, // s: how much a close fielder prefers taking the bag himself over a throw (it is the natural play)
+      traditionBonus: 0.35, // s: the usual man covers unless someone else is clearly quicker (the pitcher covers first when the first baseman is pulled off)
+    },
     tagTime: 0.4, // extra time for the catcher to receive a throw and apply the tag at home
     fastBallPenalty: 0.27, // extra reaction (s) fielders need on the hardest-hit grounders
     closePlay: 0.45, // a runner who beats the throw by less than this many seconds gets a 'Safe!' call

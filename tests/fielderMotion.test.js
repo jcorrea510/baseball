@@ -578,7 +578,7 @@ describe('show-only runs do not hold up the game', () => {
       const sim = simulateBattedBall(params);
       const plan = planPlay({ sim, contact: { grade: 'good', ...params }, bases: bs.map((b) => (b ? {} : null)), outs: 0, defense, simple: false }, CONFIG);
       const back = fielderBackTime(plan, 'P', defense, CONFIG, plan.endTime);
-      expect(back - plan.endTime).toBeLessThan(3.6);
+      expect(back - plan.endTime).toBeLessThan(4.0); // (a pitcher who really ran over to cover first has ~65 ft to jog back)
     }
   });
 });
