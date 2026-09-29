@@ -260,7 +260,7 @@ export class App {
     else this.bot = null;
     eng.start();
     if (!this.prog.data.tipShown) {
-      this.ui.hint(this.touch ? 'Tap anywhere to swing as the ball reaches the plate' : 'Press SPACE (or click) to swing as the ball reaches the plate', 4200);
+      this.ui.hint(this.touch ? 'Tap to swing' : 'Space to swing', 4200);
       this.prog.data.tipShown = 1; this.prog.save();
     }
   }
@@ -302,7 +302,7 @@ export class App {
       void pitch;
     });
     e.on('whiff', ({ swing, reason }) => {
-      if (reason === 'reach') ui.hint('Out of reach - lay off pitches away from the zone', 1600);
+      if (reason === 'reach') ui.hint('Out of reach', 1600);
     });
     e.on('catch', ({ pitch, swung }) => {
       audio.glovePop(clamp((pitch.speedMph - 40) / 60, 0.3, 1.2));
@@ -331,7 +331,7 @@ export class App {
       ui.hideSummary();
       if (e.game) ui.setGameState(e.game);
       this.updateScoreboard();
-      if (newInning && e.game && !e.over) ui.banner(`INNING ${inning}`, e.game.inning > e.game.innings ? 'Extra innings · runner on second' : `${e.opponent.name} in the field`, 'neutral');
+      if (newInning && e.game && !e.over) ui.banner(`INNING ${inning}`, e.game.inning > e.game.innings ? 'Extra innings' : '', 'neutral');
     });
     e.on('gameOver', (p) => this.onGameOver(p));
   }
@@ -353,7 +353,7 @@ export class App {
     else if (grade === 'good') ui.banner('NICE HIT', '', 'good');
     else if (c.plan.result === 'foul') { audio.tick(); }
     if (c.homer) { this.slowMo = { t: 0, dur: F.slowMoDuration, delay: this.hitStop + 0.02 }; }
-    if (e.mode === 'practice') ui.callout([{ v: Math.round(c.exitVelocity), u: 'mph', l: 'Exit velocity' }, { v: Math.round(c.launchAngle), u: '°', l: 'Launch angle' }], 2400);
+    if (e.mode === 'practice') ui.callout([{ v: Math.round(c.exitVelocity), u: 'mph', l: 'Exit velo' }, { v: Math.round(c.launchAngle), u: '°', l: 'Launch' }], 2400);
     // The follow-through swoosh already played; a big hit swells the crowd a little right away
     if (c.big) this.audio.crowdSwell(0.35, 2);
     this.lastContact = c;
@@ -467,7 +467,7 @@ export class App {
 
   showDistanceCallout(c, isHr) {
     if (!c) return;
-    const items = [{ v: Math.round(c.exitVelocity), u: 'mph', l: 'Exit velocity' }, { v: Math.round(isHr ? c.projected.distance : c.distance), u: 'ft', l: 'Distance' }];
+    const items = [{ v: Math.round(c.exitVelocity), u: 'mph', l: 'Exit velo' }, { v: Math.round(isHr ? c.projected.distance : c.distance), u: 'ft', l: 'Distance' }];
     if (isHr || c.big) items.push({ v: Math.round(c.launchAngle), u: '°', l: 'Launch' });
     this.ui.callout(items, isHr ? 4200 : 3000);
   }
@@ -475,13 +475,13 @@ export class App {
   onResult(r) {
     const e = this.engine, ui = this.ui, audio = this.audio;
     if (e.game) { ui.setGameState(e.game); this.updateScoreboard(); }
-    const runsText = r.runs > 0 ? ` · ${r.runs} run${r.runs > 1 ? 's' : ''} score${r.runs > 1 ? '' : 's'}` : '';
+    const runsText = r.runs > 0 ? ` · ${r.runs} run${r.runs > 1 ? 's' : ''}` : '';
     const count = e.game ? `${e.game.balls}-${e.game.strikes}` : '';
     if (r.kind === 'pitch') {
-      const map = { ball: ['BALL', count, 'neutral'], calledStrike: ['STRIKE', count, 'bad'], swingingStrike: ['STRIKE', 'Swing and a miss', 'bad'], foul: ['FOUL', count, 'neutral'], take: ['', '', ''] };
+      const map = { ball: ['BALL', count, 'neutral'], calledStrike: ['STRIKE', count, 'bad'], swingingStrike: ['STRIKE', 'Swinging', 'bad'], foul: ['FOUL', count, 'neutral'], take: ['', '', ''] };
       const m = map[r.call] || [r.text || '', '', 'neutral'];
       if (r.call === 'ball' || r.call === 'take') { /* subtle */ }
-      if (m[0]) ui.banner(m[0], e.mode === 'quick' ? m[1] : (r.call === 'swingingStrike' ? 'Swing and a miss' : ''), m[2]);
+      if (m[0]) ui.banner(m[0], e.mode === 'quick' ? m[1] : (r.call === 'swingingStrike' ? 'Swinging' : ''), m[2]);
       if (r.call === 'ball' && e.game && e.game.balls === 3) audio.crowdSwell(0.2, 1.2);
       return;
     }
@@ -491,10 +491,10 @@ export class App {
     if (res === 'homer' || res === 'insideParkHomer') { cls = 'hr'; sub = `${Math.round(r.distanceFt || r.distance || 0)} ft${runsText}`; if (r.walkOff) sub = 'WALK-OFF!'; }
     else if (['single', 'double', 'triple'].includes(res)) { cls = 'good'; sub = `${Math.round(r.exitVelocity)} mph${runsText}`; audio.crowdSwell(res === 'single' ? 0.4 : 0.65, 2.2); audio.applause(1.2, 0.5); }
     else if (res === 'walk') { cls = 'neutral'; sub = runsText.replace(' · ', ''); audio.crowdSwell(0.2, 1.2); }
-    else if (res === 'strikeoutSwinging' || res === 'strikeoutLooking') { cls = 'bad'; sub = res === 'strikeoutLooking' ? 'Caught looking' : 'Swinging'; audio.crowdGroan(0.7); }
+    else if (res === 'strikeoutSwinging' || res === 'strikeoutLooking') { cls = 'bad'; sub = res === 'strikeoutLooking' ? 'Looking' : 'Swinging'; audio.crowdGroan(0.7); }
     else if (res === 'out') { cls = 'bad'; sub = r.detail ? r.detail : ''; audio.crowdGroan(0.4); }
     else if (['groundout', 'flyout', 'lineout', 'popout', 'foulOut', 'doublePlay', 'fieldersChoice', 'sacFly'].includes(res)) {
-      cls = res === 'sacFly' ? 'good' : 'bad'; sub = res === 'sacFly' ? `Run scores` : (r.text && res === 'doublePlay' ? 'Two outs on the play' : `${Math.round(r.exitVelocity || 0)} mph`);
+      cls = res === 'sacFly' ? 'good' : 'bad'; sub = res === 'sacFly' ? `1 run` : (r.text && res === 'doublePlay' ? '2 outs' : `${Math.round(r.exitVelocity || 0)} mph`);
       if (res !== 'sacFly') audio.crowdGroan(0.35);
       if (runsText) sub += runsText;
     }
@@ -520,7 +520,7 @@ export class App {
     const names = { away: PLAYER_TEAM.name.toUpperCase().slice(0, 16), home: e.opponent.name.toUpperCase().slice(0, 18) };
     setTimeout(() => {
       this.ui.showGameOver(p, records, unlocked, names);
-      if (unlocked.length) { this.audio.unlockChime(); this.ui.toast('🔓 Unlocked: ' + unlocked.map((u) => u.name).join(', '), 4200); }
+      if (unlocked.length) { this.audio.unlockChime(); this.ui.toast('Unlocked: ' + unlocked.map((u) => u.name).join(', '), 4200, 'unlock'); }
     }, 900);
     this.screen = 'over';
   }

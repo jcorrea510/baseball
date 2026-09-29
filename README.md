@@ -54,7 +54,7 @@ Other handy commands:
 ```bash
 npm test        # runs the automated checks on the game rules and physics
 npm run build   # makes the finished website in the "dist" folder
-npm run smoke   # after a build: opens the finished site in a real browser and checks it reaches the title screen
+npm run smoke   # after a build: opens the finished site in a real browser, checks it reaches the title screen and clicks through the menus
 npm run sim     # plays hundreds of computer-controlled games and prints statistics
 ```
 

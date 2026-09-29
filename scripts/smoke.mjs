@@ -84,6 +84,30 @@ const scenarios = [
     },
   },
   {
+    name: 'menus work with real clicks (play, settings, pause, resume)',
+    dir: path.join(ROOT, 'dist'),
+    async run({ page, problems }) {
+      const click = (sel) => page.click(sel, { timeout: 20000 });
+      const visible = (sel) => page.evaluate((q) => { const e = document.querySelector(q); return !!e && e.offsetParent !== null && getComputedStyle(e).visibility !== 'hidden'; }, sel);
+      await waitFor(page, () => document.documentElement.getAttribute('data-boot') === 'ready', 90000, 'the game to start');
+      await click('#ui .screen.show button[data-a="play"]');
+      // first time only: the short how-to screen
+      if (await page.waitForSelector('#ui .screen.show button[data-a="howtoDone"]', { timeout: 5000 }).catch(() => null)) await click('#ui .screen.show button[data-a="howtoDone"]');
+      await click('#ui .screen.show .seg[data-set="tod"] button[data-v="night"]');
+      await waitFor(page, () => document.querySelector('#ui .screen.show .seg[data-set="tod"] button[data-v="night"]')?.classList.contains('on'), 5000, 'the Night setting to stay selected');
+      await click('#ui .screen.show .card[data-mode="quick"]');
+      await waitFor(page, () => document.querySelector('.hud')?.dataset.mode === 'quick' && document.querySelector('.hud').classList.contains('show'), 20000, 'the game HUD');
+      if (!(await visible('.hud .bug'))) throw new Error('the score bug is not showing in Quick Game');
+      if (await visible('.hud .derbybox')) throw new Error('the Derby scoreboard is showing in Quick Game');
+      await click('.hud .hudbtns [data-a="pause"]');
+      await click('#ui .screen.show .switch[data-set="zone"]');
+      if (await page.evaluate(() => document.querySelector('#ui .screen.show .switch[data-set="zone"]').classList.contains('on'))) throw new Error('the strike-zone switch did not turn off');
+      await click('#ui .screen.show button[data-a="resume"]');
+      await waitFor(page, () => !document.querySelector('#ui .screen.show'), 5000, 'the pause menu to close');
+      if (problems.length) throw new Error('console/network problems:\n    ' + problems.join('\n    '));
+    },
+  },
+  {
     name: 'no WebGL -> readable error, not a hang',
     dir: path.join(ROOT, 'dist'),
     noWebGL: true,

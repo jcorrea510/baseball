@@ -90,8 +90,8 @@ export class Progress {
     c.pa += st.pa; c.ab += st.ab; c.hits += st.hits; c.hr += st.hr; c.rbi += st.rbi || 0;
     c.perfects += st.perfect; c.swings += st.swings; c.contacts += st.contacts;
     c.strikeouts += st.strikeouts || 0; c.walks += st.walks || 0;
-    if (st.maxEV > c.maxEV) { if (c.maxEV > 0) records.push(`New best exit velocity: ${Math.round(st.maxEV)} mph`); c.maxEV = st.maxEV; }
-    if (st.longestHR > c.longestHR) { if (c.longestHR > 0 || st.longestHR > 0) records.push(`New longest home run: ${st.longestHR} ft`); c.longestHR = st.longestHR; }
+    if (st.maxEV > c.maxEV) { if (c.maxEV > 0) records.push(`Exit velo ${Math.round(st.maxEV)} mph`); c.maxEV = st.maxEV; }
+    if (st.longestHR > c.longestHR) { if (c.longestHR > 0 || st.longestHR > 0) records.push(`Longest HR ${st.longestHR} ft`); c.longestHR = st.longestHR; }
     if (res.mode === 'quick') {
       c.games++;
       if (res.won) c.wins++;
@@ -100,12 +100,12 @@ export class Progress {
       const prev = this.data.high.quick[res.difficulty];
       if (!prev || margin > prev.margin || (margin === prev.margin && score.top > prev.runs)) {
         this.data.high.quick[res.difficulty] = { margin, runs: score.top, against: score.bottom };
-        if (prev) records.push('New best Quick Game result');
+        if (prev) records.push('Best Quick Game');
       }
     } else if (res.mode === 'derby') {
       c.derbyGames++;
       const d = res.derby;
-      if (d.hr > c.derbyBestHR) { if (c.derbyBestHR > 0) records.push(`New Derby record: ${d.hr} home runs`); c.derbyBestHR = d.hr; }
+      if (d.hr > c.derbyBestHR) { if (c.derbyBestHR > 0) records.push(`Derby record ${d.hr} HR`); c.derbyBestHR = d.hr; }
       if (d.bestStreak > c.derbyBestStreak) c.derbyBestStreak = d.bestStreak;
       if (d.hr > (this.data.high.derby[res.difficulty] || 0)) this.data.high.derby[res.difficulty] = d.hr;
     }
