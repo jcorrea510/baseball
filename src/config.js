@@ -352,10 +352,20 @@ export const CONFIG = {
   // --------------------------------------------------------------------------
   audio: {
     umpire: {
-      voice: 'synth', // 'synth' = built-in voice (recommended), 'speech' = the browser's own voices, 'off'
+      voice: 'synth', // 'synth' = built-in voice (plays your recordings from public/sounds/umpire/ when they exist), 'speech' = the browser's own voices, 'off'
       pitchHz: [98, 124], // how deep the umpire's voice is (each game has one umpire; every call varies a little)
       rasp: [0.55, 0.95], // gruffness 0..1
-      level: 0.9, // loudness of the calls
+      level: 1.2, // loudness of the calls
+      grit: 0.35, // how hard the voice is pushed into distortion (more = harsher, but the words get harder to understand)
+      squeeze: { threshold: -24, ratio: 7, release: 0.14 }, // the compressor that makes every call loud and even (dB, ratio, seconds)
+      presenceDb: 5, // boost (dB) around 2.5 kHz so the voice cuts through the crowd
+      reverb: 0.38, // how much of the call goes into the stadium reverb
+      echo: { taps: [0.17, 0.35], levels: [0.3, 0.15], lowpassHz: 2400 }, // the slap-back off the far stands: delay (s) and loudness of each bounce
+      // Your own recordings: files named strike, ball, strike3, foul, out, safe (+ optional ball4, and extra takes such as strike_b)
+      // in public/sounds/umpire/ - .mp3 (or .wav / .ogg) - play instead of the built-in voice.
+      files: { folder: 'sounds/umpire/', level: 1.0, reverb: 0.2, echo: 0.5 },
+      // The browser's own voice (Browser setting): how low and slow each call is spoken (speech rate 1 = normal, pitch 1 = normal).
+      speech: { pitch: [0.5, 0.7], drawnRate: [0.7, 0.82], quickRate: [0.98, 1.12], volume: 1 },
     },
   },
 

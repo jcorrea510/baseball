@@ -89,6 +89,34 @@ The same code also runs on Vercel. The build works out the right web address lay
 
 Every push to `main` then updates both GitHub Pages and Vercel. If the Vercel site ever shows "The game files didn't load", open **Technical details** on that screen: it names the file that was not found. That happens when a build made for another address is deployed, so check that no `BASE_PATH` variable is set and redeploy (Deployments, the three dots, Redeploy, untick "Use existing Build Cache").
 
+## The umpire's voice
+
+The umpire is heard in three ways. Pick one in **Settings -> Umpire**:
+
+| Setting | What you hear |
+| --- | --- |
+| **Voice** (default) | Your own recordings if you added any (below); every call without a recording is spoken by the game's built-in voice, sent through a compressor and a stadium echo. |
+| **Browser** | Your device's own speech voice (the game picks the deepest male English voice it can find and speaks low and slow). How good it sounds depends entirely on your device, and it cannot get an echo. |
+| **Off** | No voice (the umpire still gestures). |
+
+### Using real recordings (the most natural sound)
+
+1. Record short clips (under 2 seconds each) of a real-sounding umpire - yourself, a friend, a voice actor - or use audio you have the right to use. Trim the silence at the start so the call lands on time.
+2. Name them **exactly** like this (small letters, no spaces) and put them in the folder `public/sounds/umpire/` of this project:
+
+   | File | Said when |
+   | --- | --- |
+   | `strike.mp3` | a called or swinging strike |
+   | `ball.mp3` | a ball (and ball four, unless you add `ball4.mp3`) |
+   | `strike3.mp3` | strike three ("Strike three! You're out!") |
+   | `foul.mp3` | a foul ball |
+   | `out.mp3` | an out |
+   | `safe.mp3` | a close play, safe |
+
+   Optional: `ball4.mp3` for "Ball four!", and extra takes of any call named with an underscore and one letter - `strike_b.mp3`, `strike_c.mp3` ... - so it does not sound the same every time (one take is picked at random). `.wav` and `.ogg` files work too.
+3. You do not need all of them: any call without a file keeps the built-in voice.
+4. Publish as usual (push to `main`) - or, on your own computer, stop and restart `npm run dev`. The game then plays your files with the **Voice** setting. (The game finds the files when it is built, so it never asks for a file that is missing.)
+
 ## Tuning the game
 
 If something feels too hard, too easy, too slow or too fast, open **`src/config.js`**. Every tunable number is there with a plain-English comment. The most useful ones:
@@ -102,6 +130,7 @@ If something feels too hard, too easy, too slow or too fast, open **`src/config.
 | Too much waiting between pitches | `pace.*` and `difficulty.<level>.windup` |
 | Computer scores too much / too little | `difficulty.<level>.ai` |
 | Derby too hard | `modes.derby.evBonus`, `modes.derby.pitchSpeed` |
+| Umpire too quiet / too polite / too echoey | `audio.umpire.level`, `audio.umpire.rasp`, `audio.umpire.echo`, `audio.umpire.reverb` |
 | Derby home runs too rare / too common | perfect swings: `modes.derby.evBonus`, `contact.launch.perfect`; good swings: `modes.derby.goodQuality`, `modes.derby.goodLaunch`; pulled balls: `modes.derby.pullBonus` (run `node scripts/hrrate.mjs` to see the percentages) |
 
 ## For developers

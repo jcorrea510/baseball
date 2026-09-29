@@ -49,14 +49,15 @@ describe('planning a call', () => {
     expect(dur('strike')).toBeGreaterThan(dur('strikeSwing')); // the swinging strike is quick, "Steee-rike" is drawn out
   });
 
-  it('"Strike" is built like the word: hiss, pop, drawn-out "ee", "r", "eye" gliding to "ih", pop', () => {
+  it('"Strike" is built like the word: hiss, pop, "r", a long "eye" gliding to "ih", pop', () => {
     const p = planCall('strike', voice, createRng(1));
-    expect(p.segments.map((s) => s.kind)).toEqual(['f', 's', 'v', 'v', 'v', 's']);
-    expect(p.segments.map((s) => s.vowel || '')).toEqual(['', '', 'i', 'r', 'a', '']);
-    expect(p.segments[4].to).toBe('I');
-    // the emphasis is on "-rike": it is the loudest sound
+    expect(p.segments.map((s) => s.kind)).toEqual(['f', 's', 'v', 'v', 's']);
+    expect(p.segments.map((s) => s.vowel || '')).toEqual(['', '', 'r', 'a', '']);
+    expect(p.segments[3].to).toBe('I');
+    // the emphasis is on "-rike": it is the loudest and by far the longest sound
     const amps = p.segments.filter((s) => s.kind === 'v').map((s) => s.amp);
-    expect(Math.max(...amps)).toBe(p.segments[4].amp);
+    expect(Math.max(...amps)).toBe(p.segments[3].amp);
+    expect(p.segments[3].dur).toBeGreaterThan(2 * p.segments[2].dur);
   });
 
   it('strike three ends with "you\'re out!" and the foul call is "foul ball"', () => {

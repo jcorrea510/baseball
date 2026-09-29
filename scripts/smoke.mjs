@@ -14,6 +14,8 @@
 //   6. built game, no WebGL  -> must show the "couldn't start 3D graphics" screen (never a spinner that never ends)
 //   7. raw source files      -> what GitHub publishes if Pages is set to "Deploy from a branch" instead of "GitHub
 //                               Actions"; must show the "game files didn't load" screen
+//   8. own umpire recordings -> files dropped into public/sounds/umpire are found by the build, downloaded after the first click and
+//                               played instead of the built-in voice (and the folder being empty costs no failed downloads)
 // Scenario 7 is the exact failure that once left the live site stuck on "Warming up the ballpark" forever; scenarios
 // 3-5 guard the Vercel deployment that once showed a GitHub-only message because the build assumed /baseball/.
 //
@@ -25,12 +27,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
+import { toWav } from '../src/audio/voiceRender.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BASE = (process.env.BASE_PATH || '/baseball/').replace(/\/?$/, '/');
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.json': 'application/json', '.png': 'image/png', '.md': 'text/markdown',
+  '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.json': 'application/json', '.png': 'image/png', '.md': 'text/markdown', '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.txt': 'text/plain',
 };
 
 // A tiny static server that behaves like GitHub Pages: files exist only under BASE, everything else is an HTML 404.
@@ -157,6 +160,38 @@ const scenarios = [
       const detail = await page.textContent('#boot-error-detail');
       if (/GitHub Actions/.test(detail)) throw new Error('a non-GitHub host is told to switch a GitHub setting');
       if (!/assets\//.test(detail)) throw new Error('the technical details do not say which file failed');
+    },
+  },
+  {
+    name: 'own umpire recordings are found, loaded and played (calls without a file use the built-in voice)',
+    dir: () => {
+      // two short "recordings" (a beep each), as if the owner had dropped strike.wav and out.wav into public/sounds/umpire
+      const rec = path.join(os.tmpdir(), `sandlot-smoke-${process.pid}-owner-recordings`);
+      tempDirs.push(rec);
+      fs.mkdirSync(rec, { recursive: true });
+      const beep = (hz, sec) => { const x = new Float32Array(Math.round(22050 * sec)); for (let i = 0; i < x.length; i++) x[i] = 0.4 * Math.sin(2 * Math.PI * hz * i / 22050); return toWav(x, 22050); };
+      fs.writeFileSync(path.join(rec, 'strike.wav'), beep(440, 0.5));
+      fs.writeFileSync(path.join(rec, 'out.wav'), beep(330, 0.25));
+      const out = buildTo('recordings', { VERCEL: '1', SANDLOT_UMPIRE_DIR: rec });
+      fs.mkdirSync(path.join(out, 'sounds', 'umpire'), { recursive: true });
+      for (const f of ['strike.wav', 'out.wav']) fs.copyFileSync(path.join(rec, f), path.join(out, 'sounds', 'umpire', f));
+      return out;
+    },
+    base: '/',
+    async run({ page, problems }) {
+      await waitFor(page, () => document.documentElement.getAttribute('data-boot') === 'ready', 90000, 'the game to start');
+      await page.click('#ui .screen.show button[data-a="play"]', { timeout: 20000 }); // the first click unlocks sound and starts the download
+      await waitFor(page, () => window.__app.audio.files.count === 2, 15000, 'both recordings to load');
+      const r = await page.evaluate(() => {
+        const a = window.__app.audio, played = [];
+        const real = a.playFile.bind(a);
+        a.playFile = (buf, o) => { played.push(Math.round(buf.duration * 100) / 100); return real(buf, o); };
+        a.umpireMode = 'synth'; a.muted = false;
+        return { strike: a.callUmpire('strike'), out: a.callUmpire('out'), ball: a.callUmpire('ball'), played, mode: a.umpireMode };
+      });
+      if (!r.strike || !r.out || !r.ball) throw new Error('a call failed to play: ' + JSON.stringify(r));
+      if (r.played.length !== 2 || Math.abs(r.played[0] - 0.5) > 0.02 || Math.abs(r.played[1] - 0.25) > 0.02) throw new Error('the recordings were not played (strike then out, and not for "ball"): ' + JSON.stringify(r));
+      if (problems.length) throw new Error('console/network problems:\n    ' + problems.join('\n    '));
     },
   },
   {

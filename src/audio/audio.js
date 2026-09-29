@@ -1,4 +1,5 @@
-import { planCall, speak, makeUmpireCharacter, speakWithBrowserVoice, stopBrowserVoice } from './umpireVoice.js';
+import { planCall, speak, placeVoice, makeUmpireCharacter, speakWithBrowserVoice, stopBrowserVoice, warmBrowserVoices } from './umpireVoice.js';
+import { UmpireFiles } from './umpireFiles.js';
 import { createRng } from '../util/rng.js';
 import { CONFIG } from '../config.js';
 
@@ -17,6 +18,7 @@ export class AudioEngine {
     this.umpireMode = CONFIG.audio.umpire.voice; // 'synth' | 'speech' | 'off'
     this.umpire = null; // this game's umpire (his own voice)
     this.callRng = createRng(1);
+    this.files = new UmpireFiles(); // your own recordings from public/sounds/umpire (loaded after the first click)
   }
 
   // A new game gets a new umpire (a deep, gruff voice of his own).
@@ -26,18 +28,32 @@ export class AudioEngine {
   }
 
   // The plate umpire calls a pitch / play. kind: strike | strikeSwing | strike3 | strike3Swing | ball | ball4 | foul | safe | out.
-  // Silent when muted or when the umpire voice is off. Every call varies a little.
+  // Silent when muted or when the umpire voice is off. Every call varies a little. With the Voice setting, a recording of the call
+  // (public/sounds/umpire) is played when there is one, otherwise the built-in voice speaks; the Browser setting uses the device's voice.
   callUmpire(kind, { pan = 0, delay = 0.04 } = {}) {
     if (this.muted || this.umpireMode === 'off') return false;
     try {
+      const U = CONFIG.audio.umpire;
       if (this.umpireMode === 'speech') return speakWithBrowserVoice(kind, this.callRng, this.volume);
       if (!this.ok) return false;
+      const take = this.files.pick(kind, this.callRng);
+      if (take) { this.playFile(take, { pan, delay }); return true; }
       if (!this.umpire) this.setUmpire(1);
-      speak(this, planCall(kind, this.umpire, this.callRng), { delay, level: CONFIG.audio.umpire.level, pan });
+      speak(this, planCall(kind, this.umpire, this.callRng), { delay, level: U.level, pan });
       return true;
     } catch (err) {
       return false; // a sound problem must never interrupt the game
     }
+  }
+
+  // One of your own recordings, placed in the ballpark like the built-in voice (a little reverb and echo).
+  playFile(buffer, { pan = 0, delay = 0.04 } = {}) {
+    const c = this.ctx, F = CONFIG.audio.umpire.files;
+    const src = c.createBufferSource(); src.buffer = buffer;
+    const out = c.createGain(); out.gain.value = F.level;
+    src.connect(out);
+    placeVoice(this, out, { pan, reverb: F.reverb, echo: F.echo });
+    src.start(c.currentTime + delay);
   }
 
   // Call from a user gesture (pointerdown / keydown).
@@ -66,6 +82,8 @@ export class AudioEngine {
       this.unlocked = true;
       if (this.ctx.state === 'suspended') this.ctx.resume();
       this.startAmbience();
+      warmBrowserVoices();
+      try { this.files.load(this.ctx); } catch (e) { /* recordings are optional */ } // look for your own umpire recordings
     } catch (e) { this.unlocked = false; }
   }
 
