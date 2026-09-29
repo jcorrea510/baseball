@@ -130,6 +130,12 @@ const scenarios = [
       await click('.hud .hudbtns [data-a="pause"]');
       await click('#ui .screen.show .switch[data-set="zone"]');
       if (await page.evaluate(() => document.querySelector('#ui .screen.show .switch[data-set="zone"]').classList.contains('on'))) throw new Error('the strike-zone switch did not turn off');
+      // the pitch guide switch: on by default, turns off and on again
+      if (!(await page.evaluate(() => document.querySelector('#ui .screen.show .switch[data-set="pitchGuide"]')?.classList.contains('on')))) throw new Error('the pitch guide switch is missing or off by default');
+      await click('#ui .screen.show .switch[data-set="pitchGuide"]');
+      if (await page.evaluate(() => window.__app.settings.pitchGuide)) throw new Error('the pitch guide switch did not turn it off');
+      await click('#ui .screen.show .switch[data-set="pitchGuide"]');
+      if (!(await page.evaluate(() => window.__app.settings.pitchGuide))) throw new Error('the pitch guide switch did not turn it back on');
       await click('#ui .screen.show button[data-a="resume"]');
       await waitFor(page, () => !document.querySelector('#ui .screen.show'), 5000, 'the pause menu to close');
       if (problems.length) throw new Error('console/network problems:\n    ' + problems.join('\n    '));

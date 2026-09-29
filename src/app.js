@@ -17,6 +17,8 @@ import { describeError, classifyTiming } from './game/timing.js';
 import { lineScore } from './game/rules.js';
 import { clamp, lerp, smoothstep } from './util/math.js';
 import { zoneRatio } from './physics/pitch.js';
+import { PitchGuide } from './render/pitchGuide.js';
+import { pitchGuide } from './game/pitchGuide.js';
 
 const LABEL = { fastball: 'Fastball', changeup: 'Changeup', curveball: 'Curveball', slider: 'Slider', heater: 'Heater' };
 
@@ -80,6 +82,7 @@ export class App {
     if (params.get('tod')) { this.prog.settings.tod = params.get('tod'); this.S.env.set(params.get('tod')); }
     if (params.get('diff')) this.prog.settings.difficulty = params.get('diff');
     if (params.get('zone')) this.prog.settings.zone = params.get('zone') === '1';
+    if (params.get('guide')) this.prog.settings.pitchGuide = params.get('guide') === '1';
     if (qm) { this.prog.settings.howtoSeen = true; setTimeout(() => this.startGame(qm), 50); }
   }
 
@@ -123,6 +126,7 @@ export class App {
     this.S.scene.add(ring);
     this.pitchMarker = ring;
     this.markerT = 0;
+    this.guide = new PitchGuide(this.S.scene); // the soft circle that guesses where the pitch will cross the plate
   }
 
   applyStadiumMood() {
@@ -221,7 +225,7 @@ export class App {
     this.goModes();
   }
 
-  hideOverlays() { this.zone.visible = false; this.pitchMarker.visible = false; }
+  hideOverlays() { this.zone.visible = false; this.pitchMarker.visible = false; this.guide.hide(); }
 
   // ---------------------------------------------------------------- starting a game
   startGame(mode) {
@@ -710,6 +714,10 @@ export class App {
         zp.cue.scale.setScalar(1 + clamp(-dtI / 0.25, 0, 1) * 0.9 + clamp(dtI / 0.25, 0, 1) * 0.3);
       }
     }
+    // pitch guide: a soft circle that guesses where the pitch will cross the plate (fades in late, a little off; never in the Derby)
+    if (e && e.phase === 'pitch' && e.pitch && e.time < e.pitch.tCross && this.settings.pitchGuide && e.mode !== 'derby' && this.screen === 'game') {
+      this.guide.show(pitchGuide(e.pitch, e.time - e.pitch.tRelease, CONFIG, e.difficulty));
+    } else this.guide.hide();
     // pitch marker fade
     if (this.pitchMarker.visible) {
       this.markerT += realDt;

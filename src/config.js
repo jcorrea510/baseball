@@ -89,6 +89,17 @@ export const CONFIG = {
     },
     heaterSpeed: [100, 104],
     windup: { ready: 0.3 }, // (per-difficulty windup lengths are below)
+    // The pitch guide: a soft circle over the strike zone that guesses where the pitch will cross the plate. It fades in part of the
+    // way through the flight, is a little off, and at first assumes the pitch will not break (curveballs and sliders only show where
+    // they end up late). How early / how exact it is depends on the level: see `difficulty.<level>.guide`.
+    guide: {
+      color: 0xffe8a6, // soft warm white (never green or red: the colour must not give the call away)
+      baseRadius: 0.22, // ft: radius of the circle when the guess is exact (a ball is 0.12 ft across at the plate)
+      radiusPerError: 0.7, // ft of extra radius per ft of guess error: the less sure the guess, the bigger and softer the circle
+      closeIn: 1.35, // the circle starts this much bigger than its final size and closes in as the ball arrives
+      maxAlpha: 0.5, // how see-through it stays even when fully faded in
+      errorShrink: 0.65, // the guess error at the plate is this fraction of the error at the start (it sharpens a little)
+    },
   },
 
   // --------------------------------------------------------------------------
@@ -156,6 +167,9 @@ export const CONFIG = {
       // Where the computer pitcher throws (odds before the count changes them): 'heart' = in the zone, 'edge' = on the corners,
       // 'chase' = tempting but out of the zone, 'waste' = way out of reach (in the dirt, high heat, way off the plate).
       locations: { heart: 0.68, edge: 0.16, chase: 0.09, waste: 0.07 },
+      // Pitch guide (see pitch.guide): fadeIn = fractions of the flight (0 = release, 1 = plate) where it starts and finishes fading in;
+      // reveal = where it starts / finishes showing the pitch's break; error = feet the guess is typically off.
+      guide: { fadeIn: [0.2, 0.4], reveal: [0.1, 0.3], error: 0.14 },
       commandSigma: 0.12, // ft of pitcher inaccuracy
       movementScale: 0.6,
       tellStrength: 1.0,
@@ -173,6 +187,7 @@ export const CONFIG = {
       fastball: [80, 90],
       mix: { fastball: 0.46, changeup: 0.18, curveball: 0.18, slider: 0.18, heater: 0 },
       locations: { heart: 0.52, edge: 0.08, chase: 0.21, waste: 0.19 },
+      guide: { fadeIn: [0.28, 0.5], reveal: [0.25, 0.6], error: 0.36 },
       commandSigma: 0.28,
       movementScale: 1.0,
       tellStrength: 0.6,
@@ -190,6 +205,7 @@ export const CONFIG = {
       fastball: [88, 98],
       mix: { fastball: 0.36, changeup: 0.18, curveball: 0.17, slider: 0.19, heater: 0.1 },
       locations: { heart: 0.32, edge: 0.15, chase: 0.29, waste: 0.24 },
+      guide: { fadeIn: [0.4, 0.62], reveal: [0.4, 0.75], error: 0.66 },
       commandSigma: 0.42,
       movementScale: 1.25,
       tellStrength: 0.28,
