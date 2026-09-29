@@ -238,7 +238,9 @@ export class Actors {
       }
       st.vx = vx; st.vz = vz;
       const x = st.cx + st.fx, z = st.cz + st.fz;
-      const y = pos === 'P' ? moundY(x, z) : 0;
+      let y = pos === 'P' ? moundY(x, z) : 0;
+      // a ball above his standing reach is taken with a leap: he is in the air at the catch and comes down after it
+      if (plan && plan.leap && plan.fielder === pos && plan.caught && playT >= 0) y += leapHeight(plan.leap.height, playT - plan.catchT, E.cfg.physics.gravity);
       const moving = speed > 0.5;
 
       // ---- facing
@@ -410,7 +412,7 @@ export class Actors {
         const local = person.root.worldToLocal(this.tmpV2.copy(b));
         let tx = local.x, ty = local.y, tz = local.z;
         const sh = 4.55;
-        const lim = 2.0;
+        const lim = 2.5; // how far from his shoulder the glove can be (an arm plus a lean)
         const dx = tx - 0.74, dy = ty - sh, dz = tz;
         const dl = Math.hypot(dx, dy, dz);
         if (dl > lim) { const k = lim / dl; tx = 0.74 + dx * k; ty = sh + dy * k; tz = dz * k; }
@@ -822,6 +824,13 @@ export class Actors {
     if (seg.kind === 'hit') {
       const q = sampleBall(sim, t);
       out.set(q.x, q.y, q.z);
+      // the last instant before a catch: the ball settles into his glove (the glove may be a little short of where the ball is)
+      if (plan.caught && plan.fielder && t > plan.catchT - CATCH_SETTLE && t <= plan.catchT) {
+        const catcher = this.fielders[plan.fielder];
+        catcher.root.updateMatrixWorld(true);
+        catcher.gloveWorld(this.tmpV);
+        out.lerp(this.tmpV, smoothstep(plan.catchT - CATCH_SETTLE, plan.catchT, t));
+      }
       let pts = null;
       if (trailOn && t < 4.5) {
         pts = [];
@@ -860,6 +869,18 @@ export class Actors {
     }
     return { kind: 'hidden', trail: 0 };
   }
+}
+
+const CATCH_SETTLE = 0.09; // s before a catch when the ball starts to settle into the glove
+
+/**
+ * How high off the ground is a fielder who leaps so that his glove meets the ball at time 0 (the top of the jump), `dt` seconds before /
+ * after the catch? A jump of height h takes 2 * sqrt(2h / g) in the air.
+ */
+export function leapHeight(h, dt, g = 32.17) {
+  const half = Math.sqrt(2 * h / g);
+  const u = dt / half;
+  return u <= -1 || u >= 1 ? 0 : h * (1 - u * u);
 }
 
 // Ball timeline for a play: hit -> (carry -> throw -> carry ...) in chronological order.

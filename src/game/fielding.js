@@ -69,42 +69,64 @@ function throwTime(d, f, cfg) {
 // ---------------------------------------------------------------------------
 function findAirCatch(sim, defense, cfg) {
   const F = cfg.fielding;
+  const STEP = 1 / 240; // (a fast ball is only within a fielder's reach for a moment: look at it finely so a real chance is never stepped over)
   const tEnd = Math.min(sim.contactTime, sim.duration);
-  // Who could be under the ball at time t? (a fielder who has to dive counts only if nobody can get there running)
+  // Could this fielder be under the ball at time t? (a fielder who has to dive counts only if nobody can get there running)
+  const catchableBall = (b) => {
+    if (b.y > F.reachHeight || b.y < 0.5) return false;
+    const spray = sprayOf(b.x, b.z);
+    if (b.z < 0 && Math.abs(spray) <= 45 && Math.hypot(b.x, b.z) > fenceDistance(spray) - 0.5) return false; // over the wall
+    return isInsideField(b.x, b.z, -0.5); // (a foul ball over a foul-territory wall or the backstop)
+  };
+  const tryFielder = (f, b, t) => {
+    const d = dist(f.x, f.z, b.x, b.z);
+    const avail = covered(f.speed * effort(f, b.x, b.z), t - f.react, F.accel);
+    const need = d - F.glove;
+    if (need <= avail) return { f, need, dive: false, slack: avail - need, avail, ball: { ...b } };
+    if (b.y <= 5.2 && need - F.diveExtra <= avail) return { f, need, dive: true, slack: -1, avail, ball: { ...b } };
+    return null;
+  };
   const candidate = (t) => {
     const b = sampleBall(sim, t);
-    if (b.y > F.reachHeight || b.y < 0.5) return null;
-    const spray = sprayOf(b.x, b.z);
-    if (b.z < 0 && Math.abs(spray) <= 45 && Math.hypot(b.x, b.z) > fenceDistance(spray) - 0.5) return null; // over the wall
-    if (!isInsideField(b.x, b.z, -0.5)) return null; // foul ball over a foul-territory wall or the backstop
+    if (!catchableBall(b)) return null;
     let best = null;
     for (const pos of POSITIONS) {
-      const f = defense[pos];
-      const d = dist(f.x, f.z, b.x, b.z);
-      const avail = covered(f.speed * effort(f, b.x, b.z), t - f.react, F.accel);
-      const need = d - F.glove;
-      if (need <= avail) {
-        const slack = avail - need;
-        if (!best || need < best.need) best = { f, need, dive: false, slack, avail, ball: { ...b } };
-      } else if (b.y <= 5.2 && need - F.diveExtra <= avail) {
-        if (!best) best = { f, need, dive: true, slack: -1, avail, ball: { ...b } };
-      }
+      const c = tryFielder(defense[pos], b, t);
+      if (!c) continue;
+      if (!c.dive) { if (!best || best.dive || c.need < best.need) best = c; }
+      else if (!best) best = c;
     }
     return best;
   };
-  for (let t = 0.3; t <= tEnd + 1e-6; t += STEP) {
+  let hit = null;
+  for (let t = 0.3; t <= tEnd + 1e-6 && !hit; t += STEP) {
     const best = candidate(t);
     if (!best) continue;
+    hit = { t, ...best };
     if (best.dive) {
       // nobody dives for a ball a fielder can simply run under a moment later
       for (let t2 = t + STEP; t2 <= Math.min(t + F.dive.preferRun, tEnd) + 1e-6; t2 += STEP) {
         const alt = candidate(t2);
-        if (alt && !alt.dive) return { t: t2, ...alt };
+        if (alt && !alt.dive) { hit = { t: t2, ...alt }; break; }
       }
     }
-    return { t, ...best };
   }
-  return null;
+  if (!hit) return null;
+  // The first moment he CAN reach the ball is often when it is still far above his head (8-9 ft up). A fielder who is there in time waits
+  // for it to come down to a comfortable height; if he cannot wait (it is about to hit the wall, or he is only just there) he takes it
+  // at the lowest height he still can - and if that is above his standing reach he jumps for it.
+  if (!hit.dive && hit.ball.y > F.catchHeight) {
+    let lowest = hit;
+    for (let t2 = hit.t + STEP; t2 <= tEnd + 1e-6; t2 += STEP) {
+      const b = sampleBall(sim, t2);
+      const c = catchableBall(b) ? tryFielder(hit.f, b, t2) : null;
+      if (!c || c.dive) break; // he has lost it
+      lowest = { t: t2, ...c };
+      if (b.y <= F.catchHeight) break; // it has come down to a comfortable height
+    }
+    hit = lowest;
+  }
+  return hit;
 }
 
 // ---------------------------------------------------------------------------
@@ -363,6 +385,8 @@ function planPlayCore(i, cfg) {
     plan.caught = true;
     plan.catchT = air.t;
     plan.catchPos = { x: air.ball.x, y: air.ball.y, z: air.ball.z };
+    // a ball above his standing reach is taken with a leap (feet off the ground at the catch); the renderer draws the jump
+    plan.leap = !air.dive && air.ball.y - F.standReach > 0.3 ? { height: air.ball.y - F.standReach } : null;
     addMove(plan, f, air.ball.x, air.ball.z, air.t, { dive: air.dive, avail: air.avail, role: 'catch' }, cfg);
     plan.ctx = { kind: 'air', x: air.ball.x, z: air.ball.z, t: air.t };
     plan.ballHitEnd = air.t;

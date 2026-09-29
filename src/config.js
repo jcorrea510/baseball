@@ -267,7 +267,10 @@ export const CONFIG = {
     reaction: { IF: 0.24, OF: 0.36, P: 0.36, C: 0.36 }, // seconds before a fielder reads the ball
     glove: 2.4, // ft: how far a fielder can reach without diving
     diveExtra: 3.0, // extra ft when diving (dive only on low balls)
-    reachHeight: 9.0, // highest catchable point (ft)
+    reachHeight: 8.8, // highest catchable point (ft): a leaping catch
+    standReach: 6.2, // ft: how high his glove reaches with both feet on the ground (higher than this he has to jump)
+    catchHeight: 5.2, // ft: a fielder who is there in time waits for the ball to come down to about this (chest / head height) before he takes it;
+    // if he cannot wait he takes it at the lowest height he still can, and only jumps (up to reachHeight) for a ball he can get no other way - at the wall, say
     groundHeight: 3.2, // a ball this low counts as a ground ball for fielding
     transfer: { IF: 0.36, OF: 0.5, C: 0.4, P: 0.42 }, // catch-to-throw time
     throwSpeed: { IF: 120, OF: 132, C: 112, P: 100 }, // ft/s
