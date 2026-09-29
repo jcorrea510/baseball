@@ -323,7 +323,13 @@ export const CONFIG = {
     derby: {
       outs: 10,
       pitchSpeed: { rookie: 58, pro: 66, allstar: 74 }, // batting-practice fastballs
-    evBonus: 7, // extra exit velocity (mph): batting-practice balls jump off the bat
+      evBonus: 8, // extra exit velocity (mph): batting-practice balls jump off the bat
+      // A "good" (not perfect) swing in the Derby still squares the ball up: the power range (0..1) and the launch angle
+      // (degrees) it gets, in place of the Quick-game numbers above. This is what makes good timing leave the park some of the time.
+      goodQuality: [0.74, 0.95],
+      goodLaunch: { center: 24, spread: 7 },
+      pullBonus: 6, // extra mph on a fully pulled ball (pulling is where a hitter is strongest)
+      pullSpan: 30, // degrees toward the pull side that count as "fully pulled"
       strikeChance: 1,
       locationSigma: 0.24,
       hrStreakBonus: 0, // (no bonus in scoring - just tracked)

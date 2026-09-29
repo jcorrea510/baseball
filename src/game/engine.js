@@ -6,7 +6,7 @@ import { createRng } from '../util/rng.js';
 import { buildPitch, isStrike } from '../physics/pitch.js';
 import { simulateBattedBall, projectDistance } from '../physics/ballistics.js';
 import { resolveSwingTimes, describeError } from './timing.js';
-import { computeContact } from './contact.js';
+import { computeContact, derbyBatting } from './contact.js';
 import { choosePitch, pitchWindowScale } from './pitcherAI.js';
 import { createDefense, planPlay, fielderBackTime } from './fielding.js';
 import * as rules from './rules.js';
@@ -202,7 +202,7 @@ export class Engine {
       speedScale: pitchWindowScale(pitch.type),
       aim: this.aim,
       batterHand: this.batterHand,
-      evBonus: this.mode === 'derby' ? this.cfg.modes.derby.evBonus : 0,
+      ...(this.mode === 'derby' ? derbyBatting(this.cfg) : {}),
       rng: this.rng,
     }, this.cfg);
     if (this.contactOverride) { delete contact.reason; Object.assign(contact, { made: true, grade: 'good' }, this.contactOverride(this)); }

@@ -102,6 +102,7 @@ If something feels too hard, too easy, too slow or too fast, open **`src/config.
 | Too much waiting between pitches | `pace.*` and `difficulty.<level>.windup` |
 | Computer scores too much / too little | `difficulty.<level>.ai` |
 | Derby too hard | `modes.derby.evBonus`, `modes.derby.pitchSpeed` |
+| Derby home runs too rare / too common | perfect swings: `modes.derby.evBonus`, `contact.launch.perfect`; good swings: `modes.derby.goodQuality`, `modes.derby.goodLaunch`; pulled balls: `modes.derby.pullBonus` (run `node scripts/hrrate.mjs` to see the percentages) |
 
 ## For developers
 
