@@ -2,11 +2,14 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { damp } from '../util/math.js';
+import { makeCanvas, toTexture } from './textures.js';
+import { createRng } from '../util/rng.js';
 
 export const TIMES_OF_DAY = ['day', 'dusk', 'night'];
 
 const PRESETS = {
   day: {
+    cloud: '#ffffff', cloudOpacity: 0.92,
     skyTop: '#2a6fd4', skyHorizon: '#c4dcf0', skyBottom: '#6d8f5a',
     fog: '#c9dcea', fogNear: 700, fogFar: 3200,
     sunColor: '#fff3df', sunIntensity: 3.3, sunPos: [-150, 210, 80],
@@ -15,6 +18,7 @@ const PRESETS = {
     exposure: 1.0, stars: 0, sunGlow: 1, lamps: 0, crowd: 1.0, glass: 0,
   },
   dusk: {
+    cloud: '#ffb08a', cloudOpacity: 0.85,
     skyTop: '#22306e', skyHorizon: '#ff9a5a', skyBottom: '#3b3a45',
     fog: '#b8806a', fogNear: 500, fogFar: 2600,
     sunColor: '#ffb27a', sunIntensity: 2.3, sunPos: [-220, 70, 60],
@@ -23,6 +27,7 @@ const PRESETS = {
     exposure: 1.05, stars: 0.25, sunGlow: 1, lamps: 0.75, crowd: 0.85, glass: 0,
   },
   night: {
+    cloud: '#26314f', cloudOpacity: 0.55,
     skyTop: '#02060f', skyHorizon: '#18264a', skyBottom: '#080d16',
     fog: '#0a1226', fogNear: 400, fogFar: 2200,
     sunColor: '#e4ecff', sunIntensity: 2.6, sunPos: [60, 260, 90],
@@ -83,6 +88,38 @@ export function createEnvironment(scene, renderer, { shadowSize = 2048 } = {}) {
   sky.renderOrder = -10;
   scene.add(sky);
 
+  // A few soft clouds drifting high up (they ride along with the sky dome)
+  const cloudTex = (() => {
+    const { canvas, ctx } = makeCanvas(256, 128);
+    const rng = createRng(31);
+    for (let i = 0; i < 26; i++) {
+      const x = 40 + rng.next() * 176, y = 46 + rng.next() * 40, r = 16 + rng.next() * 30;
+      const g = ctx.createRadialGradient(x, y, 1, x, y, r);
+      g.addColorStop(0, 'rgba(255,255,255,0.55)'); g.addColorStop(0.6, 'rgba(255,255,255,0.25)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g; ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    const shade = ctx.createLinearGradient(0, 50, 0, 100);
+    shade.addColorStop(0, 'rgba(255,255,255,0)'); shade.addColorStop(1, 'rgba(90,110,150,0.32)');
+    ctx.globalCompositeOperation = 'source-atop'; ctx.fillStyle = shade; ctx.fillRect(0, 0, 256, 128);
+    return toTexture(canvas, { anisotropy: 1 });
+  })();
+  const cloudMat = new THREE.SpriteMaterial({ map: cloudTex, transparent: true, depthWrite: false, fog: false, color: 0xffffff, opacity: 0.9 });
+  const clouds = [];
+  {
+    const rng = createRng(77);
+    for (let i = 0; i < 16; i++) {
+      const sp = new THREE.Sprite(cloudMat);
+      const az = (rng.next() - 0.5) * 3.4, el = 0.12 + rng.next() * 0.5, d = 3000;
+      sp.position.set(Math.sin(az) * Math.cos(el) * d, Math.sin(el) * d, -Math.cos(az) * Math.cos(el) * d);
+      const w = 700 + rng.next() * 900;
+      sp.scale.set(w, w * (0.28 + rng.next() * 0.16), 1);
+      sp.userData.speed = 2 + rng.next() * 4;
+      sp.userData.az = az; sp.userData.el = el;
+      sky.add(sp);
+      clouds.push(sp);
+    }
+  }
+
   const hemi = new THREE.HemisphereLight(0xffffff, 0x445533, 1);
   scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xffffff, 3);
@@ -108,7 +145,8 @@ export function createEnvironment(scene, renderer, { shadowSize = 2048 } = {}) {
     skyTop: new THREE.Color(), skyHorizon: new THREE.Color(), skyBottom: new THREE.Color(), fog: new THREE.Color(),
     sunColor: new THREE.Color(), fillColor: new THREE.Color(), hemiSky: new THREE.Color(), hemiGround: new THREE.Color(),
     sunPos: new THREE.Vector3(), fogNear: 0, fogFar: 0, sunIntensity: 0, fillIntensity: 0, hemiIntensity: 0,
-    exposure: 1, stars: 0, sunGlow: 1, lamps: 0, crowd: 1, glass: 0,
+    exposure: 1, stars: 0, sunGlow: 1, lamps: 0, crowd: 1, glass: 0, cloudOpacity: 0.9,
+    cloud: new THREE.Color(),
   };
   let target = PRESETS.day;
   let name = 'day';
@@ -136,6 +174,8 @@ export function createEnvironment(scene, renderer, { shadowSize = 2048 } = {}) {
     hemi.groundColor.copy(c.hemiGround);
     hemi.intensity = c.hemiIntensity;
     renderer.toneMappingExposure = c.exposure;
+    cloudMat.color.copy(c.cloud);
+    cloudMat.opacity = c.cloudOpacity;
   }
 
   function snapTo(preset) {
@@ -143,6 +183,7 @@ export function createEnvironment(scene, renderer, { shadowSize = 2048 } = {}) {
     c.skyTop.set(preset.skyTop); c.skyHorizon.set(preset.skyHorizon); c.skyBottom.set(preset.skyBottom); c.fog.set(preset.fog);
     c.sunColor.set(preset.sunColor); c.fillColor.set(preset.fillColor); c.hemiSky.set(preset.hemiSky); c.hemiGround.set(preset.hemiGround);
     c.sunPos.set(...preset.sunPos);
+    c.cloud.set(preset.cloud); c.cloudOpacity = preset.cloudOpacity;
     for (const k of ['fogNear', 'fogFar', 'sunIntensity', 'fillIntensity', 'hemiIntensity', 'exposure', 'stars', 'sunGlow', 'lamps', 'crowd', 'glass']) c[k] = preset[k];
     setNow();
   }
@@ -164,6 +205,7 @@ export function createEnvironment(scene, renderer, { shadowSize = 2048 } = {}) {
       const c = cur, t = target;
       const lc = (a, b) => { a.lerp(tmpColor.set(b), 1 - Math.exp(-k * dt)); };
       lc(c.skyTop, t.skyTop); lc(c.skyHorizon, t.skyHorizon); lc(c.skyBottom, t.skyBottom); lc(c.fog, t.fog);
+      lc(c.cloud, t.cloud); c.cloudOpacity = damp(c.cloudOpacity, t.cloudOpacity, k, dt);
       lc(c.sunColor, t.sunColor); lc(c.fillColor, t.fillColor); lc(c.hemiSky, t.hemiSky); lc(c.hemiGround, t.hemiGround);
       tmpVec.set(...t.sunPos);
       c.sunPos.lerp(tmpVec, 1 - Math.exp(-k * dt));
@@ -172,6 +214,7 @@ export function createEnvironment(scene, renderer, { shadowSize = 2048 } = {}) {
       }
       setNow();
       if (camera) sky.position.copy(camera.position);
+      for (const sp of clouds) { sp.userData.az += (sp.userData.speed * dt) / 40000; const az = sp.userData.az, el = sp.userData.el; sp.position.set(Math.sin(az) * Math.cos(el) * 3000, Math.sin(el) * 3000, -Math.cos(az) * Math.cos(el) * 3000); }
     },
   };
   return env;

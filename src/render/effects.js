@@ -131,6 +131,11 @@ export function createEffects(scene) {
       // a quick bright flash
       glow.spawn(x, y, z, 0, 0, 0, 0.09, 4.2 * (0.6 + strength), 1, 0.95, 0.8, 0.9, 0, 0, 0);
     },
+    // a tiny white flash where the ball leaves the pitcher's hand (makes the release point easy to see)
+    releaseGlint(x, y, z) {
+      glow.spawn(x, y, z, 0, 0, 0, 0.16, 1.5, 1, 1, 0.95, 0.75, 0, 0, 4);
+      for (let i = 0; i < 5; i++) glow.spawn(x, y, z, rng.range(-3, 3), rng.range(-2, 3), rng.range(-3, 3), 0.25, 0.5, 1, 1, 1, 0.7, 4, 3, 0);
+    },
     confetti(x, y, z, n = 80, spread = 30) {
       const cols = [[1, 0.2, 0.2], [0.2, 0.6, 1], [1, 0.85, 0.2], [0.3, 1, 0.5], [1, 0.4, 0.9], [1, 1, 1]];
       for (let i = 0; i < n; i++) {

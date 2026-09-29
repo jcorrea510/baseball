@@ -88,21 +88,9 @@ export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {
 
   // ---------------------------------------------------------------- field markings
   const chalk = new THREE.MeshStandardMaterial({ color: 0xf4f4ee, roughness: 1, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
-  const chalkGroup = new THREE.Group();
-  root.add(chalkGroup);
-  const line = (x0, z0, x1, z1, width, y = 0.032) => {
-    const len = Math.hypot(x1 - x0, z1 - z0);
-    const g = new THREE.Group();
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(width, len), chalk);
-    m.rotation.x = -Math.PI / 2; // long axis along -z
-    m.receiveShadow = true;
-    g.add(m);
-    g.position.set((x0 + x1) / 2, y, (z0 + z1) / 2);
-    // yaw so that -z points from p0 to p1
-    g.rotation.y = Math.atan2(-(x1 - x0), -(z1 - z0));
-    chalkGroup.add(g);
-    return g;
-  };
+  // All chalk lines are collected and baked into ONE mesh (one draw call).
+  const chalkSpecs = [];
+  const line = (x0, z0, x1, z1, width, y = 0.032) => { chalkSpecs.push({ x0, z0, x1, z1, width, y }); };
   const poleDist = fenceDistance(45);
   const pR = polar(45, poleDist), pL = polar(-45, poleDist);
   line(0, 0, pR.x, pR.z, 0.36);
@@ -132,6 +120,34 @@ export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {
     line(ax - w, az - w, ax + w, az - w, 0.16); line(ax - w, az + w, ax + w, az + w, 0.16);
     line(ax - w, az - w, ax - w, az + w, 0.16); line(ax + w, az - w, ax + w, az + w, 0.16);
     void ox; void oz;
+  }
+  {
+    const geos = chalkSpecs.map((c) => {
+      const len = Math.hypot(c.x1 - c.x0, c.z1 - c.z0);
+      const g = new THREE.PlaneGeometry(c.width, len);
+      g.rotateX(-Math.PI / 2); // long axis along -z
+      g.rotateY(Math.atan2(-(c.x1 - c.x0), -(c.z1 - c.z0)));
+      g.translate((c.x0 + c.x1) / 2, c.y, (c.z0 + c.z1) / 2);
+      return g;
+    });
+    let vc = 0, ic = 0;
+    for (const g of geos) { vc += g.getAttribute('position').count; ic += g.index.count; }
+    const pos = new Float32Array(vc * 3), nor = new Float32Array(vc * 3), idx = new Uint32Array(ic);
+    let vo = 0, io = 0;
+    for (const g of geos) {
+      const n = g.getAttribute('position').count;
+      pos.set(g.getAttribute('position').array, vo * 3);
+      nor.set(g.getAttribute('normal').array, vo * 3);
+      for (let i = 0; i < g.index.count; i++) idx[io + i] = g.index.array[i] + vo;
+      vo += n; io += g.index.count;
+    }
+    const mg = new THREE.BufferGeometry();
+    mg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    mg.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    mg.setIndex(new THREE.BufferAttribute(idx, 1));
+    const chalkMesh = new THREE.Mesh(mg, chalk);
+    chalkMesh.receiveShadow = true;
+    root.add(chalkMesh);
   }
   // home plate
   {
@@ -350,7 +366,17 @@ export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {
 
   // ---------------------------------------------------------------- light towers
   const towerGlow = softDotTexture(128, 0, '255,244,220');
-  const lampMat = new THREE.MeshBasicMaterial({ color: 0x2b2f36, toneMapped: false });
+  const lampTex = (() => {
+    const { canvas, ctx } = makeCanvas(256, 160);
+    ctx.fillStyle = '#20242a'; ctx.fillRect(0, 0, 256, 160);
+    for (let r = 0; r < 5; r++) for (let c = 0; c < 8; c++) {
+      const g = ctx.createRadialGradient(16 + c * 31, 16 + r * 31, 1, 16 + c * 31, 16 + r * 31, 14);
+      g.addColorStop(0, '#ffffff'); g.addColorStop(0.7, '#e8e8e8'); g.addColorStop(1, '#8a8f97');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(16 + c * 31, 16 + r * 31, 13, 0, Math.PI * 2); ctx.fill();
+    }
+    return toTexture(canvas, { anisotropy: 4 });
+  })();
+  const lampMat = new THREE.MeshBasicMaterial({ map: lampTex, color: 0x2b2f36, toneMapped: false });
   const glowMats = [];
   const towerSpots = [polar(-53, 420), polar(53, 420), { x: -205, z: 30 }, { x: 205, z: 30 }];
   for (const tp of towerSpots) {
@@ -361,12 +387,9 @@ export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {
     bank.position.y = 150;
     const frame = new THREE.Mesh(new THREE.BoxGeometry(46, 26, 2), new THREE.MeshStandardMaterial({ color: 0x3a4048, roughness: 0.7, metalness: 0.5 }));
     bank.add(frame);
-    const lampGeo = new THREE.PlaneGeometry(4.2, 3.6);
-    for (let r = 0; r < 5; r++) for (let c = 0; c < 8; c++) {
-      const l = new THREE.Mesh(lampGeo, lampMat);
-      l.position.set(-19.5 + c * 5.6, -9.5 + r * 4.8, 1.1);
-      bank.add(l);
-    }
+    const lamps = new THREE.Mesh(new THREE.PlaneGeometry(44, 24), lampMat);
+    lamps.position.z = 1.1;
+    bank.add(lamps);
     const gm = new THREE.SpriteMaterial({ map: towerGlow, color: 0xfff1d6, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
     glowMats.push(gm);
     const glow = new THREE.Sprite(gm);

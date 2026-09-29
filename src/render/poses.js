@@ -352,3 +352,26 @@ export function celebratePose(P, t, seed = 0) {
   P.headPitch = -0.25;
   return P;
 }
+
+// ---------------------------------------------------------------- plate umpire
+// `sinceCall` = seconds since the last strike call (or -1). Signals with a raised right fist.
+export function umpirePose(P, time, sinceCall = -1, big = false) {
+  resetPose(P);
+  const b = Math.sin(time * 1.4) * 0.02;
+  P.hipY = 2.15 + b;
+  P.torsoPitch = 0.52; P.pelvisPitch = -0.1; P.headPitch = -0.3;
+  set3(P.footL, 0.8, ANK, 0.35); set3(P.footR, -0.7, ANK, -0.25);
+  set3(P.kneeL, 0.55, 0.1, 1); set3(P.kneeR, -0.55, 0.1, 1);
+  set3(P.handL, 0.62, 2.55, 0.55); set3(P.handR, -0.62, 2.55, 0.55);
+  P.poleL = [0.8, -0.5, -0.2]; P.poleR = [-0.8, -0.5, -0.2];
+  if (sinceCall >= 0 && sinceCall < 1.1) {
+    const up = smoothstep(0, 0.16, sinceCall) * (1 - smoothstep(0.8, 1.1, sinceCall));
+    P.hipY = lerp(P.hipY, 2.95, up);
+    P.torsoPitch = lerp(P.torsoPitch, 0.05, up);
+    P.headPitch = lerp(P.headPitch, -0.05, up);
+    const punch = Math.sin(clamp((sinceCall - 0.14) / 0.35, 0, 1) * Math.PI) * (big ? 0.5 : 0.25);
+    set3(P.handR, lerp(-0.62, -0.95, up), lerp(2.55, 5.3, up) + punch, lerp(0.55, 0.45, up));
+    P.poleR = [-1, 0.2, -0.3];
+  }
+  return P;
+}

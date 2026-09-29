@@ -93,6 +93,66 @@ function sphere(r, w = 16, h = 12) {
   return geoCache[key] || (geoCache[key] = new THREE.SphereGeometry(r, w, h));
 }
 
+let _vertexMat = null;
+function vertexMat() {
+  if (!_vertexMat) _vertexMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0 });
+  return _vertexMat;
+}
+function cyl(rt, rb, h, seg = 12) {
+  const key = `y${rt}|${rb}|${h}|${seg}`;
+  return geoCache[key] || (geoCache[key] = new THREE.CylinderGeometry(rt, rb, h, seg));
+}
+function box(w, h, d) {
+  const key = `b${w}|${h}|${d}`;
+  return geoCache[key] || (geoCache[key] = new THREE.BoxGeometry(w, h, d));
+}
+function hemi(r, frac) {
+  const key = `h${r}|${frac}`;
+  return geoCache[key] || (geoCache[key] = new THREE.SphereGeometry(r, 20, 12, 0, Math.PI * 2, 0, Math.PI * frac));
+}
+function cylHalf(r, h) {
+  const key = `ch${r}|${h}`;
+  return geoCache[key] || (geoCache[key] = new THREE.CylinderGeometry(r, r, h, 18, 1, false, 0, Math.PI));
+}
+const _mm = new THREE.Matrix4(), _mq = new THREE.Quaternion(), _me = new THREE.Euler(), _mp = new THREE.Vector3(), _ms = new THREE.Vector3();
+const _mc = new THREE.Color();
+// Bake primitives into one geometry with per-vertex colours.
+function mergeParts(parts) {
+  let vCount = 0, iCount = 0;
+  const baked = parts.map((p) => {
+    _mp.set(p.x || 0, p.y || 0, p.z || 0);
+    _me.set(p.rx || 0, p.ry || 0, p.rz || 0);
+    _mq.setFromEuler(_me);
+    _ms.set(p.sx ?? 1, p.sy ?? 1, p.sz ?? 1);
+    _mm.compose(_mp, _mq, _ms);
+    const g = p.geo.clone().applyMatrix4(_mm);
+    vCount += g.getAttribute('position').count;
+    iCount += g.index.count;
+    return { g, color: p.color };
+  });
+  const pos = new Float32Array(vCount * 3), nor = new Float32Array(vCount * 3), col = new Float32Array(vCount * 3);
+  const idx = new Uint32Array(iCount);
+  let vo = 0, io = 0;
+  for (const { g, color } of baked) {
+    const n = g.getAttribute('position').count;
+    pos.set(g.getAttribute('position').array, vo * 3);
+    nor.set(g.getAttribute('normal').array, vo * 3);
+    _mc.set(color);
+    for (let i = 0; i < n; i++) { col[(vo + i) * 3] = _mc.r; col[(vo + i) * 3 + 1] = _mc.g; col[(vo + i) * 3 + 2] = _mc.b; }
+    const gi = g.index.array;
+    for (let i = 0; i < gi.length; i++) idx[io + i] = gi[i] + vo;
+    vo += n; io += gi.length;
+    g.dispose();
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  out.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  out.setIndex(new THREE.BufferAttribute(idx, 1));
+  out.computeBoundingSphere();
+  return out;
+}
+
 // ---------------------------------------------------------------- two-bone IK
 const _d = new THREE.Vector3(), _pole = new THREE.Vector3(), _elbow = new THREE.Vector3(), _u = new THREE.Vector3(), _l = new THREE.Vector3();
 const _q1 = new THREE.Quaternion(), _q1i = new THREE.Quaternion();
@@ -166,132 +226,127 @@ export class Person {
     return m;
   }
 
+  // Merge several coloured primitives into ONE mesh (one draw call) attached to `parent`.
+  // Each part: { geo, color, x, y, z, sx, sy, sz, rx, ry, rz }
+  _merged(parent, parts, mat = vertexMat()) {
+    const geo = mergeParts(parts);
+    const m = new THREE.Mesh(geo, mat);
+    m.castShadow = true;
+    parent.add(m);
+    this.meshes.push(m);
+    return m;
+  }
+
   _buildMeshes(o) {
     const u = o.uniform;
-    const skin = getMat(o.skin || '#e0ac82', 0.7);
+    const skinHex = o.skin || '#e0ac82';
     const shirt = getJerseyMat(u, this.mirror);
-    const shirtPlain = getMat(u.primary, 0.9);
-    const sleeve = getMat(u.sleeve || u.primary, 0.9);
-    const pants = getMat(u.pants || '#f2f2ee', 0.9);
-    const socks = getMat(u.socks || u.secondary, 0.9);
-    const cap = getMat(u.cap || u.primary, 0.85);
-    const shoe = getMat('#16181c', 0.6);
-    const belt = getMat('#141414', 0.5);
+    const pantsHex = u.pants || '#f2f2ee';
+    const sleeveHex = u.sleeve || u.primary;
+    const socksHex = u.socks || u.secondary;
+    const capHex = u.cap || u.primary;
+    const shoeHex = '#16181c';
+    const beltHex = '#141414';
+    const helmHex = u.helmet || u.cap || u.primary;
     this.meshes = [];
 
-    // --- pelvis group (hip height is animated)
+    // --- pelvis group (hip height is animated): pelvis + belt as one mesh
     this.pelvisG = new THREE.Group();
     this.root.add(this.pelvisG);
-    const pelvis = this._mesh(sphere(0.5, 16, 10), pants, this.pelvisG, 0, 0.02, 0);
-    pelvis.scale.set(0.9, 0.62, 0.68);
+    this._merged(this.pelvisG, [
+      { geo: sphere(0.5, 16, 10), color: pantsHex, y: 0.02, sx: 0.9, sy: 0.62, sz: 0.68 },
+      { geo: cyl(0.5, 0.5, 0.12, 20), color: beltHex, y: 0.12, sx: 0.98, sy: 1, sz: 0.68 },
+    ]);
 
-    // --- spine / torso
+    // --- spine / torso (textured jersey)
     this.spine = new THREE.Group();
     this.spine.position.set(0, 0.1, 0);
     this.pelvisG.add(this.spine);
     const torso = this._mesh(capsule(0.5, 0.62, 6, 16), shirt, this.spine, 0, 0.82, 0);
     torso.scale.set(0.97, 1, 0.66);
     this.torsoMesh = torso;
-    const beltM = this._mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.12, 20), belt, this.spine, 0, 0.02, 0);
-    beltM.scale.set(0.98, 1, 0.68);
-    if (this.role === 'catcher') {
+    if (this.role === 'catcher' || this.role === 'umpire') {
       const chest = this._mesh(capsule(0.52, 0.5, 6, 16), getMat(u.gear || '#20242b', 0.7), this.spine, 0, 0.9, 0.08);
       chest.scale.set(0.98, 1, 0.78);
     }
 
-    // --- neck + head
-    const neck = this._mesh(new THREE.CylinderGeometry(0.12, 0.14, DIM.neck + 0.08, 10), skin, this.spine, 0, DIM.spine + 0.02, 0);
+    // --- head group: neck, head, face, ears, cap - one mesh
     this.headG = new THREE.Group();
     this.headG.position.set(0, DIM.spine + DIM.neck * 0.5 + 0.2, 0);
     this.spine.add(this.headG);
-    void neck;
-    const head = this._mesh(sphere(DIM.headR, 18, 14), skin, this.headG, 0, 0.14, 0.02);
-    head.scale.set(0.9, 1.06, 1.0);
-    // face: nose + eyes so the pitcher / batter read as people up close
-    const nose = this._mesh(sphere(0.045, 8, 6), skin, this.headG, 0, 0.1, 0.37);
-    nose.castShadow = false;
-    const eyeMat = getMat('#1b1512', 0.5);
-    for (const s of [-1, 1]) {
-      const e = this._mesh(sphere(0.03, 8, 6), eyeMat, this.headG, s * 0.13, 0.2, 0.33);
-      e.castShadow = false;
-      const b = this._mesh(new THREE.BoxGeometry(0.13, 0.025, 0.03), getMat('#2a1d14', 0.8), this.headG, s * 0.13, 0.27, 0.335);
-      b.castShadow = false;
+    const headParts = [
+      { geo: cyl(0.12, 0.14, DIM.neck + 0.08, 10), color: skinHex, y: -0.19 },
+      { geo: sphere(DIM.headR, 18, 14), color: skinHex, y: 0.14, z: 0.02, sx: 0.9, sy: 1.06, sz: 1.0 },
+      { geo: sphere(0.045, 8, 6), color: skinHex, y: 0.1, z: 0.37 },
+    ];
+    for (const sd of [-1, 1]) {
+      headParts.push({ geo: sphere(0.03, 8, 6), color: '#1b1512', x: sd * 0.13, y: 0.2, z: 0.33 });
+      headParts.push({ geo: box(0.13, 0.025, 0.03), color: '#2a1d14', x: sd * 0.13, y: 0.27, z: 0.335 });
+      headParts.push({ geo: sphere(0.07, 8, 6), color: skinHex, x: sd * 0.33, y: 0.12, sx: 0.5, sy: 1, sz: 0.8 });
     }
-    // ears
-    for (const s of [-1, 1]) {
-      const ear = this._mesh(sphere(0.07, 8, 6), skin, this.headG, s * 0.33, 0.12, 0.0);
-      ear.scale.set(0.5, 1, 0.8);
+    if (!o.helmet) {
+      headParts.push({ geo: hemi(DIM.headR + 0.03, 0.52), color: capHex, y: 0.2, sx: 0.93, sy: 1.05, sz: 1.06 });
+      headParts.push({ geo: cylHalf(0.4, 0.025), color: u.capBill || capHex, y: 0.28, z: 0.06, ry: -Math.PI * 0.5, rx: 0.16, sz: 0.8 });
     }
+    this._merged(this.headG, headParts);
     if (o.helmet) {
-      const helm = this._mesh(new THREE.SphereGeometry(DIM.headR + 0.045, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.62), getMat(u.helmet || u.cap || u.primary, 0.35, 0.05), this.headG, 0, 0.19, 0.0);
+      const hm = getMat(helmHex, 0.35, 0.05);
+      const helm = this._mesh(hemi(DIM.headR + 0.045, 0.62), hm, this.headG, 0, 0.19, 0.0);
       helm.scale.set(0.95, 1.08, 1.05);
-      // brim + ear flap (flap is on the person's left = the pitcher side for a right-handed batter)
-      const brim = this._mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.03, 18, 1, false, -Math.PI * 0.5, Math.PI), getMat(u.helmet || u.cap || u.primary, 0.35, 0.05), this.headG, 0, 0.27, 0.05);
-      brim.rotation.x = 0.08; brim.scale.set(0.9, 1, 1.0);
-      brim.rotation.y = Math.PI * 0.5 * 0 + Math.PI; // half disc forward
-      const flap = this._mesh(sphere(0.2, 12, 8), getMat(u.helmet || u.cap || u.primary, 0.35, 0.05), this.headG, 0.34, 0.08, 0.02);
+      const brim = this._mesh(cylHalf(0.42, 0.03), hm, this.headG, 0, 0.27, 0.05);
+      brim.rotation.x = 0.08; brim.scale.set(0.9, 1, 1.0); brim.rotation.y = Math.PI;
+      const flap = this._mesh(sphere(0.2, 12, 8), hm, this.headG, 0.34, 0.08, 0.02);
       flap.scale.set(0.35, 0.9, 0.9);
-    } else {
-      const capDome = this._mesh(new THREE.SphereGeometry(DIM.headR + 0.03, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.52), cap, this.headG, 0, 0.2, 0.0);
-      capDome.scale.set(0.93, 1.05, 1.06);
-      const bill = this._mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.025, 18, 1, false, 0, Math.PI), getMat(u.capBill || u.cap || u.primary, 0.85), this.headG, 0, 0.28, 0.06);
-      bill.rotation.y = -Math.PI * 0.5; // half-disc toward +z
-      bill.rotation.x = 0.16;
-      bill.scale.set(1, 1, 0.8);
     }
-    if (this.role === 'catcher') {
+    if (this.role === 'catcher' || this.role === 'umpire') {
       const mask = this._mesh(new THREE.SphereGeometry(DIM.headR + 0.08, 14, 10, -Math.PI * 0.55, Math.PI * 1.1, Math.PI * 0.25, Math.PI * 0.55), getMat('#1c1f24', 0.5, 0.3), this.headG, 0, 0.1, 0.05);
-      mask.rotation.y = 0;
+      void mask;
     }
 
-    // --- arms (left = +x, right = -x)
+    // --- arms (left = +x, right = -x): upper (sleeve + shoulder) and forearm (skin + hand / glove)
     this.arms = [];
     for (const side of [1, -1]) {
       const sh = new THREE.Group();
       sh.position.set(side * DIM.shoulderW, DIM.shoulderY, 0);
       this.spine.add(sh);
-      const cap0 = this._mesh(sphere(0.25, 12, 10), shirtPlain, sh, 0, 0, 0);
-      void cap0;
       const upper = new THREE.Group(); sh.add(upper);
-      const um = this._mesh(capsule(0.17, DIM.upperArm - 0.34, 4, 10), sleeve, upper, 0, -DIM.upperArm / 2, 0);
-      void um;
+      this._merged(upper, [
+        { geo: sphere(0.25, 12, 10), color: u.primary },
+        { geo: capsule(0.17, DIM.upperArm - 0.34, 4, 10), color: sleeveHex, y: -DIM.upperArm / 2 },
+      ]);
       const elbow = new THREE.Group(); elbow.position.set(0, -DIM.upperArm, 0); upper.add(elbow);
-      const fm = this._mesh(capsule(0.135, DIM.foreArm - 0.27, 4, 10), o.armSkin === false ? sleeve : skin, elbow, 0, -DIM.foreArm / 2, 0);
-      void fm;
       const wrist = new THREE.Group(); wrist.position.set(0, -DIM.foreArm, 0); elbow.add(wrist);
+      const foreParts = [{ geo: capsule(0.135, DIM.foreArm - 0.27, 4, 10), color: o.armSkin === false ? sleeveHex : skinHex, y: -DIM.foreArm / 2 }];
       const isGloveHand = side === 1 && (o.glove || this.role === 'catcher');
-      let hand;
       if (isGloveHand) {
         const gcol = this.role === 'catcher' ? '#3a2416' : '#6b4226';
         const size = this.role === 'catcher' ? 0.42 : 0.3;
-        hand = this._mesh(sphere(size, 12, 10), getMat(gcol, 0.75), wrist, 0, -0.08, 0.12);
-        hand.scale.set(0.9, 1.05, 0.55);
-        this.gloveMesh = hand;
+        foreParts.push({ geo: sphere(size, 12, 10), color: gcol, y: -DIM.foreArm - 0.08, z: 0.12, sx: 0.9, sy: 1.05, sz: 0.55 });
       } else {
-        const gloveCol = this.role === 'batter' ? (u.gloves || '#f0f0f0') : (o.skin || '#e0ac82');
-        hand = this._mesh(sphere(0.14, 10, 8), this.role === 'batter' ? getMat(gloveCol, 0.7) : skin, wrist, 0, -0.06, 0);
+        const handHex = this.role === 'batter' ? (u.gloves || '#f0f0f0') : skinHex;
+        foreParts.push({ geo: sphere(0.14, 10, 8), color: handHex, y: -DIM.foreArm - 0.06 });
       }
-      this.arms.push({ side, sh, upper, elbow, wrist, hand, len1: DIM.upperArm, len2: DIM.foreArm });
+      this._merged(elbow, foreParts);
+      this.arms.push({ side, sh, upper, elbow, wrist, len1: DIM.upperArm, len2: DIM.foreArm });
     }
 
-    // --- legs
+    // --- legs: thigh (+ knee), shin (socks) and foot
     this.legs = [];
     for (const side of [1, -1]) {
       const hip = new THREE.Group();
       hip.position.set(side * DIM.hipW, -0.06, 0);
       this.pelvisG.add(hip);
       const thigh = new THREE.Group(); hip.add(thigh);
-      this._mesh(capsule(0.245, DIM.thigh - 0.42, 4, 10), pants, thigh, 0, -DIM.thigh / 2 + 0.03, 0);
+      this._merged(thigh, [
+        { geo: capsule(0.245, DIM.thigh - 0.42, 4, 10), color: pantsHex, y: -DIM.thigh / 2 + 0.03 },
+        { geo: sphere(0.235, 10, 8), color: pantsHex, y: -DIM.thigh },
+      ]);
       const knee = new THREE.Group(); knee.position.set(0, -DIM.thigh, 0); thigh.add(knee);
-      this._mesh(sphere(0.235, 10, 8), pants, knee, 0, 0, 0);
-      this._mesh(capsule(0.185, DIM.shin - 0.4, 4, 10), socks, knee, 0, -DIM.shin / 2 + 0.03, 0);
+      const shinParts = [{ geo: capsule(0.185, DIM.shin - 0.4, 4, 10), color: socksHex, y: -DIM.shin / 2 + 0.03 }];
+      if (this.role === 'catcher' || this.role === 'umpire') shinParts.push({ geo: capsule(0.23, DIM.shin - 0.5, 4, 10), color: u.gear || '#20242b', y: -DIM.shin / 2 + 0.05, z: 0.1, sz: 0.8 });
+      this._merged(knee, shinParts);
       const ankle = new THREE.Group(); ankle.position.set(0, -DIM.shin, 0); knee.add(ankle);
-      const foot = this._mesh(new THREE.BoxGeometry(0.3, 0.2, 0.72), shoe, ankle, 0, -0.16, 0.16);
-      void foot;
-      if (this.role === 'catcher') {
-        const pad = this._mesh(capsule(0.23, DIM.shin - 0.5, 4, 10), getMat(u.gear || '#20242b', 0.7), knee, 0, -DIM.shin / 2 + 0.05, 0.1);
-        pad.scale.set(1, 1, 0.8);
-      }
+      this._merged(ankle, [{ geo: box(0.3, 0.2, 0.72), color: shoeHex, y: -0.16, z: 0.16 }]);
       this.legs.push({ side, hip, thigh, knee, ankle });
     }
 

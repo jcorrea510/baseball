@@ -274,6 +274,9 @@ export class App {
       if (pitch.announce && e.mode !== 'derby') ui.showPitchInfo(LABEL[pitch.type], 0, true, 1500);
     });
     e.on('release', ({ pitch }) => {
+      this.actors.fielders.P.root.updateMatrixWorld(true);
+      const rh = this.actors.fielders.P.handWorld('R');
+      this.fx.releaseGlint(rh.x, rh.y, rh.z);
       ui.showPitchInfo(pitch.announce ? LABEL[pitch.type] : '', pitch.speedMph, false, 1900);
     });
     e.on('swing', ({ swing, pitch, errorText }) => {
@@ -302,7 +305,7 @@ export class App {
     });
     e.on('pitchCall', ({ call }) => {
       if (call === 'ball') audio.ballCue();
-      else if (call === 'calledStrike' || call === 'swingingStrike') audio.strikeCue();
+      else if (call === 'calledStrike' || call === 'swingingStrike') { audio.strikeCue(); this.actors.strikeCall(e.time, e.count.strikes >= 2 || call === 'swingingStrike'); }
     });
     e.on('contact', (c) => this.onContact(c));
     e.on('playEvent', (ev) => this.onPlayEvent(ev));

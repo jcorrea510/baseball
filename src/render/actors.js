@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { Person, makeBat, restyleBat, mixPose, makePose, copyPose } from './rig.js';
-import { batterPose, pitcherPose, catcherPose, fielderReady, runPose, runCadence, runnerLeadPose, throwPose, catchPose, divePose, celebratePose, standingPose, THROW_RELEASE_U } from './poses.js';
+import { batterPose, pitcherPose, catcherPose, fielderReady, runPose, runCadence, runnerLeadPose, throwPose, catchPose, divePose, celebratePose, standingPose, umpirePose, THROW_RELEASE_U } from './poses.js';
 import { UNIFORMS } from '../game/teams.js';
 import { BASE_XZ, MOUND_XZ } from '../physics/field.js';
 import { sampleBall } from '../physics/ballistics.js';
@@ -60,6 +60,7 @@ export class Actors {
     for (const p of Object.values(this.fielders)) this.group.remove(p.root);
     for (const p of this.players.values()) this.group.remove(p.root);
     for (const c of this.coaches) this.group.remove(c.root);
+    if (this.umpire) this.group.remove(this.umpire.root);
     this.fielders = {}; this.players.clear(); this.coaches = [];
     if (this.looseBat) { this.group.remove(this.looseBat); this.looseBat = null; }
 
@@ -83,6 +84,12 @@ export class Actors {
       this.group.add(person.root);
       this.state.set(person, { phase: Math.random() * TAU, x: 0, z: 0, yaw: 0, init: false });
     });
+    // plate umpire (dark uniform), crouched behind the catcher
+    this.umpire = new Person({ role: 'umpire', uniform: { primary: '#22262e', secondary: '#c9d1dc', trim: '#c9d1dc', pants: '#5c6473', cap: '#171a20', capBill: '#171a20', socks: '#171a20', gear: '#1a1d24', text: '', number: 23 }, skin: '#e0ac82', scale: 1.02 });
+    this.umpire.place(1.95, 0, 6.6, Math.PI);
+    this.umpire.root.updateMatrixWorld(true);
+    this.group.add(this.umpire.root);
+    this.umpCall = { t: -10, big: false };
     // batters / runners (player's team)
     for (const b of engine.lineup) this.getPlayer(b, engine);
     // base coaches
@@ -122,6 +129,9 @@ export class Actors {
     return p;
   }
 
+  // The umpire punches out strikes.
+  strikeCall(time, big = false) { this.umpCall = { t: time, big }; }
+
   setBatStyle(style) {
     this.batStyle = style;
     for (const p of this.players.values()) if (p.bat) restyleBat(p.bat, style);
@@ -143,6 +153,13 @@ export class Actors {
 
     // ---- pitcher & catcher & fielders
     this.updateFielders(E, dt, time, pitch, plan, playT);
+
+    // ---- plate umpire
+    if (this.umpire) {
+      const since = this.umpCall.t > -5 ? time - this.umpCall.t : -1;
+      umpirePose(this.umpire.pose, time, since, this.umpCall.big);
+      this.umpire.apply();
+    }
 
     // ---- batter / runners
     this.updateOffense(E, dt, time, pitch, plan, playT);
