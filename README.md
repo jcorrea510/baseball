@@ -24,7 +24,7 @@ Everything in the game is original and made by code: the players, teams, sounds,
 
 After every swing a small meter shows exactly how many milliseconds early or late you were.
 
-Pitches that are far outside the strike zone are hard to hit well. Let them go and make the pitcher throw strikes!
+Pitches that are far outside the strike zone are hard to hit well, and some (way off the plate, in the dirt, high heat) cannot be hit at all. Let them go and make the pitcher throw strikes! The harder the level, the more of them he throws, and the nastier: curveballs that start at the belt and drop out, sliders that start over the plate and break away.
 
 ## What's in the game
 

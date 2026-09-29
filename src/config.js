@@ -72,6 +72,10 @@ export const CONFIG = {
     zoneBottom: 1.55, // strike zone (ft above ground)
     zoneTop: 3.4,
     zoneHalfWidth: 0.708 + 0.121, // half the plate + one ball radius (edge counts)
+    // How far from the middle of the zone the pitcher's targets are, in 'zone widths' (1.0 = the edge of the zone; the bat can
+    // reach out to timing.reachRatio, and hits only weakly beyond timing.chaseRatio).
+    locations: { edge: [0.9, 1.3], chase: [1.3, 1.9], waste: [1.9, 2.9] },
+    wasteMinRatio: 1.75, // a 'waste' pitch is never wilder in the wrong direction than this: it stays out of reach
     ballScale: 1.35, // pitches are drawn a bit bigger so they are easy to track
     // Movement is measured at the plate. breakArm: feet toward the pitcher's
     // throwing-arm side (negative = glove side). hop: feet of "extra rise"
@@ -149,7 +153,9 @@ export const CONFIG = {
       windowScale: 1.5,
       fastball: [62, 72],
       mix: { fastball: 0.62, changeup: 0.12, curveball: 0.13, slider: 0.13, heater: 0 },
-      strikeRate: 0.8,
+      // Where the computer pitcher throws (odds before the count changes them): 'heart' = in the zone, 'edge' = on the corners,
+      // 'chase' = tempting but out of the zone, 'waste' = way out of reach (in the dirt, high heat, way off the plate).
+      locations: { heart: 0.68, edge: 0.16, chase: 0.09, waste: 0.07 },
       commandSigma: 0.12, // ft of pitcher inaccuracy
       movementScale: 0.6,
       tellStrength: 1.0,
@@ -166,7 +172,7 @@ export const CONFIG = {
       windowScale: 1.0,
       fastball: [80, 90],
       mix: { fastball: 0.46, changeup: 0.18, curveball: 0.18, slider: 0.18, heater: 0 },
-      strikeRate: 0.64,
+      locations: { heart: 0.52, edge: 0.08, chase: 0.21, waste: 0.19 },
       commandSigma: 0.28,
       movementScale: 1.0,
       tellStrength: 0.6,
@@ -183,7 +189,7 @@ export const CONFIG = {
       windowScale: 0.7,
       fastball: [88, 98],
       mix: { fastball: 0.36, changeup: 0.18, curveball: 0.17, slider: 0.19, heater: 0.1 },
-      strikeRate: 0.55,
+      locations: { heart: 0.32, edge: 0.15, chase: 0.29, waste: 0.24 },
       commandSigma: 0.42,
       movementScale: 1.25,
       tellStrength: 0.28,

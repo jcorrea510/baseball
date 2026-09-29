@@ -154,7 +154,7 @@ export class Engine {
     // (`pitchOverride` lets tests and demos throw an exact pitch)
     const p = this.pitchOverride ? this.pitchOverride(this) : choosePitch({
       mode: this.mode, difficulty: this.difficulty, count: this.count, rng: this.rng,
-      batterHand: this.batterHand, practice: this.practice, lastType: this.lastType,
+      batterHand: this.batterHand, pitcherHand: this.pitcher.hand, practice: this.practice, lastType: this.lastType,
     }, this.cfg);
     if (!p.tell) p.tell = { slot: 0, lag: 0 };
     const hand = this.pitcher.hand;
