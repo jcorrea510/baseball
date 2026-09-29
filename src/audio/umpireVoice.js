@@ -112,12 +112,13 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
  */
 export function placeVoice(audio, out, { pan = 0, reverb = 0.3, echo = 1 } = {}) {
   const c = audio.ctx, U = CONFIG.audio.umpire;
+  const bus = audio.master || audio.sfx; // the umpire has his own volume (applied per call), so he skips the effects channel
   const panner = c.createStereoPanner ? c.createStereoPanner() : null;
-  if (panner) { panner.pan.value = clamp(pan, -1, 1); out.connect(panner); panner.connect(audio.sfx); } else out.connect(audio.sfx);
+  if (panner) { panner.pan.value = clamp(pan, -1, 1); out.connect(panner); panner.connect(bus); } else out.connect(bus);
   if (reverb > 0 && audio.reverb) { const send = c.createGain(); send.gain.value = reverb; out.connect(send); send.connect(audio.reverb); }
   if (echo > 0 && c.createDelay) {
     const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = U.echo.lowpassHz; // far-away sound is muffled
-    lp.connect(audio.sfx);
+    lp.connect(bus);
     U.echo.taps.forEach((t, i) => {
       const d = c.createDelay(1.5); d.delayTime.value = t;
       const g = c.createGain(); g.gain.value = U.echo.levels[i] * echo;
