@@ -97,6 +97,9 @@ describe('planRun: one planned run', () => {
 
   it('holds for hundreds of random runs (finite, monotonic, lands on target when there is time)', () => {
     const rng = createRng(21);
+    // Every check is still made on every sampled frame, but problems are collected and asserted once
+    // (hundreds of thousands of individual expect() calls made this test slow enough to hit the time limit).
+    const problems = [];
     for (let i = 0; i < 400; i++) {
       const o = {
         x0: rng.range(-200, 200), z0: rng.range(-350, 0), x1: rng.range(-200, 200), z1: rng.range(-350, 0),
@@ -107,16 +110,17 @@ describe('planRun: one planned run', () => {
       const pts = trace(run, run.tStop + 0.3, 1 / 60);
       let prev = 0;
       for (const p of pts) {
-        expect(Number.isFinite(p.x) && Number.isFinite(p.z) && Number.isFinite(p.v)).toBe(true);
-        expect(p.s).toBeGreaterThanOrEqual(prev - 1e-9);
-        expect(p.v).toBeLessThanOrEqual(o.vmax + 1e-6);
+        if (!(Number.isFinite(p.x) && Number.isFinite(p.z) && Number.isFinite(p.v))) { problems.push(`run ${i}: not finite`); break; }
+        if (p.s < prev - 1e-9) { problems.push(`run ${i}: went backwards`); break; }
+        if (p.v > o.vmax + 1e-6) { problems.push(`run ${i}: faster than his top speed`); break; }
         prev = p.s;
       }
       // he reaches (or passes) the target
-      expect(run.sStop).toBeGreaterThanOrEqual(run.D - 1e-6);
+      if (!(run.sStop >= run.D - 1e-6)) problems.push(`run ${i}: stopped short of the target`);
       // and when there was plenty of time he is on the spot by then
-      if (run.vArrive === 0) expect(Math.hypot(run.xStop - o.x1, run.zStop - o.z1)).toBeLessThan(1e-6);
+      if (run.vArrive === 0 && !(Math.hypot(run.xStop - o.x1, run.zStop - o.z1) < 1e-6)) problems.push(`run ${i}: not on the spot`);
     }
+    expect(problems).toEqual([]);
   });
 });
 
