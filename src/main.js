@@ -1,5 +1,9 @@
-// Sandlot entry point (replaced with the full app in the next milestones).
-import { CONFIG } from './config.js';
+// Sandlot entry point.
+import './style.css';
+import { App } from './app.js';
 
+const params = new URLSearchParams(location.search);
+const canvas = document.getElementById('game');
 const ui = document.getElementById('ui');
-ui.textContent = 'Sandlot loading... (' + Object.keys(CONFIG.difficulty).length + ' difficulty levels)';
+const app = new App(canvas, ui, params);
+window.__app = app; // handy for debugging / automated checks
