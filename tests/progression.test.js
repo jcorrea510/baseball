@@ -109,3 +109,32 @@ describe('saved progress', () => {
     expect(p.average()).toBeCloseTo(0.4, 5);
   });
 });
+
+describe('reset stats', () => {
+  it('clears career stats and high scores but keeps settings and unlocked items', () => {
+    const p = new Progress(memStore());
+    p.updateSettings({ difficulty: 'allstar', umpireVolume: 0.3 });
+    p.recordGame(quickResult({ stats: { hits: 6, hr: 1 } }));
+    p.equip('bats', 'maple');
+    p.resetStats();
+    expect(p.data.career.hits).toBe(0);
+    expect(p.data.career.games).toBe(0);
+    expect(p.data.high.quick.pro).toBe(null);
+    expect(p.settings.difficulty).toBe('allstar');
+    expect(p.settings.umpireVolume).toBe(0.3);
+    expect(p.isUnlocked('bats', 'maple')).toBe(true);
+    expect(p.data.equipped.bat).toBe('maple');
+  });
+
+  it('gives old saves the new sound and screen settings', () => {
+    const store = memStore();
+    store.set(CONFIG.storageKey, JSON.stringify({ v: 1, settings: { volume: 0.5 } }));
+    const p = new Progress(store);
+    expect(p.settings.volume).toBe(0.5);
+    expect(p.settings.sfxVolume).toBe(1);
+    expect(p.settings.umpireVolume).toBe(1);
+    expect(p.settings.crowdVolume).toBe(1);
+    expect(p.settings.flashes).toBe(true);
+    expect(p.settings.inputDelayMs).toBe(0);
+  });
+});

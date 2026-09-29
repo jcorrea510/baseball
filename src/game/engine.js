@@ -22,6 +22,7 @@ export class Engine {
    * @param {'R'|'L'|'auto'} [o.hand]   the player's batting side ('auto' = each lineup batter has their own)
    * @param {object} [o.practice]       { type, speed, location }
    * @param {object} [o.opponent]       team from teams.js
+   * @param {number} [o.inputDelayMs]   swing timing adjustment: ms taken off every press (laggy screens / controllers)
    */
   constructor(o = {}, cfg = CONFIG) {
     this.cfg = cfg;
@@ -31,6 +32,8 @@ export class Engine {
     this.seed = o.seed ?? ((Math.random() * 2 ** 32) >>> 0);
     this.rng = createRng(this.seed);
     this.handSetting = o.hand || 'auto';
+    // Swing timing adjustment (Settings): a screen or controller that lags reports every press this much late, so it is taken off.
+    this.inputDelay = Math.max(0, Math.min(cfg.timing.inputDelayMaxMs, o.inputDelayMs || 0)) / 1000;
     this.practice = { type: 'fastball', speed: cfg.modes.practice.speedDefault, location: 'random', ...(o.practice || {}) };
     this.opponent = o.opponent || OPPONENTS[this.rng.int(0, OPPONENTS.length - 1)];
     this.playerTeam = PLAYER_TEAM;
@@ -191,7 +194,7 @@ export class Engine {
   swingPressed(sinceUpdate = 0) {
     if (this.phase !== 'pitch' || this.swing || !this.pitch) return false;
     const pitch = this.pitch;
-    const tPress = this.time + Math.max(-0.02, Math.min(0.05, sinceUpdate));
+    const tPress = this.time + Math.max(-0.02, Math.min(0.05, sinceUpdate)) - this.inputDelay;
     const times = resolveSwingTimes(tPress, pitch.tCross, this.cfg);
     const loc = pitch.target;
     const contact = computeContact({

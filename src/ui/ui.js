@@ -2,6 +2,7 @@
 import { CONFIG, DIFFICULTIES } from '../config.js';
 import { UNIFORMS, BATS } from '../game/teams.js';
 import { UNLOCKS, unlockKey } from '../game/progression.js';
+import { logoSVG } from './logo.js';
 
 function h(tag, cls, html) {
   const e = document.createElement(tag);
@@ -41,14 +42,15 @@ const ICONS = {
   shake: '<path d="M3 9l2 3-2 3M21 9l-2 3 2 3M8 7v10M12 4v16M16 7v10"/>',
   mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4"/>',
   star: '<path class="f" d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M21.2 12h-2.4M5.2 12H2.8M18.5 5.5l-1.7 1.7M7.2 16.8l-1.7 1.7M18.5 18.5l-1.7-1.7M7.2 7.2L5.5 5.5"/><circle cx="12" cy="12" r="6.3"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/>',
+  flash: '<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/><circle cx="12" cy="12" r="3.2"/>',
+  timing: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9.5 2.5h5"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>',
+  bat: '<path d="M4 20l2-2M6.5 17.5l10.8-10.8a2.6 2.6 0 0 1 3.7 3.7L10.2 21.2"/>',
+  trash: '<path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13"/>',
 };
 const icon = (name, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`;
-
-const STITCH_SVG = (() => {
-  let s = '<svg class="stitches" viewBox="0 0 560 14" preserveAspectRatio="none"><path d="M0 7 H560" stroke="#c62828" stroke-width="2.2" fill="none"/>';
-  for (let x = 6; x < 560; x += 14) s += `<path d="M${x} 1 L${x + 5} 13 M${x + 5} 1 L${x} 13" stroke="#c62828" stroke-width="2" fill="none" stroke-linecap="round"/>`;
-  return s + '</svg>';
-})();
 
 const PITCH_LABEL = { fastball: 'Fastball', changeup: 'Changeup', curveball: 'Curveball', slider: 'Slider', heater: 'Heater', mixed: 'Mixed' };
 const avgText = (hits, ab) => (ab > 0 ? (hits / ab).toFixed(3).replace(/^0/, '') : '.000');
@@ -202,7 +204,7 @@ export class UI {
     const sw = e.target.closest('.switch[data-set]');
     if (sw) {
       const v = !sw.classList.contains('on');
-      if (inPlace) sw.classList.toggle('on', v);
+      if (inPlace) { sw.classList.toggle('on', v); sw.setAttribute('aria-checked', v ? 'true' : 'false'); }
       this.act('setting', { key: sw.dataset.set, value: v });
       return true;
     }
@@ -211,7 +213,7 @@ export class UI {
       const p = seg.parentNode;
       let v = seg.dataset.v;
       if (p.dataset.bool) v = v === 'true';
-      if (inPlace) for (const b of p.children) b.classList.toggle('on', b === seg);
+      if (inPlace) for (const b of p.children) { b.classList.toggle('on', b === seg); if (b.hasAttribute('aria-checked')) b.setAttribute('aria-checked', b === seg ? 'true' : 'false'); }
       this.act('setting', { key: p.dataset.set, value: v });
       return true;
     }
@@ -225,10 +227,10 @@ export class UI {
   buildTitle() {
     const s = this.fresh('title', false);
     const stack = h('div', 'title-stack rise');
-    stack.innerHTML = `<div><div class="logo">SANDLOT</div>${STITCH_SVG}</div>
+    stack.innerHTML = `<h1 class="logo">${logoSVG({ id: 'title' })}</h1>
       <div class="col actions">
         <button class="btn wide" data-a="play">${icon('play')}Play ball</button>
-        <div class="row"><button class="btn small ghost" data-a="howto">${icon('help')}How to play</button><button class="btn small ghost" data-a="locker">${icon('shirt')}Locker</button><button class="btn small ghost" data-a="career">${icon('chart')}Career</button></div>
+        <div class="row"><button class="btn small ghost" data-a="howto">${icon('help')}How to play</button><button class="btn small ghost" data-a="locker">${icon('shirt')}Locker</button><button class="btn small ghost" data-a="career">${icon('chart')}Career</button><button class="btn small ghost" data-a="settings">${icon('gear')}Settings</button></div>
       </div>`;
     s.appendChild(stack);
     s.onclick = (e) => { const b = e.target.closest('[data-a]'); if (b) this.act(b.dataset.a); };
@@ -251,7 +253,7 @@ export class UI {
     const prev = s.querySelector('.menu-wrap');
     const wrap = h('div', 'menu-wrap rise');
     wrap.innerHTML = `
-      ${this.backHead('Play', `<button class="iconbtn" data-a="howto" aria-label="How to play">${icon('help')}</button>`)}
+      ${this.backHead('Play', `<button class="iconbtn" data-a="howto" aria-label="How to play" title="How to play">${icon('help')}</button><button class="iconbtn" data-a="settings" aria-label="Settings" title="Settings">${icon('gear')}</button>`)}
       <div class="cards">
         ${modes.map((m) => `<button class="card" data-a="start" data-mode="${m.mode}"><span class="go">${icon('chevRight')}</span><span class="ico">${icon(m.ic)}</span><span class="cbody"><h3>${m.title}</h3><span class="chips">${m.chips.map((x) => `<span class="chip">${x}</span>`).join('')}</span></span><span class="best ${m.best ? '' : 'none'}">${m.best || 'New'}</span></button>`).join('')}
       </div>
@@ -295,7 +297,7 @@ export class UI {
   buildPause(st) {
     const s = this.fresh('pause');
     const d = h('div', 'dialog panel pause rise');
-    const sw = (key, ic, label, on) => `<div class="setrow"><span class="nm">${icon(ic)}${label}</span><button class="switch ${on ? 'on' : ''}" data-set="${key}" data-bool="1" aria-label="${label}"></button></div>`;
+    const sw = (key, ic, label, on) => `<div class="setrow"><span class="nm">${icon(ic)}${label}</span><button class="switch ${on ? 'on' : ''}" data-set="${key}" data-bool="1" role="switch" aria-checked="${on ? 'true' : 'false'}" aria-label="${label}"></button></div>`;
     d.innerHTML = `<h2>Paused</h2>
       <button class="btn" data-a="resume">${icon('play')}Resume</button>
       <div class="setgrid">
@@ -303,15 +305,107 @@ export class UI {
         ${sw('pitchGuide', 'guide', 'Pitch guide', st.pitchGuide)}
         ${sw('landingRing', 'landing', 'Landing ring', st.landingRing)}
         ${sw('sound', 'soundOn', 'Sound', st.sound)}
-        ${sw('shake', 'shake', 'Shake', st.shake)}
-        <div class="setrow stack"><span class="nm">${icon('mic')}Umpire</span><div class="seg" data-set="umpire">${[['synth', 'Voice'], ['speech', 'Browser'], ['off', 'Off']].map(([v, l]) => `<button data-v="${v}" class="${st.umpire === v ? 'on' : ''}">${l}</button>`).join('')}</div></div>
       </div>
-      <div class="row"><button class="btn small ghost" data-a="restart">${icon('restart')}Restart</button><button class="btn small ghost" data-a="howtoPause">${icon('help')}Help</button><button class="btn small ghost warn" data-a="quit">${icon('home')}Quit</button></div>`;
+      <div class="row"><button class="btn small ghost" data-a="settingsPause">${icon('gear')}Settings</button><button class="btn small ghost" data-a="howtoPause">${icon('help')}Help</button></div>
+      <div class="row"><button class="btn small ghost" data-a="restart" data-confirm="Restart?">${icon('restart')}Restart</button><button class="btn small ghost warn" data-a="quit" data-confirm="Quit game?">${icon('home')}Quit</button></div>`;
     s.appendChild(d);
     s.onclick = (e) => {
       if (this.settingClick(e, true)) return;
-      const b = e.target.closest('[data-a]'); if (b) this.act(b.dataset.a);
+      const b = e.target.closest('[data-a]'); if (!b) return;
+      if (b.dataset.confirm && !this.confirmed(b)) return;
+      this.act(b.dataset.a);
     };
+  }
+
+  // A button that loses something (quit, restart, reset) takes two taps: the first arms it ("Sure?"), the second does it.
+  // Returns true on the second tap.
+  confirmed(b) {
+    if (b.classList.contains('armed')) return true;
+    for (const x of this.root.querySelectorAll('.armed')) this.disarm(x);
+    b.dataset.label = b.innerHTML;
+    b.classList.add('armed');
+    b.innerHTML = `${icon('check')}${b.dataset.confirm}`;
+    clearTimeout(b._armT);
+    b._armT = setTimeout(() => this.disarm(b), 3000);
+    return false;
+  }
+  disarm(b) {
+    if (!b.classList.contains('armed')) return;
+    b.classList.remove('armed');
+    if (b.dataset.label) b.innerHTML = b.dataset.label;
+  }
+
+  // ---------------- settings (from the title, the Play screen or the pause menu)
+  buildSettings(st) {
+    const s = this.fresh('settings');
+    const d = h('div', 'settings panel rise');
+    const sw = (key, ic, label, on) => `<div class="setrow"><span class="nm">${icon(ic)}${label}</span><button class="switch ${on ? 'on' : ''}" data-set="${key}" data-bool="1" role="switch" aria-checked="${on ? 'true' : 'false'}" aria-label="${label}"></button></div>`;
+    const seg = (key, ic, label, items, cur) => `<div class="setrow stack"><span class="nm">${icon(ic)}${label}</span><div class="seg" data-set="${key}" role="radiogroup" aria-label="${label}">${items.map(([v, l]) => `<button data-v="${v}" class="${cur === v ? 'on' : ''}" role="radio" aria-checked="${cur === v ? 'true' : 'false'}">${l}</button>`).join('')}</div></div>`;
+    const pct = (v) => `${Math.round(v * 100)}%`;
+    const slider = (key, ic, label, v) => `<div class="setrow slide"><span class="nm">${icon(ic)}${label}</span><input type="range" min="0" max="100" step="5" value="${Math.round(v * 100)}" data-slide="${key}" aria-label="${label}"><span class="val">${pct(v)}</span></div>`;
+    const lag = st.inputDelayMs || 0;
+    d.innerHTML = `${this.backHead('Settings', `<button class="iconbtn" data-a="credits" aria-label="Credits" title="Credits">${icon('info')}</button>`)}
+      <div class="label">Sound</div>
+      <div class="setgrid">
+        ${slider('volume', 'soundOn', 'Master', st.volume)}
+        ${slider('sfxVolume', 'bat', 'Effects', st.sfxVolume)}
+        ${slider('umpireVolume', 'mic', 'Umpire', st.umpireVolume)}
+        ${slider('crowdVolume', 'chart', 'Crowd', st.crowdVolume)}
+        ${seg('umpire', 'mic', 'Umpire voice', [['synth', 'Voice'], ['speech', 'Browser'], ['off', 'Off']], st.umpire).replace('setrow stack', 'setrow wide')}
+      </div>
+      <div class="label">Game</div>
+      <div class="setgrid">
+        ${seg('difficulty', 'star', 'Level', DIFFICULTIES.map((k) => [k, CONFIG.difficulty[k].label]), st.difficulty)}
+        ${seg('hand', 'bat', 'Bats', [['auto', 'Mixed'], ['R', 'Right'], ['L', 'Left']], st.hand)}
+        ${seg('tod', 'sun', 'Time', [['day', 'Day'], ['dusk', 'Dusk'], ['night', 'Night']], st.tod)}
+        ${sw('zone', 'zone', 'Strike zone', st.zone)}
+        ${sw('pitchGuide', 'guide', 'Pitch guide', st.pitchGuide)}
+        ${sw('landingRing', 'landing', 'Landing ring', st.landingRing)}
+      </div>
+      <div class="label">Controls &amp; screen</div>
+      <div class="setgrid">
+        <div class="setrow slide"><span class="nm">${icon('timing')}Swing delay</span><input type="range" min="0" max="${CONFIG.timing.inputDelayMaxMs}" step="${CONFIG.timing.inputDelayStepMs}" value="${lag}" data-slide="inputDelayMs" data-unit="ms" aria-label="Swing delay"><span class="val">${lag} ms</span></div>
+        ${sw('shake', 'shake', 'Shake', st.shake)}
+        ${sw('flashes', 'flash', 'Flashes', st.flashes)}
+      </div>
+      <div class="row foot"><button class="btn small ghost warn" data-a="resetStats" data-confirm="Erase stats?">${icon('trash')}Reset stats</button></div>`;
+    s.appendChild(d);
+    for (const r of d.querySelectorAll('input[data-slide]')) {
+      const out = r.parentNode.querySelector('.val');
+      const unit = r.dataset.unit;
+      const value = () => (unit ? +r.value : +r.value / 100);
+      r.addEventListener('input', () => {
+        out.textContent = unit ? `${r.value} ${unit}` : `${r.value}%`;
+        this.act('setting', { key: r.dataset.slide, value: value(), live: true });
+      });
+      r.addEventListener('change', () => this.act('settingDone', { key: r.dataset.slide, value: value() }));
+    }
+    s.onclick = (e) => {
+      if (this.settingClick(e, true)) return;
+      const b = e.target.closest('[data-a]'); if (!b) return;
+      if (b.dataset.confirm && !this.confirmed(b)) return;
+      this.act(b.dataset.a);
+    };
+  }
+
+  // ---------------- credits
+  buildCredits(recordings) {
+    const s = this.fresh('credits');
+    const d = h('div', 'credits panel rise');
+    const rows = [
+      ['Game', 'Sandlot'],
+      ['3D engine', 'three.js'],
+      ['three.js license', 'MIT · © 2010–2025 three.js authors'],
+      ['Built with', 'Vite'],
+      ['Players, ballpark, crowd', 'Drawn in code'],
+      ['Sound', 'Synthesized live in your browser'],
+      ['Umpire', recordings ? 'Recorded calls' : 'Synthesized voice'],
+    ];
+    d.innerHTML = `${this.backHead('Credits')}
+      <div class="mini-logo">${logoSVG({ id: 'credits', swoosh: false })}</div>
+      <dl class="credit-list">${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>`;
+    s.appendChild(d);
+    s.onclick = (e) => { const b = e.target.closest('[data-a]'); if (b) this.act(b.dataset.a); };
   }
 
   // ---------------- computer's half-inning
@@ -387,16 +481,11 @@ export class UI {
     const c = prog.data.career;
     const d = h('div', 'locker panel rise');
     const cells = [[avgText(c.hits, c.ab), 'AVG'], [c.hits, 'Hits'], [c.hr, 'HR'], [c.longestHR ? c.longestHR + ' ft' : '--', 'Longest HR'], [c.maxEV ? Math.round(c.maxEV) + ' mph' : '--', 'Exit velo'], [c.perfects, 'Perfect'], [`${c.wins}/${c.games}`, 'Wins'], [c.derbyBestHR, 'Derby best'], [c.derbyBestStreak, 'HR streak'], [c.rbi, 'RBI'], [c.strikeouts, 'Strikeouts'], [c.practiceSwings, 'Practice']];
-    d.innerHTML = `${this.backHead('Career', `<button class="btn small ghost warn" data-a="resetSave">${icon('restart')}Reset</button>`)}<div class="statgrid">${cells.map(([v, l]) => `<div class="stat"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('')}</div>`;
+    d.innerHTML = `${this.backHead('Career', `<button class="btn small ghost warn" data-a="resetStats" data-confirm="Erase stats?">${icon('trash')}Reset</button>`)}<div class="statgrid">${cells.map(([v, l]) => `<div class="stat"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('')}</div>`;
     s.appendChild(d);
     s.onclick = (e) => {
       const b = e.target.closest('[data-a]'); if (!b) return;
-      if (b.dataset.a === 'resetSave' && !b.classList.contains('armed')) {
-        // wiping the save takes two taps
-        b.classList.add('armed'); b.innerHTML = `${icon('restart')}Sure?`;
-        setTimeout(() => { if (b.isConnected) { b.classList.remove('armed'); b.innerHTML = `${icon('restart')}Reset`; } }, 2600);
-        return;
-      }
+      if (b.dataset.confirm && !this.confirmed(b)) return;
       this.act(b.dataset.a);
     };
   }
@@ -500,6 +589,7 @@ export class UI {
   }
   hideHint() { this.q.hint.classList.remove('show'); }
   flash(a = 0.5, ms = 120) {
+    if (this.noFlashes) return;
     const f = this.q.flash;
     f.style.transition = 'none'; f.style.opacity = String(a); void f.offsetWidth;
     f.style.transition = `opacity ${ms * 2}ms ease-out`; f.style.opacity = '0';

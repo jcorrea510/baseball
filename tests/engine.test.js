@@ -55,6 +55,20 @@ describe('one pitch at a time', () => {
     expect(e.game.score.top).toBe(1);
   });
 
+  it('the swing timing adjustment takes a fixed delay off every press', () => {
+    const errs = [];
+    for (const lag of [0, 60]) {
+      const e = new Engine({ mode: 'practice', seed: 9, inputDelayMs: lag });
+      e.pitchOverride = strikePitch;
+      e.start();
+      expect(untilPhase(e, 'pitch')).toBe(true);
+      while (e.time < e.pitch.tCross - 0.2) e.update(DT);
+      e.swingPressed(0);
+      errs.push(e.swing.errorMs);
+    }
+    expect(errs[0] - errs[1]).toBeCloseTo(60, 0);
+  });
+
   it('strikeouts count as plate appearances and at-bats', () => {
     const e = new Engine({ mode: 'quick', seed: 3 });
     e.pitchOverride = strikePitch;

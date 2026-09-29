@@ -113,6 +113,8 @@ export const CONFIG = {
     earlyMs: 80, // beyond "good", up to here = weak/foul contact
     lateMs: 56, // late window is shorter (the catcher has the ball by then)
     swingDelay: 0.115, // seconds from pressing the button until the bat is at the plate
+    inputDelayMaxMs: 150, // the Settings "Swing timing" adjustment goes up to this (ms taken off every press on a laggy screen)
+    inputDelayStepMs: 10,
     followThrough: 0.42,
     // Visual limits on how far in front of / behind the plate the bat can meet the ball
     reachEarly: 0.03,
@@ -400,11 +402,20 @@ export const CONFIG = {
   //  Sound
   // --------------------------------------------------------------------------
   audio: {
+    // The mix: how loud each channel is at 100% on its slider (Settings has master, effects, umpire and crowd sliders).
+    mix: {
+      sfx: 1.0, // bat, glove, throws, thuds
+      crowd: 1.0, // crowd noise, applause and the ballpark organ
+      applause: 0.85, // loudness of a round of applause (before the crowd channel)
+      glovePop: 2.4, // the catcher's mitt pop (x the built-in level): one of the signature sounds, so it is up front
+      whoosh: 2.4, // the swing whoosh
+      ui: 2.5, // menu clicks
+    },
     umpire: {
       voice: 'synth', // 'synth' = built-in voice (plays your recordings from public/sounds/umpire/ when they exist), 'speech' = the browser's own voices, 'off'
       pitchHz: [98, 124], // how deep the umpire's voice is (each game has one umpire; every call varies a little)
       rasp: [0.55, 0.95], // gruffness 0..1
-      level: 1.2, // loudness of the calls
+      level: 0.55, // loudness of the calls (measured mix: a call sits ~2 dB under a perfect bat crack and well above the crowd)
       grit: 0.35, // how hard the voice is pushed into distortion (more = harsher, but the words get harder to understand)
       squeeze: { threshold: -24, ratio: 7, release: 0.14 }, // the compressor that makes every call loud and even (dB, ratio, seconds)
       presenceDb: 5, // boost (dB) around 2.5 kHz so the voice cuts through the crowd
@@ -412,7 +423,7 @@ export const CONFIG = {
       echo: { taps: [0.17, 0.35], levels: [0.3, 0.15], lowpassHz: 2400 }, // the slap-back off the far stands: delay (s) and loudness of each bounce
       // Your own recordings: files named strike, ball, strike3, foul, out, safe (+ optional ball4, and extra takes such as strike_b)
       // in public/sounds/umpire/ - .mp3 (or .wav / .ogg) - play instead of the built-in voice.
-      files: { folder: 'sounds/umpire/', level: 1.0, reverb: 0.2, echo: 0.5 },
+      files: { folder: 'sounds/umpire/', level: 0.6, reverb: 0.2, echo: 0.5 },
       // The browser's own voice (Browser setting): how low and slow each call is spoken (speech rate 1 = normal, pitch 1 = normal).
       speech: { pitch: [0.5, 0.7], drawnRate: [0.7, 0.82], quickRate: [0.98, 1.12], volume: 1 },
     },

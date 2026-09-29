@@ -33,6 +33,7 @@ export class App {
     this.audio.muted = !this.prog.settings.sound;
     this.audio.umpireMode = this.prog.settings.umpire || 'synth';
     this.audio.volume = this.prog.settings.volume;
+    for (const [ch, key] of [['sfx', 'sfxVolume'], ['umpire', 'umpireVolume'], ['crowd', 'crowdVolume']]) this.audio.setLevel(ch, this.prog.settings[key]);
 
     const touch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
     if (touch) document.body.classList.add('touch');
@@ -48,6 +49,9 @@ export class App {
     this.makeZoneOverlay();
 
     this.ui = new UI(uiRoot, (a, d) => this.onAction(a, d));
+    this.ui.noFlashes = !this.prog.settings.flashes;
+    this.nav = []; // menu screens to go back to (Back / Esc)
+    this.gameToken = 0; // bumps with every new game / quit, so delayed effects from an old game never fire into a new one
     this.engine = null;
     this.bot = null;
     this.screen = 'title';
@@ -146,15 +150,25 @@ export class App {
     switch (a) {
       case 'play':
         this.audio.uiClick();
-        if (!this.settings.howtoSeen) { this.openHowTo(() => { this.goModes(); }); } else this.goModes();
+        if (!this.settings.howtoSeen) this.openHowTo(() => this.openMenu('modes', 'title'));
+        else this.openMenu('modes', 'title');
         break;
-      case 'howto': this.audio.uiClick(); this.openHowTo(() => { this.returnFrom = null; this.showMenuScreen(this.screen === 'game' ? 'pause' : (this.screen === 'modes' ? 'modes' : 'title')); }); break;
+      case 'howto': this.audio.uiClick(); { const from = this.ui.current || 'title'; this.openHowTo(() => this.showMenuScreen(from)); } break;
       case 'howtoPause': this.audio.uiClick(); this.openHowTo(() => this.ui.show('pause')); break;
       case 'howtoDone': this.audio.uiClick(); this.settings.howtoSeen = true; this.prog.save(); break;
-      case 'back': this.audio.uiBack(); this.showMenuScreen(this.screen === 'locker' || this.screen === 'career' ? 'modes' : 'title'); break;
-      case 'locker': this.audio.uiClick(); this.screen = 'locker'; this.ui.buildLocker(this.prog); this.ui.show('locker'); break;
-      case 'career': this.audio.uiClick(); this.screen = 'career'; this.ui.buildCareer(this.prog); this.ui.show('career'); break;
-      case 'resetSave': this.prog.reset(); this.ui.buildCareer(this.prog); break;
+      case 'back': this.audio.uiBack(); this.goBack(); break;
+      case 'locker': this.audio.uiClick(); this.openMenu('locker'); break;
+      case 'career': this.audio.uiClick(); this.openMenu('career'); break;
+      case 'settings': this.audio.uiClick(); this.openMenu('settings'); break;
+      case 'settingsPause': this.audio.uiClick(); this.openMenu('settings', 'pause'); break;
+      case 'credits': this.audio.uiClick(); this.openMenu('credits'); break;
+      case 'resetStats':
+        this.audio.uiBack();
+        this.prog.resetStats();
+        this.ui.toast('Stats erased', 1800);
+        if (this.ui.current === 'career') this.ui.buildCareer(this.prog);
+        if (this.ui.current === 'settings') this.ui.buildSettings(this.settings);
+        break;
       case 'equip':
         if (this.prog.equip(d.kind, d.id)) {
           this.audio.uiClick();
@@ -164,7 +178,8 @@ export class App {
         }
         break;
       case 'start': this.audio.uiClick(); this.startGame(d.mode); break;
-      case 'setting': this.changeSetting(d.key, d.value); break;
+      case 'setting': this.changeSetting(d.key, d.value, !!d.live); break;
+      case 'settingDone': this.prog.save(); this.previewSound(d.key); break;
       case 'pause': this.setPaused(true); break;
       case 'resume': this.setPaused(false); break;
       case 'restart': this.setPaused(false); this.startGame(this.mode); break;
@@ -183,27 +198,54 @@ export class App {
     this.ui.show('howto');
   }
 
+  // Menu screens. `openMenu` remembers where you came from so Back (and Esc) return there.
+  openMenu(name, from = this.ui.current || 'title') {
+    if (from && from !== name) this.nav.push(from);
+    if (this.nav.length > 8) this.nav.shift();
+    this.showMenuScreen(name);
+  }
+  goBack() {
+    const to = this.nav.pop() || (this.engine && !this.engine.over && this.paused ? 'pause' : 'title');
+    this.showMenuScreen(to);
+  }
+
   showMenuScreen(name) {
-    this.screen = name === 'pause' ? 'game' : name;
-    if (name === 'title') { this.ui.buildTitle(this.prog); }
-    if (name === 'modes') { this.ui.buildModes(this.prog); }
+    if (name === 'pause') { this.ui.buildPause(this.settings); this.ui.show('pause'); return; }
+    if (!(this.engine && !this.engine.over && this.paused)) this.screen = name; // (settings opened from the pause menu: still in the game)
+    if (name === 'title') { this.nav = []; this.ui.buildTitle(this.prog); }
+    if (name === 'modes') this.ui.buildModes(this.prog);
+    if (name === 'locker') this.ui.buildLocker(this.prog);
+    if (name === 'career') this.ui.buildCareer(this.prog);
+    if (name === 'settings') this.ui.buildSettings(this.settings);
+    if (name === 'credits') this.ui.buildCredits(this.audio.files.list.length > 0);
     this.ui.show(name);
   }
 
-  goModes() {
-    this.screen = 'modes';
-    this.ui.buildModes(this.prog);
-    this.ui.show('modes');
-  }
+  goModes() { this.nav = ['title']; this.showMenuScreen('modes'); }
 
-  changeSetting(key, value) {
-    this.audio.uiClick();
-    this.prog.updateSettings({ [key]: value });
+  changeSetting(key, value, live = false) {
+    if (!live) this.audio.uiClick();
+    if (live) Object.assign(this.settings, { [key]: value }); // (saved when the slider is let go)
+    else this.prog.updateSettings({ [key]: value });
     if (key === 'tod') this.S.env.set(value, false);
     if (key === 'sound') { this.audio.setMuted(!value); this.ui.setMuteIcon(!value); }
-    if (key === 'zone') { this.zone.visible = !!value && !!this.engine; }
+    if (key === 'zone') { this.zone.visible = !!value && !!this.engine; if (!value) this.pitchMarker.visible = false; }
     if (key === 'umpire') { this.audio.umpireMode = value; if (value !== 'speech') stopBrowserVoice(); }
-    if (this.screen === 'modes') { this.ui.buildModes(this.prog); this.ui.show('modes'); }
+    if (key === 'volume') this.audio.setVolume(value);
+    if (key === 'sfxVolume') this.audio.setLevel('sfx', value);
+    if (key === 'umpireVolume') this.audio.setLevel('umpire', value);
+    if (key === 'crowdVolume') this.audio.setLevel('crowd', value);
+    if (key === 'flashes') this.ui.noFlashes = !value;
+    if (key === 'inputDelayMs' && this.engine) this.engine.inputDelay = value / 1000;
+    if (this.ui.current === 'modes') this.ui.buildModes(this.prog);
+  }
+
+  // Letting go of a volume slider plays a sample of that channel, so you hear what you set.
+  previewSound(key) {
+    const a = this.audio;
+    if (key === 'volume' || key === 'sfxVolume') a.glovePop(0.9);
+    if (key === 'umpireVolume') { if (a.umpireMode === 'off') a.strikeCue(); else a.callUmpire('strike'); }
+    if (key === 'crowdVolume') { a.crowdSwell(0.6, 1.6); a.applause(1.2, 0.6); }
   }
 
   toggleMute() {
@@ -216,11 +258,13 @@ export class App {
   setPaused(p) {
     if (!this.engine || this.engine.over) return;
     this.paused = p;
+    this.nav = [];
     if (p) { this.ui.buildPause(this.settings); this.ui.show('pause'); }
-    else { this.ui.hideAll(); this.lastFrameStamp = performance.now(); }
+    else { this.ui.hideAll(); this.lastFrameStamp = performance.now(); blurFocus(); }
   }
 
   quitToMenu() {
+    this.gameToken++;
     this.engine = null; this.bot = null; this.paused = false; this.fast = false; this.slowMo = null; this.hitStop = 0;
     this.ui.hideHud(); this.hideOverlays();
     this.cam.title = true;
@@ -238,8 +282,11 @@ export class App {
     this.lastMode = mode;
     this.mode = mode;
     const st = this.settings;
+    this.gameToken++;
+    this.playOuts = 0;
+    blurFocus(); // a menu button left focused would otherwise catch Space / Enter
     const eng = new Engine({
-      mode, difficulty: st.difficulty, hand: st.hand,
+      mode, difficulty: st.difficulty, hand: st.hand, inputDelayMs: st.inputDelayMs,
       practice: this.engine && this.engine.mode === 'practice' ? { ...this.engine.practice } : undefined,
       seed: this.params.get('seed') ? +this.params.get('seed') : undefined,
     });
@@ -347,6 +394,7 @@ export class App {
 
   onContact(c) {
     const e = this.engine, ui = this.ui, audio = this.audio, F = CONFIG.feel;
+    this.playOuts = 0;
     this.landing = landingSpot(c.sim, c.plan, CONFIG); // (null for grounders, home runs and balls that hit the wall first)
     const grade = c.grade;
     const q = grade === 'perfect' ? 1 : grade === 'good' ? 0.62 : 0.25;
@@ -431,7 +479,7 @@ export class App {
           audio.crowdSwell(0.95, 2.4);
           this.S.stadium.crowd.cheer(0.6);
           ui.banner('DIVING CATCH!', '', 'good');
-          setTimeout(() => ui.hideBanner(), 1400);
+          this.later(() => ui.hideBanner(), 1400);
         }
         break;
       case 'dive': {
@@ -456,6 +504,8 @@ export class App {
       case 'outCall':
         if (audio.umpireMode === 'off' || this.engine.mode === 'derby') audio.outCue();
         else this.umpireCall('out', ev.base);
+        // the out light comes on when the out is made, not when the whole play is over
+        if (e.game) { this.playOuts = (this.playOuts || 0) + 1; ui.setCount(e.game.balls, e.game.strikes, Math.min(3, e.game.outs + this.playOuts)); }
         break;
       case 'safe': this.umpireCall('safe', ev.base); break;
       default: break;
@@ -466,13 +516,19 @@ export class App {
   celebrateHomer(ev, dist) {
     const n = 3 + (dist > 420 ? 2 : 0);
     for (let i = 0; i < n; i++) {
-      setTimeout(() => {
+      this.later(() => {
         const a = Math.atan2(ev.x, -ev.z) + (Math.random() - 0.5) * 0.9;
         const r = 330 + Math.random() * 140;
         this.fx.firework(Math.sin(a) * r, 70 + Math.random() * 70, -Math.cos(a) * r, null, 1 + Math.random() * 0.6);
       }, 150 + i * 230);
     }
     this.ui.flash(0.3, 160);
+  }
+
+  // setTimeout that is dropped if the game it belongs to has been quit or restarted in the meantime
+  later(fn, ms) {
+    const token = this.gameToken;
+    setTimeout(() => { if (token === this.gameToken) fn(); }, ms);
   }
 
   showDistanceCallout(c, isHr) {
@@ -528,7 +584,7 @@ export class App {
     if (g) g.line = lineScore(e.game);
     this.ui.buildTitle(this.prog);
     const names = { away: PLAYER_TEAM.name.toUpperCase().slice(0, 16), home: e.opponent.name.toUpperCase().slice(0, 18) };
-    setTimeout(() => {
+    this.later(() => {
       this.ui.showGameOver(p, records, unlocked, names);
       if (unlocked.length) { this.audio.unlockChime(); this.ui.toast('Unlocked: ' + unlocked.map((u) => u.name).join(', '), 4200, 'unlock'); }
     }, 900);
@@ -558,19 +614,31 @@ export class App {
   bindInput() {
     const swing = (ev) => this.swingInput(ev);
     window.addEventListener('keydown', (e) => {
-      if (e.repeat) { if (['Space', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault(); return; }
+      const inGame = this.screen === 'game' && !this.paused && !this.ui.current;
+      const t = document.activeElement;
+      // a focused menu control (button, switch, slider) gets the keyboard the normal way: Enter / Space press it, arrows move a slider
+      const onControl = !inGame && t && t !== document.body && t.closest && !!t.closest('button, input, a, select, summary, [tabindex]:not(#game)');
+      if (e.repeat) { if (inGame && ['Space', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault(); return; }
       this.audio.unlock();
       switch (e.code) {
-        case 'Space': case 'Enter': e.preventDefault(); if (this.screen === 'game') swing(e); else if (this.screen === 'title') { this.onAction('play'); } break;
-        case 'Escape': case 'KeyP': if (this.screen === 'game') this.setPaused(!this.paused); else if (['howto', 'locker', 'career'].includes(this.screen)) this.onAction('back'); break;
+        case 'Space': case 'Enter': case 'NumpadEnter':
+          if (onControl) break;
+          e.preventDefault();
+          if (this.screen === 'game') swing(e);
+          else if (this.ui.current === 'title') this.onAction('play');
+          break;
+        case 'Escape': case 'KeyP':
+          if (e.code === 'KeyP' && onControl) break;
+          this.escape();
+          break;
         case 'KeyM': this.toggleMute(); break;
-        case 'KeyZ': this.changeSetting('zone', !this.settings.zone); this.zone.visible = this.settings.zone && !!this.engine; if (!this.settings.zone) this.pitchMarker.visible = false; break;
-        case 'ArrowLeft': case 'KeyA': e.preventDefault(); this.aimKeys.left = true; break;
-        case 'ArrowRight': case 'KeyD': e.preventDefault(); this.aimKeys.right = true; break;
-        case 'ArrowUp': if (this.engine && this.engine.mode === 'practice') { e.preventDefault(); this.practiceSpeed(+2); } break;
-        case 'ArrowDown': if (this.engine && this.engine.mode === 'practice') { e.preventDefault(); this.practiceSpeed(-2); } break;
+        case 'KeyZ': if (this.engine) { this.changeSetting('zone', !this.settings.zone); } break;
+        case 'ArrowLeft': case 'KeyA': if (!inGame) break; e.preventDefault(); this.aimKeys.left = true; break;
+        case 'ArrowRight': case 'KeyD': if (!inGame) break; e.preventDefault(); this.aimKeys.right = true; break;
+        case 'ArrowUp': if (inGame && this.engine.mode === 'practice') { e.preventDefault(); this.practiceSpeed(+2); } break;
+        case 'ArrowDown': if (inGame && this.engine.mode === 'practice') { e.preventDefault(); this.practiceSpeed(-2); } break;
         case 'Digit1': case 'Digit2': case 'Digit3': case 'Digit4': case 'Digit5': case 'Digit6':
-          if (this.engine && this.engine.mode === 'practice') {
+          if (inGame && this.engine.mode === 'practice') {
             const types = ['fastball', 'changeup', 'curveball', 'slider', 'heater', 'mixed'];
             this.engine.practice.type = types[+e.code.slice(5) - 1];
             this.ui.setPracticeButtons(this.engine.practice);
@@ -589,8 +657,21 @@ export class App {
     });
     for (const ev of ['pointerdown', 'touchend', 'click', 'keydown']) window.addEventListener(ev, () => this.audio.unlock(), { passive: true });
     this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-    document.addEventListener('visibilitychange', () => { if (document.hidden && this.screen === 'game' && !this.paused && this.engine && !this.engine.over) this.setPaused(true); });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && this.screen === 'game' && !this.paused && this.engine && !this.engine.over) this.setPaused(true);
+      this.audio.setHidden(document.hidden); // no crowd roaring from a background tab
+    });
+    window.addEventListener('pagehide', () => this.audio.setHidden(true));
+    window.addEventListener('pageshow', () => this.audio.setHidden(document.hidden));
     window.addEventListener('blur', () => { this.aimKeys.left = this.aimKeys.right = false; });
+  }
+
+  // Esc: back out of whatever is showing (a menu goes back, the pause menu resumes, a game pauses).
+  escape() {
+    const cur = this.ui.current;
+    if (cur === 'howto') { const b = this.ui.screens.howto.querySelector('[data-a=howtoDone]'); if (b) b.click(); return; }
+    if (this.screen === 'game' && (!cur || cur === 'pause')) { this.setPaused(!this.paused); return; }
+    if (['modes', 'locker', 'career', 'settings', 'credits'].includes(cur)) this.onAction('back');
   }
 
   practiceSpeed(d) {
@@ -738,3 +819,4 @@ export class App {
 }
 
 function F_HR() { return CONFIG.feel.shakeHomer; }
+function blurFocus() { try { const a = document.activeElement; if (a && a !== document.body && a.blur) a.blur(); } catch (e) { /* ignore */ } }

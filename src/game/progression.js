@@ -6,7 +6,11 @@ import { CONFIG } from '../config.js';
 export const DEFAULT_SAVE = () => ({
   v: 1,
   settings: {
-    difficulty: 'pro', tod: 'day', zone: true, pitchGuide: true, landingRing: true, umpire: 'synth', hand: 'auto', sound: true, volume: 0.8, shake: true, howtoSeen: false, aimAssistHint: true,
+    difficulty: 'pro', tod: 'day', zone: true, pitchGuide: true, landingRing: true, umpire: 'synth', hand: 'auto', sound: true, shake: true, howtoSeen: false, aimAssistHint: true,
+    // sound: master volume and the three channels under it (0..1)
+    volume: 0.8, sfxVolume: 1, umpireVolume: 1, crowdVolume: 1,
+    flashes: true, // white screen flashes on big hits (off = calmer screen)
+    inputDelayMs: 0, // swing timing adjustment for screens / controllers that lag (ms subtracted from every press)
   },
   career: {
     games: 0, wins: 0, pa: 0, ab: 0, hits: 0, hr: 0, longestHR: 0, maxEV: 0, perfects: 0, swings: 0, contacts: 0,
@@ -137,6 +141,13 @@ export class Progress {
   average() {
     const c = this.data.career;
     return c.ab > 0 ? c.hits / c.ab : 0;
+  }
+  // Wipe career stats and high scores. Settings, unlocked bats / uniforms and what is equipped are kept (they were earned).
+  resetStats() {
+    const d = DEFAULT_SAVE();
+    this.data.career = d.career;
+    this.data.high = d.high;
+    this.save();
   }
   reset() { this.data = DEFAULT_SAVE(); this.save(); }
 }
