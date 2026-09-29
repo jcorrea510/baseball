@@ -9,8 +9,20 @@
     <meta name="description" content="Sandlot - a browser baseball batting game. Time your swing, crush home runs." />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <title>Sandlot - Baseball Batting Game</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #05080c; }
+      #boot { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: radial-gradient(ellipse at center, #14261c, #05080c 70%); color: #ffe8a8; font-family: 'Arial Black', Impact, system-ui, sans-serif; transition: opacity .5s ease; }
+      #boot b { font-size: clamp(44px, 12vw, 120px); letter-spacing: .02em; text-shadow: 0 5px 0 rgba(140, 60, 10, .85); }
+      #boot span { font: 600 13px system-ui, sans-serif; letter-spacing: .3em; text-transform: uppercase; color: #a9b6d3; }
+      #boot i { display: block; width: 46px; height: 46px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff, #d8d2c4); position: relative; animation: bootspin 1s linear infinite; }
+      #boot i::before, #boot i::after { content: ''; position: absolute; top: 6px; bottom: 6px; width: 10px; border: 2px solid #c62828; border-radius: 50%; }
+      #boot i::before { left: 4px; border-right-color: transparent; border-top-color: transparent; border-bottom-color: transparent; }
+      #boot i::after { right: 4px; border-left-color: transparent; border-top-color: transparent; border-bottom-color: transparent; }
+      @keyframes bootspin { to { transform: rotate(360deg); } }
+    </style>
   </head>
   <body>
+    <div id="boot"><b>SANDLOT</b><i></i><span>Warming up the ballpark</span></div>
     <div id="app">
       <canvas id="game" tabindex="-1"></canvas>
       <div id="ui"></div>

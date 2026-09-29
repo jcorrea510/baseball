@@ -103,6 +103,13 @@ export class App {
     g.add(grid);
     g.position.set(0, cy, CONFIG.pitch.contactZ);
     g.renderOrder = 5;
+    // Rookie "swing now" cue: a green ring that closes in on the zone (shown even when the zone box is hidden)
+    const cue = new THREE.Mesh(new THREE.RingGeometry(1.0, 1.2, 48), new THREE.MeshBasicMaterial({ color: 0x4dff8f, transparent: true, opacity: 0, depthWrite: false, depthTest: false }));
+    cue.position.set(0, cy, CONFIG.pitch.contactZ + 0.04);
+    cue.renderOrder = 6;
+    cue.visible = false;
+    this.S.scene.add(cue);
+    this.zoneParts = { fill, edge, cue };
     this.S.scene.add(g);
     this.zone = g;
     g.visible = false;
@@ -614,6 +621,28 @@ export class App {
     const night = this.S.env.name === 'night' ? 1 : this.S.env.name === 'dusk' ? 0.4 : 0;
     this.ball.setHaloBoost(1 + night * 0.6);
     this.S.stadium.update(realDt, this.time, this.S.env);
+    // Rookie "swing now" cue: the strike-zone box lights up and a green ring closes in on it at the ideal moment to press the button
+    if (this.zoneParts) {
+      const zp = this.zoneParts;
+      let w = 0, k = 0;
+      if (e && e.phase === 'pitch' && e.pitch && e.d.swingCue && !e.swing) {
+        const dtIdeal = e.time - (e.pitch.tCross - CONFIG.timing.swingDelay);
+        w = Math.exp(-Math.pow(dtIdeal / 0.055, 2));
+        k = clamp(1 - Math.abs(dtIdeal) / 0.25, 0, 1);
+      }
+      zp.edge.material.color.setRGB(1 - 0.65 * w, 1, 1 - 0.55 * w);
+      zp.edge.material.opacity = 0.85 + 0.15 * w;
+      zp.fill.material.opacity = 0.07 + 0.3 * w;
+      zp.fill.material.color.setRGB(1 - 0.6 * w, 1, 1 - 0.5 * w);
+      this.zone.scale.setScalar(1 + 0.08 * w);
+      zp.cue.visible = k > 0.02;
+      if (zp.cue.visible) {
+        zp.cue.material.opacity = 0.95 * k;
+        // starts wide and closes in; when dtIdeal is 0 it sits right around the zone
+        const dtI = e.time - (e.pitch.tCross - CONFIG.timing.swingDelay);
+        zp.cue.scale.setScalar(1 + clamp(-dtI / 0.25, 0, 1) * 0.9 + clamp(dtI / 0.25, 0, 1) * 0.3);
+      }
+    }
     // pitch marker fade
     if (this.pitchMarker.visible) {
       this.markerT += realDt;

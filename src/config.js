@@ -144,7 +144,8 @@ export const CONFIG = {
   difficulty: {
     rookie: {
       label: 'Rookie',
-      blurb: 'Slow pitches, big timing windows, pitch names shown.',
+      blurb: 'Slow pitches, big timing windows, pitch names shown, and the strike zone flashes when to swing.',
+      swingCue: true, // the strike-zone box pulses at the perfect moment to press the button
       windowScale: 1.5,
       fastball: [62, 72],
       mix: { fastball: 0.62, changeup: 0.12, curveball: 0.13, slider: 0.13, heater: 0 },
@@ -173,6 +174,7 @@ export const CONFIG = {
       windup: 0.92,
       zoneDefault: true,
       derbyFoulIsOut: true,
+      swingCue: false,
       ai: { k: 0.22, bb: 0.08, groundout: 0.19, flyout: 0.16, single: 0.19, double: 0.06, triple: 0.008, hr: 0.035 },
     },
     allstar: {
@@ -189,6 +191,7 @@ export const CONFIG = {
       windup: 0.85,
       zoneDefault: false,
       derbyFoulIsOut: true,
+      swingCue: false,
       ai: { k: 0.19, bb: 0.09, groundout: 0.17, flyout: 0.15, single: 0.21, double: 0.075, triple: 0.01, hr: 0.05 },
     },
   },
