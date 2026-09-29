@@ -20,10 +20,20 @@ Optional:
                    One take is picked at random each time so it never sounds the same twice.
 
 .wav and .ogg files work too. Calls without a file keep the built-in voice, so you can start with
-just strike.mp3 and ball.mp3 and add the rest later.
+just strike.mp3 and ball.mp3 and add the rest later. To swap a sound, replace the file (same name).
+To go back to the built-in voice for a call, delete its file.
 
-Tips: keep each file short (under 2 seconds), trim the silence at the start so the call lands on time,
-and record loud and clear (the game adds a little stadium echo on top).
+EASIEST: tell Claude which call it is and give a link or a file. It downloads the sound, cuts the
+silence off both ends, sets the loudness to match the other calls, saves it here under the right
+name and pushes it.
 
-After adding or changing files: stop and restart "npm run dev" if it is running, or push to main so the
-site is rebuilt. Then open Settings -> Umpire -> Voice.
+Or do it yourself with the tool (needs ffmpeg installed once):
+
+    npm run umpire -- strike ~/Downloads/my-strike.wav
+    npm run umpire -- "strike three" https://example.com/strike3.mp3
+    npm run umpire -- --list
+
+Tips: keep each file short (under 2 seconds) and clear. The game adds a light stadium echo.
+
+After adding or changing files: stop and restart "npm run dev" if it is running, or push to main so
+the site is rebuilt. Then open Settings -> Umpire -> Voice.

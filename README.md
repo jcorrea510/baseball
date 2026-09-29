@@ -101,21 +101,37 @@ The umpire is heard in three ways. Pick one in **Settings -> Umpire**:
 
 ### Using real recordings (the most natural sound)
 
-1. Record short clips (under 2 seconds each) of a real-sounding umpire - yourself, a friend, a voice actor - or use audio you have the right to use. Trim the silence at the start so the call lands on time.
-2. Name them **exactly** like this (small letters, no spaces) and put them in the folder `public/sounds/umpire/` of this project:
+**The easy way - ask Claude.** Say which call it is and give a link or a file, for example *"Use this for strike three: https://.../clip.mp3"*. Claude downloads it, cuts the silence off the start and end, brings it to the same loudness as the other calls, converts it to a small mp3, saves it as `public/sounds/umpire/strike3.mp3`, and pushes it. If a link can't be downloaded (some sites block it), put the file in the repo yourself (next section) or upload it and give me the path.
 
-   | File | Said when |
-   | --- | --- |
-   | `strike.mp3` | a called or swinging strike |
-   | `ball.mp3` | a ball (and ball four, unless you add `ball4.mp3`) |
-   | `strike3.mp3` | strike three ("Strike three! You're out!") |
-   | `foul.mp3` | a foul ball |
-   | `out.mp3` | an out |
-   | `safe.mp3` | a close play, safe |
+**Doing it yourself (no tools needed).** Put the file in the folder `public/sounds/umpire/` and name it **exactly** like this (small letters, no spaces):
 
-   Optional: `ball4.mp3` for "Ball four!", and extra takes of any call named with an underscore and one letter - `strike_b.mp3`, `strike_c.mp3` ... - so it does not sound the same every time (one take is picked at random). `.wav` and `.ogg` files work too.
-3. You do not need all of them: any call without a file keeps the built-in voice.
-4. Publish as usual (push to `main`) - or, on your own computer, stop and restart `npm run dev`. The game then plays your files with the **Voice** setting. (The game finds the files when it is built, so it never asks for a file that is missing.)
+| File | Said when |
+| --- | --- |
+| `strike.mp3` | a called or swinging strike |
+| `ball.mp3` | a ball (and ball four, unless you add `ball4.mp3`) |
+| `strike3.mp3` | strike three ("Strike three! You're out!") |
+| `foul.mp3` | a foul ball |
+| `out.mp3` | an out |
+| `safe.mp3` | a close play, safe |
+
+- To **swap** a sound, put a new file with the same name in the folder (or use the tool below - it also removes the old copy).
+- Optional: `ball4.mp3` for "Ball four!", and extra versions of any call named with an underscore and one letter - `strike_b.mp3`, `strike_c.mp3` ... - so it does not sound the same every time (one is picked at random). To go back to the built-in voice for a call, delete its file(s).
+- `.wav` and `.ogg` files work too. Calls without a file keep the built-in voice, so you can start with just `strike.mp3` and `ball.mp3`.
+- Trim the silence at the start yourself, or the call will land late - or let the tool below do it.
+- Then push to `main` (or, on your own computer, stop and restart `npm run dev`). The game plays your files with **Settings -> Umpire -> Voice**. It adds a light stadium echo, and the mute button silences them like every other sound.
+
+**The tool** (needs [ffmpeg](https://ffmpeg.org) installed once: `brew install ffmpeg` on a Mac, `winget install ffmpeg` on Windows, `sudo apt install ffmpeg` on Linux):
+
+```
+npm run umpire -- strike ~/Downloads/my-strike.wav
+npm run umpire -- "strike three" https://example.com/strike3.mp3
+npm run umpire -- ball ~/Downloads/ball2.mp3 --take b     # an extra version: ball_b.mp3
+npm run umpire -- --list                                  # what is set up, what is missing
+```
+
+It trims the silence off both ends, brings the loudness to a standard level (so no call is louder than another), makes a small mono mp3 and saves it under the right name. Options: `--format ogg|wav`, `--threshold -60` (if a noisy recording is not being trimmed), `--no-trim`. Only real sound files work - a link to a web page (YouTube, a download page) does not; download the sound first.
+
+Use sounds you have the right to use.
 
 ## Tuning the game
 

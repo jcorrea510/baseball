@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "sim": "node scripts/sim.mjs",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "umpire": "node scripts/addumpire.mjs"
   },
   "dependencies": {
     "three": "^0.186.1"
