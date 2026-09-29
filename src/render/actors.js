@@ -4,7 +4,7 @@ import { CONFIG } from '../config.js';
 import { Person, makeBat, restyleBat, mixPose, makePose, copyPose } from './rig.js';
 import { batterPose, pitcherPose, catcherPose, fielderReady, runPose, runReachPose, runCadence, runnerLeadPose, throwPose, catchPose, divePose, celebratePose, standingPose, umpirePose, THROW_RELEASE_U } from './poses.js';
 import { UNIFORMS } from '../game/teams.js';
-import { BASE_XZ, MOUND_XZ } from '../physics/field.js';
+import { BASE_XZ, MOUND_XZ, clampToField } from '../physics/field.js';
 import { sampleBall } from '../physics/ballistics.js';
 import { runnerPosition, pathPoint, POSITIONS, fielderFreeTime } from '../game/fielding.js';
 import { Mover, samplePath, turnToward } from '../game/fielderMotion.js';
@@ -199,7 +199,7 @@ export class Actors {
         fx = clamp(tx * 0.5, -1.0, 1.0) * (phase === 'ready' ? 0 : 1) - def.homeX;
       }
       if (!st.init) {
-        st.mover = new Mover(def.homeX, def.homeZ, { vmax: F.jogHome.speed, accel: F.jogHome.accel, brake: F.jogHome.brake, wake: 0.9 });
+        st.mover = new Mover(def.homeX, def.homeZ, { vmax: F.jogHome.speed, accel: F.jogHome.accel, brake: F.jogHome.brake, wake: 0.9, bound: (bx, bz) => clampToField(bx, bz, F.wallBody) });
         st.cx = def.homeX; st.cz = def.homeZ; st.vx = 0; st.vz = 0; st.fx = fx; st.fz = fz; st.yaw = pos === 'C' ? Math.PI : 0; st.init = true; st.inPlay = false;
       }
       st.fx = damp(st.fx, fx, 7, dt); st.fz = damp(st.fz, fz, 7, dt);
@@ -212,10 +212,21 @@ export class Actors {
       st.inPlay = live;
 
       let speed = 0, vx = 0, vz = 0, dive = null;
+      // If the play ends while he is still in the middle of a planned run, he finishes that run (he does not get handed to the
+      // jog with all his speed, which would carry him on past his spot - even into the wall).
+      let p = null;
       if (live && runs && playT < fielderFreeTime(plan, pos)) {
-        const p = samplePath(runs, playT);
+        p = samplePath(runs, playT);
+        st.tail = { runs, t: playT, move };
+      } else if (!live && st.tail) {
+        st.tail.t += dt;
+        p = samplePath(st.tail.runs, st.tail.t);
+        if (p.done) st.tail = null;
+      } else st.tail = null;
+      if (p) {
+        const tm = live ? move : st.tail ? st.tail.move : move;
         st.cx = p.x; st.cz = p.z; vx = p.ux * p.speed; vz = p.uz * p.speed; speed = p.speed;
-        if (move && move.dive && (p.phase === 'air' || p.phase === 'slide' || p.phase === 'hold' || p.phase === 'getup')) dive = { phase: p.phase, u: p.u, ux: p.ux, uz: p.uz, catchU: move.run.dive.catchU };
+        if (tm && tm.dive && (p.phase === 'air' || p.phase === 'slide' || p.phase === 'hold' || p.phase === 'getup')) dive = { phase: p.phase, u: p.u, ux: p.ux, uz: p.uz, catchU: tm.run.dive.catchU };
         st.mover.reset(p.x, p.z, vx, vz); // keep the jog in step so the hand-off after his job is seamless
       } else {
         st.mover.setTarget(def.homeX, def.homeZ); // only re-aims if the spot moved meaningfully

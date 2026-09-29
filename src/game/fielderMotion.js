@@ -45,6 +45,10 @@ const speedAt = (vc, tau, A) => vc * (1 - Math.exp(-tau / A));
  * @param {number} o.brake     ft/s^2 while slowing down
  * @param {number} [o.minEffort]  fraction of vmax he never drops below while running (he arrives early and waits)
  * @param {number} [o.heading] facing (radians, atan2(x, z)) to report when the run has zero length
+ * @param {number} [o.limitS]  the farthest he may travel along the run (a wall is there): he never goes past it. If braking at
+ *                             `brake` would carry him past it he brakes harder (up to `wallBrake`), and if that is not enough
+ *                             he starts slowing down before the target.
+ * @param {number} [o.wallBrake] ft/s^2 he can brake at when bracing against a wall
  */
 export function planRun(o) {
   const { x0, z0, x1, z1, tStart, tArrive, vmax, brake: b } = o;
@@ -55,7 +59,7 @@ export function planRun(o) {
   const ux = D > 1e-6 ? dx / D : Math.sin(o.heading ?? 0);
   const uz = D > 1e-6 ? dz / D : Math.cos(o.heading ?? 0);
   const segs = [];
-  const run = { x0, z0, ux, uz, D, tStart, tArrive, vmax, segs, x1, z1, heading: Math.atan2(ux, uz), A };
+  const run = { x0, z0, ux, uz, D, tStart, tArrive, vmax, segs, x1, z1, heading: Math.atan2(ux, uz), A, limitS: o.limitS };
 
   if (D < 0.05) {
     segs.push({ name: 'rest', t0: tStart, s0: 0, v0: 0, a: 0 });
@@ -107,12 +111,43 @@ export function planRun(o) {
     }
     const tau = timeToCover(vc, D, A);
     const vR = speedAt(vc, tau, A);
-    segs.push({ name: 'accel', kind: 'exp', t0: tStart, s0: 0, vc, A });
-    segs.push({ name: 'brake', t0: tStart + tau, s0: D, v0: vR, a: -b });
-    run.vArrive = vR;
-    run.tReach = tStart + tau;
-    run.tStop = tStart + tau + vR / b;
-    run.sStop = D + (vR * vR) / (2 * b);
+    // Is there a wall in the way of the natural braking distance?
+    const room = o.limitS !== undefined ? Math.max(0.35, o.limitS - D) : Infinity;
+    const bW = Math.max(b, o.wallBrake ?? b * 2.5);
+    if (vR * vR / (2 * b) <= room) {
+      segs.push({ name: 'accel', kind: 'exp', t0: tStart, s0: 0, vc, A });
+      segs.push({ name: 'brake', t0: tStart + tau, s0: D, v0: vR, a: -b });
+      run.vArrive = vR;
+      run.tReach = tStart + tau;
+      run.tStop = tStart + tau + vR / b;
+      run.sStop = D + (vR * vR) / (2 * b);
+    } else if (vR * vR / (2 * room) <= bW) {
+      // brakes harder from the target on, and stops exactly at the wall
+      const bE = (vR * vR) / (2 * room);
+      segs.push({ name: 'accel', kind: 'exp', t0: tStart, s0: 0, vc, A });
+      segs.push({ name: 'brake', t0: tStart + tau, s0: D, v0: vR, a: -bE });
+      run.vArrive = vR;
+      run.tReach = tStart + tau;
+      run.tStop = tStart + tau + vR / bE;
+      run.sStop = D + room;
+    } else {
+      // too fast to stop in `room` even braking hard: start slowing down before the target so that he reaches it slowly enough
+      const vCap = Math.sqrt(2 * bW * room);
+      let lo = 0, hi = tau; // seconds after he starts: when the (hard) braking begins
+      for (let k = 0; k < 44; k++) {
+        const mid = (lo + hi) / 2;
+        const v = speedAt(vc, mid, A);
+        if (covered(vc, mid, A) + (v * v - vCap * vCap) / (2 * bW) < D) lo = mid; else hi = mid;
+      }
+      const tb = hi, vb = speedAt(vc, tb, A);
+      segs.push({ name: 'accel', kind: 'exp', t0: tStart, s0: 0, vc, A });
+      segs.push({ name: 'brake', t0: tStart + tb, s0: covered(vc, tb, A), v0: vb, a: -bW });
+      run.vArrive = vCap;
+      run.tReach = tStart + tb + (vb - vCap) / bW;
+      run.tStop = tStart + tb + vb / bW;
+      run.sStop = covered(vc, tb, A) + (vb * vb) / (2 * bW);
+    }
+    if (o.limitS !== undefined) run.limitS = o.limitS;
   }
   segs.push({ name: 'rest', t0: run.tStop, s0: run.sStop, v0: 0, a: 0 });
   run.xStop = x0 + ux * run.sStop;
@@ -134,6 +169,7 @@ const _out = { x: 0, z: 0, speed: 0, ux: 0, uz: 1, s: 0, phase: 'wait', heading:
  * @param {number} o.tCatch  when the glove meets the ball
  * @param {number} o.vmax @param {number} o.accel @param {number} o.brake
  * @param {object} o.dive    config.fielding.dive
+ * @param {number} [o.limitS]  farthest he may travel along the run (a wall): the slide is shortened to stop in front of it
  */
 export function planDiveRun(o) {
   const dv = o.dive;
@@ -165,15 +201,20 @@ export function planDiveRun(o) {
     { name: 'rest', t0: tL, s0: sL, v0: 0, a: 0 }, // (never reached: sampleRun hands over to sampleDive at tL)
   ];
   const tLand = tL + Ta;
-  const slideDur = vLand / dv.slideDecel;
-  const slideDist = (vLand * vLand) / (2 * dv.slideDecel);
+  let decel = dv.slideDecel;
+  if (o.limitS !== undefined) {
+    const room = Math.max(0.3, o.limitS - (sL + sFlight));
+    if ((vLand * vLand) / (2 * decel) > room) decel = (vLand * vLand) / (2 * room); // skids to a stop before the wall
+  }
+  const slideDur = vLand / decel;
+  const slideDist = (vLand * vLand) / (2 * decel);
   const dive = {
     tL, tCatch: o.tCatch, tLand, tSlideEnd: tLand + slideDur, tHoldEnd: tLand + slideDur + dv.hold, tEnd: tLand + slideDur + dv.hold + dv.getUp,
-    Ta, airPre, catchU: sg, sL, vL, sFlight, vLand, slideDist, slideDur, decel: dv.slideDecel, sAir, sCatch, armReach: dv.armReach, hold: dv.hold, getUp: dv.getUp, ux, uz,
+    Ta, airPre, catchU: sg, sL, vL, sFlight, vLand, slideDist, slideDur, decel, sAir, sCatch, armReach: dv.armReach, hold: dv.hold, getUp: dv.getUp, ux, uz,
   };
   const sEnd = sL + sFlight + slideDist;
   return {
-    x0: o.x0, z0: o.z0, ux, uz, D, tStart: o.tStart, tArrive: o.tCatch, vmax, segs, x1: o.px, z1: o.pz, heading: Math.atan2(ux, uz), A,
+    x0: o.x0, z0: o.z0, ux, uz, D, tStart: o.tStart, tArrive: o.tCatch, vmax, segs, x1: o.px, z1: o.pz, heading: Math.atan2(ux, uz), A, limitS: o.limitS,
     dive, tReach: o.tCatch, tStop: dive.tEnd, sStop: sEnd, vArrive: vLand, xStop: o.x0 + ux * sEnd, zStop: o.z0 + uz * sEnd,
   };
 }
@@ -202,6 +243,7 @@ function sampleDive(run, t, out) {
     else if (t < d.tEnd) { phase = 'getup'; u = (t - d.tHoldEnd) / d.getUp; }
     else { phase = 'done'; u = 1; }
   }
+  if (run.limitS !== undefined && s > run.limitS) { s = run.limitS; v = 0; } // never through the wall
   out.x = run.x0 + run.ux * s;
   out.z = run.z0 + run.uz * s;
   out.speed = v;
@@ -230,6 +272,7 @@ export function sampleRun(run, t, out = _out) {
     phase = g.name;
     if (i === run.segs.length - 1) { s = g.s0; v = 0; }
   }
+  if (run.limitS !== undefined && s > run.limitS) { s = run.limitS; v = 0; } // never through the wall
   out.x = run.x0 + run.ux * s;
   out.z = run.z0 + run.uz * s;
   out.speed = v;
@@ -265,6 +308,7 @@ export function turnToward(current, target, maxStep, ease = 14, dt = 1 / 60) {
 // ---------------------------------------------------------------------------------------------------------------
 export class Mover {
   constructor(x = 0, z = 0, o = {}) {
+    // o.bound (optional): (x, z) => [x, z] keeps him inside somewhere (the ballpark). If he ever touches the limit he stops there.
     this.o = { vmax: 20, accel: 34, brake: 42, radius: 0.4, retarget: 0.9, wake: 1.4, ...o };
     this.reset(x, z);
   }
@@ -307,6 +351,10 @@ export class Mover {
     const ox = this.x - this.tx, oz = this.z - this.tz;
     this.x += this.vx * dt; this.z += this.vz * dt;
     this.speed = Math.hypot(this.vx, this.vz);
+    if (o.bound) {
+      const [bx, bz] = o.bound(this.x, this.z);
+      if (bx !== this.x || bz !== this.z) { this.x = bx; this.z = bz; this.vx = this.vz = 0; this.speed = 0; }
+    }
     // stepped onto or past the target: land on it (he is going slowly by now, so this is imperceptible)
     if ((this.x - this.tx) * ox + (this.z - this.tz) * oz <= 0) return this.land();
     return this;

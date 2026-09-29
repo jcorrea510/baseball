@@ -256,6 +256,11 @@ export const CONFIG = {
     supportSpeed: 0.85, // backups and base-coverers run at this fraction of top speed
     backupDepth: 24, // ft behind the fielder's spot where a teammate backs him up
     backupTravel: 48, // an outfielder backing up an infield play charges in at most this far
+    // The wall: a fielder's centre never gets closer than `wallMargin` ft to a wall (his glove still reaches it). Running at
+    // the wall he brakes at up to `wallBrake` ft/s^2 (bracing against it), so he stops in front of it instead of through it.
+    wallMargin: 1.8,
+    wallBody: 1.0, // half his body width: while braking his centre may get this close to the wall
+    wallBrake: 110,
     jogHome: { speed: 21, accel: 34, brake: 42 }, // ft/s: how fielders return to their spots after a play
     turnRate: 640, // degrees per second a fielder can turn his body
     // Diving: only for balls just out of running reach (glove + diveExtra). He sprints at the ball, launches `airTime` before

@@ -4,7 +4,7 @@
 // "plan": a timeline (seconds after contact) the renderer simply plays back.
 import { CONFIG } from '../config.js';
 import { sampleBall, judgeFairFoul, battedBallType } from '../physics/ballistics.js';
-import { BASE_XZ, polar, fenceDistance, sprayOf } from '../physics/field.js';
+import { BASE_XZ, polar, fenceDistance, sprayOf, clampToField, distanceToWall, isInsideField } from '../physics/field.js';
 import { planRun, planDiveRun, sampleRun, samplePath, covered, timeToCover } from './fielderMotion.js';
 
 export const POSITIONS = ['P', 'C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF'];
@@ -75,6 +75,7 @@ function findAirCatch(sim, defense, cfg) {
     if (b.y > F.reachHeight || b.y < 0.5) return null;
     const spray = sprayOf(b.x, b.z);
     if (b.z < 0 && Math.abs(spray) <= 45 && Math.hypot(b.x, b.z) > fenceDistance(spray) - 0.5) return null; // over the wall
+    if (!isInsideField(b.x, b.z, -0.5)) return null; // foul ball over a foul-territory wall or the backstop
     let best = null;
     for (const pos of POSITIONS) {
       const f = defense[pos];
@@ -178,6 +179,8 @@ function findGroundPickup(sim, defense, cfg) {
 //   opts.vmax   top speed override;  opts.dive / opts.watch / opts.role are labels for the renderer
 function addMove(plan, f, toX, toZ, tArrive, opts = {}, cfg = CONFIG) {
   const F = cfg.fielding;
+  // nobody ever runs to a spot in or beyond the wall: the target is pulled back inside (his glove still reaches the ball)
+  [toX, toZ] = clampToField(toX, toZ, F.wallMargin);
   const runs = (plan.paths[f.pos] = plan.paths[f.pos] || []);
   const prev = runs[runs.length - 1];
   const x0 = prev ? prev.xStop : f.x, z0 = prev ? prev.zStop : f.z;
@@ -194,10 +197,18 @@ function addMove(plan, f, toX, toZ, tArrive, opts = {}, cfg = CONFIG) {
   }
   // A dive: sprint straight at the ball, launch shortly before the glove meets it, land, slide, get up. (If the sprint alone
   // already gets him there, planDiveRun says no dive is needed and he simply runs.)
+  // how far can he go along this run before the wall? (he brakes in time to stop in front of it)
+  const wallLimit = (ax, az, bx, bz, atLeast) => {
+    const d = Math.hypot(bx - ax, bz - az);
+    if (d < 1e-6) return undefined;
+    const w = distanceToWall(ax, az, (bx - ax) / d, (bz - az) / d, F.wallBody);
+    return Number.isFinite(w) ? Math.max(w, atLeast) : undefined;
+  };
+  [x1, z1] = clampToField(x1, z1, F.wallMargin);
   let run = opts.dive
-    ? planDiveRun({ x0, z0, px: toX, pz: toZ, tStart, tCatch: tArrive, vmax, accel: vmax / F.accel, brake: F.brake, dive: F.dive })
+    ? planDiveRun({ x0, z0, px: toX, pz: toZ, tStart, tCatch: tArrive, vmax, accel: vmax / F.accel, brake: F.brake, dive: F.dive, limitS: wallLimit(x0, z0, toX, toZ, dist(x0, z0, toX, toZ) - F.dive.armReach + 0.5) })
     : null;
-  if (!run) run = planRun({ x0, z0, x1, z1, tStart, tArrive: Math.max(tArrive, tStart + 0.05), vmax, accel: vmax / F.accel, brake: F.brake, minEffort: opts.minEffort ?? F.minRunEffort, heading: Math.atan2(toX - x0, toZ - z0) });
+  if (!run) run = planRun({ x0, z0, x1, z1, tStart, tArrive: Math.max(tArrive, tStart + 0.05), vmax, accel: vmax / F.accel, brake: F.brake, minEffort: opts.minEffort ?? F.minRunEffort, heading: Math.atan2(toX - x0, toZ - z0), limitS: wallLimit(x0, z0, x1, z1, dist(x0, z0, x1, z1) + 0.4), wallBrake: F.wallBrake });
   runs.push(run);
   const move = {
     pos: f.pos,
@@ -285,9 +296,7 @@ function planPlayCore(i, cfg) {
       const d = dist(f.x, f.z, end.x, end.z);
       if (!best || d < best.d) best = { f, d };
     }
-    const wallD = Math.hypot(end.x, end.z) - 2.5;
-    const sp = sprayOf(end.x, end.z);
-    const wx = Math.sin((sp * Math.PI) / 180) * wallD, wz = -Math.cos((sp * Math.PI) / 180) * wallD;
+    const [wx, wz] = clampToField(end.x, end.z, F.wallMargin + 2.2); // he watches it go from a few feet in front of the wall
     const tArr = Math.min(sim.homerun.t, best.f.react + Math.hypot(best.f.x - wx, best.f.z - wz) / best.f.speed);
     addMove(plan, best.f, wx, wz, Math.max(tArr, best.f.react + 0.4), { watch: true, role: 'watch', minEffort: 0.5 }, cfg);
     plan.fielder = best.f.pos;
@@ -373,6 +382,8 @@ function planPlayCore(i, cfg) {
   plan.pickupT = tF;
   plan.pickupPos = { x: pf.x, z: pf.z };
   plan.ballHitEnd = tF;
+  // (A ball off the wall: the pickup point is wherever the ball is when the first fielder can reach it - by then it has come off
+  // the wall - and the target is kept in front of the wall, so he plays the carom, never the wall itself.)
   addMove(plan, f, pf.x, pf.z, tF, { dive: pick.dive, avail: pick.avail, start: pick.start, role: 'field' }, cfg);
   plan.ctx = { kind: 'ground', x: pf.x, z: pf.z, t: tF };
   plan.events.push({ t: tF, type: 'field', pos: f.pos, dive: !!plan.fielderMoves[0].dive });
@@ -479,11 +490,7 @@ function addSupport(plan, i, cfg) {
   const ux = c.x / depth, uz = c.z / depth;
   const near = (p) => dist(defense[p].x, defense[p].z, c.x, c.z);
   const idle = (list) => list.filter((p) => !busy.has(p));
-  const inside = (x, z, margin) => {
-    const lim = fenceDistance(sprayOf(x, z)) - margin;
-    const d = Math.hypot(x, z);
-    return d > lim ? [(x * lim) / d, (z * lim) / d] : [x, z];
-  };
+  const inside = (x, z, margin) => clampToField(x, z, margin);
   const go = (pos, x, z, tArrive, role, limit = Infinity) => {
     const f = defense[pos];
     busy.add(pos);
