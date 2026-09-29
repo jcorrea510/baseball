@@ -258,6 +258,20 @@ export const CONFIG = {
     backupTravel: 48, // an outfielder backing up an infield play charges in at most this far
     jogHome: { speed: 21, accel: 34, brake: 42 }, // ft/s: how fielders return to their spots after a play
     turnRate: 640, // degrees per second a fielder can turn his body
+    // Diving: only for balls just out of running reach (glove + diveExtra). He sprints at the ball, launches `airTime` before
+    // the glove meets it, lands `landAfter` after the catch, slides, lies there with the ball, then gets up.
+    dive: {
+      airTime: 0.32, // s airborne before the glove meets the ball
+      landAfter: 0.12, // s after the catch that his body touches down
+      armReach: 3.4, // ft the glove reaches in front of a layed-out body
+      slideDecel: 30, // ft/s^2 sliding along the grass
+      landSpeed: 11, // ft/s, top touchdown speed
+      hold: 0.16, // s lying with the ball
+      getUp: 0.62, // s to get back onto his feet
+      throwExtra: 0.42, // extra s before a fielder who dove can throw (he throws from his knees)
+      preferRun: 0.2, // nobody dives for a ball a fielder can simply run to within this many seconds
+      highlightSlowMo: { catchScale: 0.36, catchDur: 1.0, stopScale: 0.6, stopDur: 0.6 }, // slow motion on a dive (game feel)
+    },
     tagTime: 0.4, // extra time for the catcher to receive a throw and apply the tag at home
     fastBallPenalty: 0.27, // extra reaction (s) fielders need on the hardest-hit grounders
     outMargin: 0.02, // a throw must beat the runner by this many seconds

@@ -5,7 +5,7 @@
 import { CONFIG } from '../config.js';
 import { sampleBall, judgeFairFoul, battedBallType } from '../physics/ballistics.js';
 import { BASE_XZ, polar, fenceDistance, sprayOf } from '../physics/field.js';
-import { planRun, samplePath } from './fielderMotion.js';
+import { planRun, planDiveRun, sampleRun, samplePath, covered, timeToCover } from './fielderMotion.js';
 
 export const POSITIONS = ['P', 'C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF'];
 const INFIELDERS = ['1B', '2B', 'SS', '3B'];
@@ -44,21 +44,7 @@ export function createDefense(cfg = CONFIG, rng = null) {
 
 const dist = (ax, az, bx, bz) => Math.hypot(ax - bx, az - bz);
 
-// How far a fielder can run in `tau` seconds after reacting: they accelerate, then hold top speed.
-function covered(speed, tau, A) {
-  if (tau <= 0) return 0;
-  return speed * (tau - A * (1 - Math.exp(-tau / A)));
-}
-// Inverse: the time (after reacting) needed to cover `d` feet.
-function timeToCover(speed, d, A) {
-  if (d <= 0) return 0;
-  let lo = 0, hi = d / speed + A + 0.5;
-  for (let i = 0; i < 24; i++) {
-    const mid = (lo + hi) / 2;
-    if (covered(speed, mid, A) < d) lo = mid; else hi = mid;
-  }
-  return hi;
-}
+// (covered / timeToCover - the movement model - live in fielderMotion.js so the planner and the renderer share them)
 
 // Fielders run in easier than back: a ball hit over their head is harder to run down.
 function effort(f, bx, bz) {
@@ -83,11 +69,12 @@ function throwTime(d, f, cfg) {
 function findAirCatch(sim, defense, cfg) {
   const F = cfg.fielding;
   const tEnd = Math.min(sim.contactTime, sim.duration);
-  for (let t = 0.3; t <= tEnd + 1e-6; t += STEP) {
+  // Who could be under the ball at time t? (a fielder who has to dive counts only if nobody can get there running)
+  const candidate = (t) => {
     const b = sampleBall(sim, t);
-    if (b.y > F.reachHeight || b.y < 0.5) continue;
+    if (b.y > F.reachHeight || b.y < 0.5) return null;
     const spray = sprayOf(b.x, b.z);
-    if (b.z < 0 && Math.abs(spray) <= 45 && Math.hypot(b.x, b.z) > fenceDistance(spray) - 0.5) continue; // over the wall
+    if (b.z < 0 && Math.abs(spray) <= 45 && Math.hypot(b.x, b.z) > fenceDistance(spray) - 0.5) return null; // over the wall
     let best = null;
     for (const pos of POSITIONS) {
       const f = defense[pos];
@@ -101,7 +88,19 @@ function findAirCatch(sim, defense, cfg) {
         if (!best) best = { f, need, dive: true, slack: -1, avail, ball: { ...b } };
       }
     }
-    if (best) return { t, ...best };
+    return best;
+  };
+  for (let t = 0.3; t <= tEnd + 1e-6; t += STEP) {
+    const best = candidate(t);
+    if (!best) continue;
+    if (best.dive) {
+      // nobody dives for a ball a fielder can simply run under a moment later
+      for (let t2 = t + STEP; t2 <= Math.min(t + F.dive.preferRun, tEnd) + 1e-6; t2 += STEP) {
+        const alt = candidate(t2);
+        if (alt && !alt.dive) return { t: t2, ...alt };
+      }
+    }
+    return { t, ...best };
   }
   return null;
 }
@@ -114,14 +113,14 @@ function findGroundPickup(sim, defense, cfg) {
   const t0 = Math.max(0.25, sim.contactTime);
   const tEnd = sim.duration;
   let fallback = null;
-  for (let t = t0; t <= tEnd + STEP; t += STEP) {
+  // The harder a ball is hit, the less time fielders have to react and the shorter their dive reach.
+  const fast = Math.max(0, Math.min(1, (sim.params.exitVelocity - 68) / 34));
+  const react = F.fastBallPenalty * fast;
+  const glove = F.glove * (1 - 0.12 * fast);
+  const diveX = F.diveExtra * (1 - 0.85 * fast);
+  const candidate = (t) => {
     const b = sampleBall(sim, t);
-    if (b.y > F.groundHeight) continue;
-    // The harder a ball is hit, the less time fielders have to react and the shorter their dive reach.
-    const fast = Math.max(0, Math.min(1, (sim.params.exitVelocity - 68) / 34));
-    const react = F.fastBallPenalty * fast;
-    const glove = F.glove * (1 - 0.12 * fast);
-    const diveX = F.diveExtra * (1 - 0.85 * fast);
+    if (b.y > F.groundHeight) return null;
     let best = null;
     for (const pos of POSITIONS) {
       if (pos === 'C' && sim.firstBounce && -sim.firstBounce.z > 20) continue; // catcher stays home on deep balls
@@ -137,8 +136,21 @@ function findGroundPickup(sim, defense, cfg) {
         if (!best) best = { f, need, dive: true, arrive: t, avail, start: f.react + react, ball: { ...b } };
       }
     }
-    if (best) return { t, ...best };
-    fallback = t;
+    return best;
+  };
+  for (let t = t0; t <= tEnd + STEP; t += STEP) {
+    const best = candidate(t);
+    if (best) {
+      if (best.dive) {
+        // nobody dives for a ball a fielder can simply run to a moment later
+        for (let t2 = t + STEP; t2 <= Math.min(t + F.dive.preferRun, tEnd + STEP) + 1e-6; t2 += STEP) {
+          const alt = candidate(t2);
+          if (alt && !alt.dive) return { t: t2, ...alt };
+        }
+      }
+      return { t, ...best };
+    }
+    if (sampleBall(sim, t).y <= F.groundHeight) fallback = t;
   }
   // Ball came to rest (or hit the wall and stopped): the nearest fielder runs it down.
   const b = sampleBall(sim, tEnd);
@@ -180,13 +192,24 @@ function addMove(plan, f, toX, toZ, tArrive, opts = {}, cfg = CONFIG) {
     const short = Math.min(Math.max(0, d - opts.avail) + (opts.dive ? 0 : 0.15), F.glove + (opts.dive ? F.diveExtra : 0));
     if (d > 0.01 && short > 0) { x1 = toX - ((toX - x0) / d) * Math.min(short, d); z1 = toZ - ((toZ - z0) / d) * Math.min(short, d); }
   }
-  const run = planRun({ x0, z0, x1, z1, tStart, tArrive: Math.max(tArrive, tStart + 0.05), vmax, accel: vmax / F.accel, brake: F.brake, minEffort: opts.minEffort ?? F.minRunEffort, heading: Math.atan2(toX - x0, toZ - z0) });
+  // A dive: sprint straight at the ball, launch shortly before the glove meets it, land, slide, get up. (If the sprint alone
+  // already gets him there, planDiveRun says no dive is needed and he simply runs.)
+  let run = opts.dive
+    ? planDiveRun({ x0, z0, px: toX, pz: toZ, tStart, tCatch: tArrive, vmax, accel: vmax / F.accel, brake: F.brake, dive: F.dive })
+    : null;
+  if (!run) run = planRun({ x0, z0, x1, z1, tStart, tArrive: Math.max(tArrive, tStart + 0.05), vmax, accel: vmax / F.accel, brake: F.brake, minEffort: opts.minEffort ?? F.minRunEffort, heading: Math.atan2(toX - x0, toZ - z0) });
   runs.push(run);
   const move = {
     pos: f.pos,
     keys: [{ t: 0, x: x0, z: z0 }, { t: tStart, x: x0, z: z0 }, { t: tArrive, x: toX, z: toZ }],
-    run, dive: !!opts.dive, watch: !!opts.watch, role: opts.role || 'field',
+    run, dive: !!run.dive, watch: !!opts.watch, role: opts.role || 'field',
   };
+  if (run.dive) {
+    // highlight moments for the game feel: the launch and the touchdown
+    const land = sampleRun(run, run.dive.tLand);
+    plan.events.push({ t: run.dive.tL, type: 'dive', pos: f.pos, catch: (opts.role || 'field') === 'catch' });
+    plan.events.push({ t: run.dive.tLand, type: 'diveLand', pos: f.pos, x: land.x, z: land.z });
+  }
   plan.fielderMoves.push(move);
   return move;
 }
@@ -288,7 +311,7 @@ function planPlayCore(i, cfg) {
     plan.ctx = { kind: 'air', x: air.ball.x, z: air.ball.z, t: air.t };
     plan.ballHitEnd = air.t;
     plan.carries.push({ pos: f.pos, t0: air.t, t1: air.t + 99 });
-    plan.events.push({ t: air.t, type: 'catch', pos: f.pos });
+    plan.events.push({ t: air.t, type: 'catch', pos: f.pos, dive: !!plan.fielderMoves[0].dive });
     if (!fair) {
       plan.result = 'foulOut';
       plan.outsMade = 1;
@@ -352,8 +375,8 @@ function planPlayCore(i, cfg) {
   plan.ballHitEnd = tF;
   addMove(plan, f, pf.x, pf.z, tF, { dive: pick.dive, avail: pick.avail, start: pick.start, role: 'field' }, cfg);
   plan.ctx = { kind: 'ground', x: pf.x, z: pf.z, t: tF };
-  plan.events.push({ t: tF, type: 'field', pos: f.pos });
-  const tr = F.transfer[f.type];
+  plan.events.push({ t: tF, type: 'field', pos: f.pos, dive: !!plan.fielderMoves[0].dive });
+  const tr = F.transfer[f.type] + (plan.fielderMoves[0].dive ? F.dive.throwExtra : 0); // a fielder who dove throws from his knees
   const tReady = tF + tr;
   plan.carries.push({ pos: f.pos, t0: tF, t1: tReady });
 

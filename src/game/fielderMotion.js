@@ -12,6 +12,27 @@ import { clamp, wrapAngle } from '../util/math.js';
 
 const EPS = 1e-9;
 
+// ---------------------------------------------------------------------------------------------------------------
+// The movement model (shared by the planner's "can he get there?" search and by what is drawn):
+// a fielder heading for a spot at cruise speed `vc` speeds up like v = vc * (1 - e^(-t/A)) - smooth from the first step,
+// no jerk when he reaches speed - and covers vc * (t - A * (1 - e^(-t/A))) feet in t seconds.
+// ---------------------------------------------------------------------------------------------------------------
+export function covered(speed, tau, A) {
+  if (tau <= 0) return 0;
+  return speed * (tau - A * (1 - Math.exp(-tau / A)));
+}
+/** The time (after he starts moving) he needs to cover `d` feet. */
+export function timeToCover(speed, d, A) {
+  if (d <= 0) return 0;
+  let lo = 0, hi = d / speed + A + 0.5;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (covered(speed, mid, A) < d) lo = mid; else hi = mid;
+  }
+  return hi;
+}
+const speedAt = (vc, tau, A) => vc * (1 - Math.exp(-tau / A));
+
 /**
  * Plan one straight run.
  * @param {object} o
@@ -20,28 +41,21 @@ const EPS = 1e-9;
  * @param {number} o.tStart    when he starts moving (after his reaction time)
  * @param {number} o.tArrive   when he must be at the target (catch / pickup time)
  * @param {number} o.vmax      top speed (ft/s)
- * @param {number} o.accel     ft/s^2 while getting up to speed
+ * @param {number} o.accel     initial acceleration at top speed, ft/s^2 (sets the time constant A = vmax / accel)
  * @param {number} o.brake     ft/s^2 while slowing down
  * @param {number} [o.minEffort]  fraction of vmax he never drops below while running (he arrives early and waits)
  * @param {number} [o.heading] facing (radians, atan2(x, z)) to report when the run has zero length
  */
 export function planRun(o) {
-  const { x0, z0, x1, z1, tStart, tArrive, vmax, accel: a, brake: b } = o;
+  const { x0, z0, x1, z1, tStart, tArrive, vmax, brake: b } = o;
+  const A = vmax / o.accel;
   const minEffort = o.minEffort ?? 0.62;
   const dx = x1 - x0, dz = z1 - z0;
   const D = Math.hypot(dx, dz);
   const ux = D > 1e-6 ? dx / D : Math.sin(o.heading ?? 0);
   const uz = D > 1e-6 ? dz / D : Math.cos(o.heading ?? 0);
   const segs = [];
-  let t = tStart, s = 0, v = 0;
-  const add = (name, dur, acc) => {
-    if (!(dur > EPS)) return;
-    segs.push({ name, t0: t, s0: s, v0: v, a: acc });
-    s += v * dur + 0.5 * acc * dur * dur;
-    v += acc * dur;
-    t += dur;
-  };
-  const run = { x0, z0, ux, uz, D, tStart, tArrive, vmax, segs, x1, z1, heading: Math.atan2(ux, uz) };
+  const run = { x0, z0, ux, uz, D, tStart, tArrive, vmax, segs, x1, z1, heading: Math.atan2(ux, uz), A };
 
   if (D < 0.05) {
     segs.push({ name: 'rest', t0: tStart, s0: 0, v0: 0, a: 0 });
@@ -49,53 +63,161 @@ export function planRun(o) {
     return run;
   }
 
-  const T = Math.max(0, tArrive - tStart);
-  const K = 0.5 / a + 0.5 / b;
-  const vStar = Math.sqrt(D / K); // fastest speed for which a stop-at-the-target run still has a cruise phase
-  const vCap = Math.min(vmax, vStar);
-  const tMinStop = D / vCap + vCap * K; // quickest possible run that ends at rest on the target
-
-  if (T >= tMinStop - 1e-9) {
-    // Plenty of time: run at the gentlest speed that still arrives on time (never slower than minEffort), stop on the spot.
-    const disc = T * T - 4 * K * D;
-    let vc = disc >= 0 ? (T - Math.sqrt(disc)) / (2 * K) : vCap;
-    vc = clamp(vc, Math.min(minEffort * vmax, vCap), vCap);
-    add('accel', vc / a, a);
-    add('cruise', (D - vc * vc * K) / vc, 0);
-    add('brake', vc / b, -b);
-    run.vArrive = 0;
-    run.tReach = t;
-  } else {
-    // Tight play: no time to stop before the ball arrives. Get there exactly on time at whatever speed that takes,
-    // then ease to a stop past the spot (he catches it on the run).
-    const dFull = (vmax * vmax) / (2 * a);
-    const tNoBrake = D >= dFull ? vmax / a + (D - dFull) / vmax : Math.sqrt((2 * D) / a);
-    const Te = Math.max(T, tNoBrake);
-    let vc;
-    if (Te <= tNoBrake + 1e-9) vc = D >= dFull ? vmax : Math.sqrt(2 * a * D);
-    else vc = Math.min(vmax, a * (Te - Math.sqrt(Math.max(0, Te * Te - (2 * D) / a))));
-    if (vc * vc / (2 * a) >= D) {
-      add('accel', Math.sqrt((2 * D) / a), a); // still accelerating when he reaches the spot
-    } else {
-      add('accel', vc / a, a);
-      add('cruise', (D - (vc * vc) / (2 * a)) / vc, 0);
+  // Where he must start braking to stop exactly on the target when heading for cruise speed vc.
+  const stopPlan = (vc) => {
+    let lo = 0, hi = D / vc + 4 * A + 1;
+    for (let i = 0; i < 44; i++) {
+      const mid = (lo + hi) / 2;
+      const v = speedAt(vc, mid, A);
+      if (covered(vc, mid, A) + (v * v) / (2 * b) < D) lo = mid; else hi = mid;
     }
-    run.vArrive = v;
-    run.tReach = t;
-    add('brake', v / b, -b);
+    return { tb: hi, vb: speedAt(vc, hi, A), tTotal: hi + speedAt(vc, hi, A) / b };
+  };
+
+  const T = Math.max(0, tArrive - tStart);
+  const full = stopPlan(vmax);
+  if (T >= full.tTotal - 1e-9) {
+    // Time to spare: run at the gentlest speed that still arrives on time (never slower than minEffort) and stop on the spot.
+    const floor = minEffort * vmax;
+    let vc = vmax;
+    if (stopPlan(floor).tTotal <= T) vc = floor;
+    else {
+      let lo = floor, hi = vmax;
+      for (let i = 0; i < 40; i++) { const mid = (lo + hi) / 2; if (stopPlan(mid).tTotal > T) lo = mid; else hi = mid; }
+      vc = hi;
+    }
+    const sp = stopPlan(vc);
+    segs.push({ name: 'accel', kind: 'exp', t0: tStart, s0: 0, vc, A });
+    segs.push({ name: 'brake', t0: tStart + sp.tb, s0: covered(vc, sp.tb, A), v0: sp.vb, a: -b });
+    run.vArrive = 0;
+    run.tReach = tStart + sp.tTotal;
+    run.tStop = tStart + sp.tTotal;
+    run.sStop = D;
+  } else {
+    // Tight play: no time to stop before the ball gets there. He paces himself to reach the spot exactly when the ball does
+    // (the gentlest speed that is still on time; flat out if that is what it takes), catches on the run and eases to a stop
+    // just past it.
+    let vc = vmax;
+    if (timeToCover(vmax, D, A) > T + 1e-9) vc = vmax; // (cannot make it: as fast as he can, and a little late)
+    else {
+      let lo = Math.min(minEffort * vmax, vmax), hi = vmax;
+      if (timeToCover(lo, D, A) <= T) hi = lo;
+      else for (let i = 0; i < 40; i++) { const mid = (lo + hi) / 2; if (timeToCover(mid, D, A) > T) lo = mid; else hi = mid; }
+      vc = hi;
+    }
+    const tau = timeToCover(vc, D, A);
+    const vR = speedAt(vc, tau, A);
+    segs.push({ name: 'accel', kind: 'exp', t0: tStart, s0: 0, vc, A });
+    segs.push({ name: 'brake', t0: tStart + tau, s0: D, v0: vR, a: -b });
+    run.vArrive = vR;
+    run.tReach = tStart + tau;
+    run.tStop = tStart + tau + vR / b;
+    run.sStop = D + (vR * vR) / (2 * b);
   }
-  run.sStop = s;
-  run.tStop = t;
-  segs.push({ name: 'rest', t0: t, s0: s, v0: 0, a: 0 });
-  run.xStop = x0 + ux * s;
-  run.zStop = z0 + uz * s;
+  segs.push({ name: 'rest', t0: run.tStop, s0: run.sStop, v0: 0, a: 0 });
+  run.xStop = x0 + ux * run.sStop;
+  run.zStop = z0 + uz * run.sStop;
   return run;
 }
 
-const _out = { x: 0, z: 0, speed: 0, ux: 0, uz: 1, s: 0, phase: 'wait', heading: 0, done: false };
+const _out = { x: 0, z: 0, speed: 0, ux: 0, uz: 1, s: 0, phase: 'wait', heading: 0, done: false, u: 0 };
+
+// ---------------------------------------------------------------------------------------------------------------
+// Dives: sprint at the ball, launch, fly, land, slide, lie there, get up - one continuous motion in one direction.
+// ---------------------------------------------------------------------------------------------------------------
+/**
+ * Plan a run that ends in a dive. Returns null when no dive is actually needed (he can just run there).
+ * @param {object} o
+ * @param {number} o.x0 @param {number} o.z0  where he starts
+ * @param {number} o.px @param {number} o.pz  where the ball is when the glove meets it
+ * @param {number} o.tStart  when he starts running
+ * @param {number} o.tCatch  when the glove meets the ball
+ * @param {number} o.vmax @param {number} o.accel @param {number} o.brake
+ * @param {object} o.dive    config.fielding.dive
+ */
+export function planDiveRun(o) {
+  const dv = o.dive;
+  const dx = o.px - o.x0, dz = o.pz - o.z0;
+  const D = Math.hypot(dx, dz);
+  if (D < 3) return null;
+  const ux = dx / D, uz = dz / D;
+  const vmax = o.vmax;
+  const A = vmax / o.accel;
+  // he is airborne for `airTime` before the glove meets the ball (less only if the ball arrives before he has even reacted,
+  // but never less than a lunge's worth)
+  const airPre = clamp(o.tCatch - (o.tStart + 0.05), 0.14, dv.airTime);
+  const tL = o.tCatch - airPre;
+  const tRun = Math.max(0, tL - o.tStart);
+  const sL = covered(vmax, tRun, A); // flat-out sprint until launch
+  const vL = speedAt(vmax, tRun, A);
+  const sCatch = D - dv.armReach; // how far his body must have travelled when the glove meets the ball
+  const sAir = Math.max(0.75, sCatch - sL); // what the flight has to cover (a ball only a stride away is still a short lunge)
+
+  // the flight: a smooth curve that starts at his running speed and ends at touchdown speed
+  const Ta = airPre + dv.landAfter;
+  const vLand = clamp(0.7 * (sAir / airPre), 6, dv.landSpeed);
+  const sg = airPre / Ta; // how far through the flight the glove meets the ball
+  const h01 = 3 * sg * sg - 2 * sg ** 3, h10 = sg ** 3 - 2 * sg * sg + sg, h11 = sg ** 3 - sg * sg;
+  const sFlight = Math.max(sAir, (sAir - h10 * Ta * vL - h11 * Ta * vLand) / h01); // total distance to touchdown
+
+  const segs = [
+    { name: 'accel', kind: 'exp', t0: o.tStart, s0: 0, vc: vmax, A },
+    { name: 'rest', t0: tL, s0: sL, v0: 0, a: 0 }, // (never reached: sampleRun hands over to sampleDive at tL)
+  ];
+  const tLand = tL + Ta;
+  const slideDur = vLand / dv.slideDecel;
+  const slideDist = (vLand * vLand) / (2 * dv.slideDecel);
+  const dive = {
+    tL, tCatch: o.tCatch, tLand, tSlideEnd: tLand + slideDur, tHoldEnd: tLand + slideDur + dv.hold, tEnd: tLand + slideDur + dv.hold + dv.getUp,
+    Ta, airPre, catchU: sg, sL, vL, sFlight, vLand, slideDist, slideDur, decel: dv.slideDecel, sAir, sCatch, armReach: dv.armReach, hold: dv.hold, getUp: dv.getUp, ux, uz,
+  };
+  const sEnd = sL + sFlight + slideDist;
+  return {
+    x0: o.x0, z0: o.z0, ux, uz, D, tStart: o.tStart, tArrive: o.tCatch, vmax, segs, x1: o.px, z1: o.pz, heading: Math.atan2(ux, uz), A,
+    dive, tReach: o.tCatch, tStop: dive.tEnd, sStop: sEnd, vArrive: vLand, xStop: o.x0 + ux * sEnd, zStop: o.z0 + uz * sEnd,
+  };
+}
+
+function sampleDive(run, t, out) {
+  const d = run.dive;
+  let s, v, phase, u;
+  if (t < d.tLand) {
+    const tau = t - d.tL;
+    const sg = clamp(tau / d.Ta, 0, 1);
+    const h00 = 2 * sg ** 3 - 3 * sg * sg + 1, h10 = sg ** 3 - 2 * sg * sg + sg, h01 = -2 * sg ** 3 + 3 * sg * sg, h11 = sg ** 3 - sg * sg;
+    s = d.sL + h10 * d.Ta * d.vL + h01 * d.sFlight + h11 * d.Ta * d.vLand;
+    // derivative of the Hermite curve
+    const dh00 = (6 * sg * sg - 6 * sg) / d.Ta, dh10 = (3 * sg * sg - 4 * sg + 1) / d.Ta, dh01 = (-6 * sg * sg + 6 * sg) / d.Ta, dh11 = (3 * sg * sg - 2 * sg) / d.Ta;
+    v = Math.max(0, dh10 * d.Ta * d.vL + dh01 * d.sFlight + dh11 * d.Ta * d.vLand + dh00 * 0);
+    void h00;
+    phase = 'air'; u = sg;
+  } else if (t < d.tSlideEnd) {
+    const tau = t - d.tLand;
+    s = d.sL + d.sFlight + d.vLand * tau - 0.5 * d.decel * tau * tau;
+    v = Math.max(0, d.vLand - d.decel * tau);
+    phase = 'slide'; u = tau / d.slideDur;
+  } else {
+    s = d.sL + d.sFlight + d.slideDist; v = 0;
+    if (t < d.tHoldEnd) { phase = 'hold'; u = (t - d.tSlideEnd) / d.hold; }
+    else if (t < d.tEnd) { phase = 'getup'; u = (t - d.tHoldEnd) / d.getUp; }
+    else { phase = 'done'; u = 1; }
+  }
+  out.x = run.x0 + run.ux * s;
+  out.z = run.z0 + run.uz * s;
+  out.speed = v;
+  out.ux = run.ux; out.uz = run.uz;
+  out.s = s;
+  out.phase = phase;
+  out.u = u;
+  out.heading = run.heading;
+  out.done = t >= d.tEnd;
+  return out;
+}
+
 
 /** Where is this run at time t? Returns a shared object (copy what you need). */
 export function sampleRun(run, t, out = _out) {
+  if (run.dive && t >= run.dive.tL) return sampleDive(run, t, out);
   let s, v, phase;
   if (t <= run.tStart) { s = 0; v = 0; phase = 'wait'; }
   else {
@@ -103,8 +225,8 @@ export function sampleRun(run, t, out = _out) {
     while (i > 0 && run.segs[i].t0 > t) i--;
     const g = run.segs[i];
     const dt = t - g.t0;
-    s = g.s0 + g.v0 * dt + 0.5 * g.a * dt * dt;
-    v = Math.max(0, g.v0 + g.a * dt);
+    if (g.kind === 'exp') { s = covered(g.vc, dt, g.A); v = speedAt(g.vc, dt, g.A); }
+    else { s = g.s0 + g.v0 * dt + 0.5 * g.a * dt * dt; v = Math.max(0, g.v0 + g.a * dt); }
     phase = g.name;
     if (i === run.segs.length - 1) { s = g.s0; v = 0; }
   }
@@ -114,6 +236,7 @@ export function sampleRun(run, t, out = _out) {
   out.ux = run.ux; out.uz = run.uz;
   out.s = s;
   out.phase = phase;
+  out.u = 0;
   out.heading = run.heading;
   out.done = t >= run.tStop;
   return out;

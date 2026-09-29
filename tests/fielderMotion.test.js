@@ -1,7 +1,7 @@
 // Fielder movement: the run profile, the steering mover, and the intercept prediction that ties them to the ball.
 import { describe, it, expect } from 'vitest';
 import { CONFIG } from '../src/config.js';
-import { planRun, sampleRun, samplePath, Mover, turnToward } from '../src/game/fielderMotion.js';
+import { planRun, planDiveRun, sampleRun, samplePath, Mover, turnToward, timeToCover, covered } from '../src/game/fielderMotion.js';
 import { simulateBattedBall, sampleBall } from '../src/physics/ballistics.js';
 import { createDefense, planPlay, fielderFreeTime, POSITIONS } from '../src/game/fielding.js';
 import { fenceDistance, sprayOf } from '../src/physics/field.js';
@@ -65,7 +65,7 @@ describe('planRun: one planned run', () => {
   });
 
   it('on a tight play he arrives exactly on time at speed, then eases to a stop past the spot (a running catch)', () => {
-    const tArrive = 0.3 + 3.0; // less time than a run that ends at rest needs (3.2 s) but just enough at full speed (2.94 s)
+    const tArrive = 0.3 + timeToCover(22, 60, F.accel) + 0.05; // less time than a run that ends at rest needs, but just enough at speed
     const run = planRun({ ...base, tArrive });
     expect(run.vArrive).toBeGreaterThan(5);
     expect(run.tReach).toBeCloseTo(tArrive, 2);
@@ -360,5 +360,159 @@ describe('who chases and who backs up', () => {
     const a = playOf(88, 22, 10, { bases: [{}, {}, null] }).plan;
     const b = playOf(88, 22, 10, { bases: [{}, {}, null] }).plan;
     expect([a.result, a.outsMade, a.batterDest, a.endTime]).toEqual([b.result, b.outsMade, b.batterDest, b.endTime]);
+  });
+});
+
+// ------------------------------------------------------------------------------------------------------------
+// Diving
+// ------------------------------------------------------------------------------------------------------------
+const DV = F.dive;
+const A_T = F.accel;
+// A catch time the way the planner produces one: the ball is 2 ft beyond what he can reach by running (so he must dive).
+const diveTiming = (dist, extra = 2.0, tStart = 0.36, vmax = 22) => tStart + timeToCover(vmax, dist - F.glove - extra, A_T);
+const diveBase = { x0: 0, z0: 0, px: 0, pz: -40, tStart: 0.36, tCatch: diveTiming(40), vmax: 22, accel: 22 / F.accel, brake: F.brake, dive: DV };
+
+describe('planDiveRun: a dive is one committed motion', () => {
+  it('needs a real distance to dive across', () => {
+    expect(planDiveRun({ ...diveBase, px: 0, pz: -2 })).toBeNull();
+    expect(planDiveRun(diveBase)).toBeTruthy();
+  });
+
+  it('the launch is seamless: same place and same speed the instant before and after leaving his feet', () => {
+    const run = planDiveRun(diveBase);
+    const before = { ...sampleRun(run, run.dive.tL - 1e-4) };
+    const after = { ...sampleRun(run, run.dive.tL + 1e-4) };
+    expect(Math.abs(after.s - before.s)).toBeLessThan(0.01);
+    expect(Math.abs(after.speed - before.speed)).toBeLessThan(0.15);
+    expect(before.phase).toBe('accel');
+    expect(after.phase).toBe('air');
+  });
+
+  it('goes through wait, run, air, slide, hold, get up, done - in that order, launching before the catch and landing after it', () => {
+    const run = planDiveRun(diveBase);
+    const seen = [];
+    for (let t = 0; t < run.dive.tEnd + 0.5; t += 1 / 120) { const p = sampleRun(run, t).phase; if (seen[seen.length - 1] !== p) seen.push(p); }
+    expect(seen).toEqual(['wait', 'accel', 'air', 'slide', 'hold', 'getup', 'done']);
+    expect(run.dive.tL).toBeLessThan(diveBase.tCatch);
+    expect(run.dive.tLand).toBeGreaterThan(diveBase.tCatch);
+    expect(diveBase.tCatch - run.dive.tL).toBeCloseTo(DV.airTime, 3);
+  });
+
+  it('the glove meets the ball exactly at the catch time: his body is one arm-length short of the ball', () => {
+    const run = planDiveRun(diveBase);
+    const p = sampleRun(run, diveBase.tCatch);
+    expect(Math.hypot(diveBase.px - p.x, diveBase.pz - p.z)).toBeCloseTo(DV.armReach, 1);
+  });
+
+  it('he dives in ONE direction: the whole path stays on the line to the ball', () => {
+    const run = planDiveRun({ ...diveBase, px: 25, pz: -35 });
+    const dx = 25 / Math.hypot(25, 35), dz = -35 / Math.hypot(25, 35);
+    for (let t = 0; t < run.dive.tEnd; t += 1 / 60) {
+      const p = sampleRun(run, t);
+      const cross = Math.abs((p.x - run.x0) * dz - (p.z - run.z0) * dx);
+      expect(cross).toBeLessThan(1e-6);
+    }
+    expect(sampleRun(run, 1).heading).toBeCloseTo(Math.atan2(dx, dz), 6);
+  });
+
+  it('never goes backwards, never faster than a sprint plus a push, and slides to a stop within a few feet', () => {
+    const run = planDiveRun(diveBase);
+    let prev = 0;
+    for (let t = 0; t < run.dive.tEnd + 0.3; t += 1 / 120) {
+      const p = sampleRun(run, t);
+      expect(p.s).toBeGreaterThanOrEqual(prev - 1e-9);
+      expect(p.speed).toBeLessThanOrEqual(diveBase.vmax * 1.3);
+      prev = p.s;
+    }
+    expect(run.dive.slideDist).toBeLessThan(4);
+    expect(sampleRun(run, run.dive.tEnd + 0.5).speed).toBe(0);
+    expect(sampleRun(run, run.dive.tEnd + 0.5).s).toBeCloseTo(run.sStop, 6);
+  });
+
+  it('the flight itself is a believable length (a lunge, not a teleport)', () => {
+    for (const dist of [10, 25, 45, 80]) {
+      const run = planDiveRun({ ...diveBase, pz: -dist, tCatch: diveTiming(dist) });
+      expect(run).toBeTruthy();
+      expect(run.dive.sFlight).toBeLessThan(16);
+    }
+  });
+
+  it('random dives are all finite and consistent', () => {
+    const rng = createRng(5);
+    let made = 0;
+    for (let i = 0; i < 300; i++) {
+      const o = { ...diveBase, x0: rng.range(-100, 100), z0: rng.range(-300, -60), px: rng.range(-100, 100), pz: rng.range(-300, -20), tStart: rng.range(0.2, 0.6), tCatch: rng.range(0.55, 5), vmax: rng.range(15, 25) };
+      const run = planDiveRun(o);
+      if (!run) continue;
+      made++;
+      expect(run.dive.tL).toBeLessThan(o.tCatch);
+      expect(o.tCatch - run.dive.tL).toBeGreaterThanOrEqual(0.14 - 1e-9);
+      expect(run.dive.tEnd).toBeGreaterThan(run.dive.tLand);
+      for (let t = 0; t <= run.dive.tEnd; t += 0.05) { const p = sampleRun(run, t); expect(Number.isFinite(p.x) && Number.isFinite(p.z) && Number.isFinite(p.speed)).toBe(true); }
+    }
+    expect(made).toBeGreaterThan(200);
+  });
+});
+
+describe('when a fielder dives', () => {
+  const sweep = (cfg = CONFIG) => {
+    const rows = [];
+    const rng = createRng(2);
+    const defense = createDefense(cfg);
+    for (let i = 0; i < 900; i++) {
+      const c = contactOf(rng.range(45, 104), rng.range(-8, 46), rng.range(-42, 42));
+      const sim = simulateBattedBall({ ...c, start: { x: 0, y: 2.5, z: -1 } }, cfg);
+      const plan = planPlay({ sim, contact: c, bases: [null, null, null], outs: 0, defense }, cfg);
+      if (plan.homer || !plan.fair) continue;
+      rows.push(plan);
+    }
+    return rows;
+  };
+  const plans = sweep();
+  const dives = plans.filter((p) => p.fielderMoves[0] && p.fielderMoves[0].dive);
+
+  it('dives are the exception (a fielder does not dive for a ball he can simply run to)', () => {
+    expect(dives.length).toBeGreaterThan(5);
+    expect(dives.length / plans.length).toBeLessThan(0.15);
+  });
+
+  it('the "just run to it" rule really removes dives', () => {
+    const eager = { ...CONFIG, fielding: { ...F, dive: { ...F.dive, preferRun: 0 } } };
+    const eagerDives = sweep(eager).filter((p) => p.fielderMoves[0] && p.fielderMoves[0].dive).length;
+    expect(eagerDives).toBeGreaterThan(dives.length * 2);
+  });
+
+  it('a dive is only for a low ball', () => {
+    for (const p of dives.filter((q) => q.caught)) expect(p.catchPos.y).toBeLessThanOrEqual(5.2 + 1e-9);
+  });
+
+  it('every dive has a launch and a touchdown event, launching before the ball is caught and landing after', () => {
+    for (const p of dives) {
+      const tc = p.caught ? p.catchT : p.pickupT;
+      const launch = p.events.find((e) => e.type === 'dive');
+      const land = p.events.find((e) => e.type === 'diveLand');
+      expect(launch && land).toBeTruthy();
+      expect(launch.t).toBeLessThan(tc);
+      expect(land.t).toBeGreaterThan(tc);
+      expect(launch.catch).toBe(!!p.caught);
+      expect(Number.isFinite(land.x) && Number.isFinite(land.z)).toBe(true);
+    }
+  });
+
+  it('a fielder who dove for a grounder throws from his knees, not before he is off the ground', () => {
+    const stops = dives.filter((p) => !p.caught && p.throws.length && p.throws[0].from === p.fielder);
+    expect(stops.length).toBeGreaterThan(0);
+    for (const p of stops) {
+      const run = p.paths[p.fielder][0];
+      expect(p.throws[0].t0).toBeGreaterThan(run.dive.tLand + run.dive.slideDur);
+    }
+  });
+
+  it('planning a dive is deterministic', () => {
+    const c = contactOf(76, 21, -24);
+    const mk = () => planPlay({ sim: simulateBattedBall({ ...c, start: { x: 0, y: 2.5, z: -1 } }), contact: c, bases: [null, null, null], outs: 0, defense: createDefense() }, CONFIG);
+    const a = mk(), b = mk();
+    expect(JSON.stringify(a.paths)).toBe(JSON.stringify(b.paths));
+    expect(a.events).toEqual(b.events);
   });
 });

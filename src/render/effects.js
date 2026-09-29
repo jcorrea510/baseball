@@ -114,6 +114,13 @@ export function createEffects(scene) {
           rng.range(0.55, 1.15), rng.range(2.2, 4.0), color[0], color[1], color[2], rng.range(0.28, 0.5), 4, 3.5, 3.4);
       }
     },
+    // a few small, faint puffs thrown backward from a sliding fielder (never enough to hide him)
+    slideDust(x, z, dirX, dirZ) {
+      for (let i = 0; i < 3; i++) {
+        dust.spawn(x + rng.range(-0.3, 0.3), 0.15, z + rng.range(-0.3, 0.3), -dirX * rng.range(1, 3.5) + rng.range(-1, 1), rng.range(0.6, 1.8), -dirZ * rng.range(1, 3.5) + rng.range(-1, 1),
+          rng.range(0.4, 0.75), rng.range(1.0, 1.8), 0.56, 0.5, 0.34, rng.range(0.16, 0.28), 3, 3.5, 2.2);
+      }
+    },
     grassBits(x, z, strength = 1) {
       for (let i = 0; i < 6 * strength; i++) {
         const a = rng.next() * Math.PI * 2, s = rng.range(2, 6);

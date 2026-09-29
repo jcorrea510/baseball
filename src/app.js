@@ -389,6 +389,26 @@ export class App {
       case 'catch':
         audio.glovePop(0.8);
         if (c && !c.homer) { audio.crowdSwell(c.big ? 0.55 : 0.28, 2); }
+        if (ev.dive) {
+          // a diving catch is a highlight: big crowd reaction and a banner
+          audio.crowdSwell(0.95, 2.4);
+          this.S.stadium.crowd.cheer(0.6);
+          ui.banner('DIVING CATCH!', '', 'good');
+          setTimeout(() => ui.hideBanner(), 1400);
+        }
+        break;
+      case 'dive': {
+        // launch: a beat of slow motion so you see the fielder leave his feet
+        const H = CONFIG.fielding.dive.highlightSlowMo;
+        this.slowMo = ev.catch ? { t: 0, dur: H.catchDur, delay: 0, scale: H.catchScale } : { t: 0, dur: H.stopDur, delay: 0, scale: H.stopScale };
+        audio.crowdSwell(0.35, 1.2);
+        break;
+      }
+      case 'diveLand':
+        this.fx.dustPuff(ev.x, ev.z, 0.55);
+        this.fx.grassBits(ev.x, ev.z, 1);
+        audio.dirtThud(0.85);
+        if (this.settings.shake) this.cam.shake(0.3);
         break;
       case 'field':
         audio.glovePop(0.45);
@@ -605,7 +625,7 @@ export class App {
           else {
             s.t += realDt;
             const k = clamp(s.t / s.dur, 0, 1);
-            scale = lerp(CONFIG.feel.slowMoScale, 1, k * k);
+            scale = lerp(s.scale ?? CONFIG.feel.slowMoScale, 1, k * k);
             if (s.t >= s.dur) this.slowMo = null;
           }
         }

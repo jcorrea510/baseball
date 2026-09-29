@@ -1,6 +1,6 @@
 // Procedural animation: functions that write a pose (see rig.js) for a given moment in time.
 // All poses are expressed in person-local space: +y up, +z forward, +x = the person's left.
-import { DIM, makePose } from './rig.js';
+import { DIM, makePose, mixPose, copyPose } from './rig.js';
 import { clamp, lerp, smoothstep } from '../util/math.js';
 
 const ANK = DIM.ankle;
@@ -330,25 +330,85 @@ export function catchPose(P, target, crouch = 0.4) {
   return P;
 }
 
-// Diving catch / stop: u 0..1 over the dive. Pose space; the caller moves the root along the dive.
-export function divePose(P, u) {
+// ---------------------------------------------------------------- diving
+// A layout dive in four phases (the root travels along the path; these are the body shapes):
+//   air    u 0..1  from the last stride to touchdown: launch, stretch out, glove meets the ball at u = 0.727
+//   slide  u 0..1  belly-down slide, glove out in front
+//   hold   u 0..1  lying there with the ball
+//   getup  u 0..1  hands and knees, up to a crouch, back to the ready stance
+// `glove` is the ball position in body space (the glove reaches for it); `from` is the pose he was in the instant he left the
+// ground (the last running stride) so the launch does not pop.
+const _dk = [0, 0, 0];
+const dk = (keys, u) => { sampleKeys(keys, u, _dk); return _dk[0]; };
+const _dAir = makePose(), _dProne = makePose(), _dKneel = makePose(), _dReady = makePose(), _dPrev = makePose();
+const DIVE_GLOVE_GROUND = [0.42, 0.5, 3.35];
+const DIVE_CATCH_U = 0.727; // (airTime / (airTime + landAfter))
+
+function airLayout(P, a, glove) {
   resetPose(P);
-  const air = Math.sin(clamp(u / 0.5, 0, 1) * Math.PI * 0.5);
-  const down = smoothstep(0.15, 0.55, u);
-  P.hipY = lerp(2.9, 1.0, down);
-  P.pelvis[2] = lerp(0, 3.3, down);
-  P.pelvisPitch = lerp(0.2, 1.42, down);
-  P.torsoPitch = lerp(0.2, 0.15, down);
-  P.headPitch = -0.6 * down;
-  set3(P.handL, 0.35, lerp(2.5, 1.2, down), lerp(1.2, 3.6 + air, down));
-  set3(P.handR, -0.35, lerp(2.5, 1.0, down), lerp(0.9, 2.6, down));
-  set3(P.footL, 0.4, lerp(ANK, 1.2, down), lerp(0.2, -3.0, down));
-  set3(P.footR, -0.4, lerp(ANK, 1.0, down), lerp(-0.2, -3.2, down));
-  P.footLTilt = 1.2 * down; P.footRTilt = 1.2 * down;
-  set3(P.kneeL, 0.2, 1, 0.3); set3(P.kneeR, -0.2, 1, 0.3);
-  P.poleL = [0.8, 0.2, 0.2]; P.poleR = [-0.8, 0.2, 0.2];
+  P.hipY = dk([[0, 3.0], [0.3, 2.7], [0.6, 2.15], [0.727, 1.85], [1, 1.0]], a);
+  P.pelvisPitch = dk([[0, 0.3], [0.3, 0.8], [0.6, 1.25], [0.727, 1.35], [1, 1.45]], a);
+  P.torsoPitch = dk([[0, 0.3], [0.5, 0.15], [1, 0.0]], a);
+  P.headPitch = dk([[0, 0.0], [0.5, -0.6], [1, -0.85]], a);
+  set3(P.footL, 0.32, dk([[0, ANK], [0.4, 1.0], [0.727, 1.8], [1, 1.3]], a), dk([[0, 0.15], [0.4, -1.4], [0.727, -2.4], [1, -2.6]], a));
+  set3(P.footR, -0.32, dk([[0, ANK], [0.4, 0.9], [0.727, 1.6], [1, 1.1]], a), dk([[0, -0.1], [0.4, -1.6], [0.727, -2.6], [1, -2.8]], a));
+  P.footLTilt = 0.9; P.footRTilt = 1.0;
+  set3(P.kneeL, 0.2, 1, -0.2); set3(P.kneeR, -0.2, 1, -0.2);
+  set3(P.handR, -0.45, dk([[0, 3.3], [0.5, 2.4], [0.727, 2.0], [1, 0.8]], a), dk([[0, 0.3], [0.5, 2.0], [0.727, 3.0], [1, 3.4]], a));
+  // glove arm: reaches for the ball until the catch, then comes down with it
+  const reach = smoothstep(0.02, 0.55, a);
+  const g = glove || [0.45, 1.5, 3.4];
+  const down = smoothstep(DIVE_CATCH_U, 1, a);
+  const hx = lerp(0.68, lerp(g[0], DIVE_GLOVE_GROUND[0], down), reach);
+  const hy = lerp(3.35, lerp(g[1], DIVE_GLOVE_GROUND[1], down), reach);
+  const hz = lerp(0.5, lerp(g[2], DIVE_GLOVE_GROUND[2], down), reach);
+  set3(P.handL, hx, hy, hz);
+  P.poleL = [0.9, 0.2, 0.1]; P.poleR = [-0.9, 0.2, 0.1];
   return P;
 }
+function proneLayout(P, breathe = 0) {
+  resetPose(P);
+  P.hipY = 0.64 + breathe; P.pelvisPitch = 1.5; P.torsoPitch = 0.0; P.headPitch = -0.9;
+  set3(P.footL, 0.3, 0.42, -2.6); set3(P.footR, -0.3, 0.4, -2.8);
+  P.footLTilt = 1.3; P.footRTilt = 1.3;
+  set3(P.kneeL, 0.2, 1, -0.1); set3(P.kneeR, -0.2, 1, -0.1);
+  set3(P.handL, DIVE_GLOVE_GROUND[0], DIVE_GLOVE_GROUND[1], DIVE_GLOVE_GROUND[2]); set3(P.handR, -0.42, 0.42, 3.0);
+  P.poleL = [0.9, 0.3, 0.0]; P.poleR = [-0.9, 0.3, 0.0];
+  return P;
+}
+function kneelLayout(P) {
+  resetPose(P);
+  P.hipY = 1.25; P.pelvisPitch = 0.95; P.torsoPitch = -0.05; P.headPitch = -0.35;
+  set3(P.footL, 0.36, 0.4, -1.5); set3(P.footR, -0.36, 0.4, -1.6);
+  P.footLTilt = 1.0; P.footRTilt = 1.0;
+  set3(P.kneeL, 0.2, 1, 0.8); set3(P.kneeR, -0.2, 1, 0.8);
+  set3(P.handL, 0.45, 0.9, 2.3); set3(P.handR, -0.42, 0.7, 2.1);
+  P.poleL = [0.9, 0.2, 0.0]; P.poleR = [-0.9, 0.2, 0.0];
+  return P;
+}
+
+export function divePose(P, phase, u, glove = null, from = null, time = 0, catchU = DIVE_CATCH_U) {
+  u = clamp(u, 0, 1);
+  if (phase === 'air') {
+    // the keyframes put the catch at DIVE_CATCH_U; stretch/squeeze time so it lands when this dive's catch really happens
+    const w = u < catchU ? (u * DIVE_CATCH_U) / catchU : DIVE_CATCH_U + ((u - catchU) * (1 - DIVE_CATCH_U)) / Math.max(1e-6, 1 - catchU);
+    airLayout(_dAir, w, glove);
+    if (from) mixPose(P, from, _dAir, smoothstep(0, 0.32, u)); else copyPose(P, _dAir);
+    return P;
+  }
+  const breathe = Math.sin(time * 6) * 0.012;
+  if (phase === 'slide') {
+    airLayout(_dAir, 1, glove); proneLayout(_dProne, 0);
+    return mixPose(P, _dAir, _dProne, smoothstep(0, 0.55, u));
+  }
+  if (phase === 'hold') return proneLayout(P, breathe);
+  // getup
+  proneLayout(_dProne, 0); kneelLayout(_dKneel); fielderReady(_dReady, time, 'IF');
+  const k = smoothstep(0, 1, u);
+  if (k < 0.45) return mixPose(P, _dProne, _dKneel, smoothstep(0, 1, k / 0.45));
+  return mixPose(P, _dKneel, _dReady, smoothstep(0, 1, (k - 0.45) / 0.55));
+}
+export const DIVE_CATCH_PROGRESS = DIVE_CATCH_U;
 
 // ---------------------------------------------------------------- celebration
 export function celebratePose(P, t, seed = 0) {

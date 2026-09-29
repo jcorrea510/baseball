@@ -209,10 +209,11 @@ export class Actors {
       }
       st.inPlay = live;
 
-      let speed = 0, vx = 0, vz = 0;
+      let speed = 0, vx = 0, vz = 0, dive = null;
       if (live && runs && playT < fielderFreeTime(plan, pos)) {
         const p = samplePath(runs, playT);
         st.cx = p.x; st.cz = p.z; vx = p.ux * p.speed; vz = p.uz * p.speed; speed = p.speed;
+        if (move && move.dive && (p.phase === 'air' || p.phase === 'slide' || p.phase === 'hold' || p.phase === 'getup')) dive = { phase: p.phase, u: p.u, ux: p.ux, uz: p.uz, catchU: move.run.dive.catchU };
         st.mover.reset(p.x, p.z, vx, vz); // keep the jog in step so the hand-off after his job is seamless
       } else {
         st.mover.setTarget(def.homeX, def.homeZ); // only re-aims if the spot moved meaningfully
@@ -236,7 +237,8 @@ export class Actors {
         const carry = plan.carries.some((c) => c.pos === pos && playT >= c.t0 - 0.3 && playT <= c.t1);
         if (th && ((carry && playT >= (catchT ?? 0) - 0.2) || playT >= th.t0 - 0.45)) face = th;
       }
-      if (pos === 'C' && !(moving && speed > 2)) want = Math.PI;
+      if (dive && dive.phase !== 'getup') { want = Math.atan2(dive.ux, dive.uz); rate = turn * 2.5; } // committed: he faces the way he is diving
+      else if (pos === 'C' && !(moving && speed > 2)) want = Math.PI;
       else if (pos === 'P' && !runs && !(moving && speed > 2)) want = 0;
       else if (face) { want = Math.atan2(face.bx - x, face.bz - z); rate = turn * 1.3; }
       else if (moving && speed > 2) {
@@ -252,6 +254,7 @@ export class Actors {
       root.position.set(x, y, z);
       root.rotation.y = yaw;
       root.updateMatrixWorld(true);
+      if (dive && dive.phase === 'slide' && this.fx && Math.random() < dt * 14) this.fx.slideDust(x - dive.ux * 2.4, z - dive.uz * 2.4, dive.ux, dive.uz);
 
       // ---- pose
       const P = person.pose;
@@ -259,7 +262,8 @@ export class Actors {
       let done = false;
       if (pos === 'P') done = this.pitcherPoseUpdate(E, person, P, time, pitch, plan, playT, move, moving, speed, st, dt);
       else if (pos === 'C') done = this.catcherPoseUpdate(E, person, P, time, pitch, plan, playT, move, moving, speed, st, dt);
-      if (!done) this.fielderPoseUpdate(E, person, P, time0, pos, plan, playT, move, speed, st, dt, lookYaw);
+      if (!done) this.fielderPoseUpdate(E, person, P, time0, pos, plan, playT, move, speed, st, dt, lookYaw, dive);
+      this.crossfadePose(person, P, done ? (pos === 'P' ? 'pitching' : 'catching-crouch') : person.animState, st, dt);
       person.setShadows(Math.hypot(x, z + 62) < 120);
       person.apply();
     }
@@ -318,7 +322,22 @@ export class Actors {
     return true;
   }
 
-  fielderPoseUpdate(E, person, P, time, pos, plan, playT, move, speed, st, dt, look = 0) {
+  // Chooses the pose (running / catching / throwing / diving / ready).
+  fielderPoseUpdate(E, person, P, time, pos, plan, playT, move, speed, st, dt, look = 0, dive = null) {
+    this.computeFielderPose(E, person, P, time, pos, plan, playT, move, speed, st, dt, look, dive);
+  }
+
+  // Whenever what a person is doing changes (pitching -> fielding, running -> catching, ...), cross-fade over ~0.16 s so a
+  // pose can never pop, even for a very short stop between two runs.
+  crossfadePose(person, P, label, st, dt) {
+    if (!st.snap) { st.snap = makePose(); st.from = makePose(); st.lastAnim = label; st.blendT = 1; }
+    if (label !== st.lastAnim) { st.lastAnim = label; st.blendT = 0; copyPose(st.from, st.snap); }
+    st.blendT += dt;
+    if (st.blendT < 0.16) mixPose(P, st.from, P, smoothstep(0, 0.16, st.blendT));
+    copyPose(st.snap, P);
+  }
+
+  computeFielderPose(E, person, P, time, pos, plan, playT, move, speed, st, dt, look = 0, dive = null) {
     const kind = person.role === 'fielder' && (pos === 'LF' || pos === 'CF' || pos === 'RF') ? 'OF' : 'IF';
     const scratch = this.tmpPose;
     if (speed > 0.8) st.phase += runCadence(speed) * TAU * dt; // stride follows his real speed (continuous, no sliding feet)
@@ -328,10 +347,31 @@ export class Actors {
     let throwing = null;
     if (plan) for (const th of plan.throws) if (th.from === pos) { if (playT >= th.t0 - 0.32 && playT <= th.t0 + 0.32) throwing = th; }
     // catch / field moments
-    let catchT = null, catchDive = false;
-    if (plan && move && plan.fielder === pos) {
-      catchT = plan.caught ? plan.catchT : (plan.pickupT !== undefined ? plan.pickupT : null);
-      catchDive = move.dive;
+    let catchT = null;
+    if (plan && move && plan.fielder === pos) catchT = plan.caught ? plan.catchT : (plan.pickupT !== undefined ? plan.pickupT : null);
+    if (dive) {
+      // the glove reaches for the ball until it is caught, then stays where the catch happened and comes down with it
+      if (dive.phase === 'air' && dive.u < dive.catchU) {
+        person.root.updateMatrixWorld(true);
+        const l = person.root.worldToLocal(this.tmpV2.copy(this.ballPos));
+        st.diveGlove = [clamp(l.x, -1.2, 1.6), Math.max(0.55, Math.min(l.y, 5.2)), clamp(l.z, 0.6, 7)];
+      }
+      let from = null;
+      if (dive.phase === 'air' && dive.u < 0.34) {
+        const g = st.diveGlove || [0.5, 2.0, 3.0];
+        runReachPose(scratch, st.phase, Math.max(speed, 6), g, 0);
+        from = scratch;
+      }
+      divePose(P, dive.phase, dive.u, st.diveGlove || null, from, time, dive.catchU);
+      if (throwing && dive.phase === 'getup') {
+        // throws from his knees as he gets up
+        const uT = clamp((playT - (throwing.t0 - 0.32)) / 0.32, 0, 1) * THROW_RELEASE_U + clamp((playT - throwing.t0) / 0.3, 0, 1) * (1 - THROW_RELEASE_U);
+        const tp = this.tmpPose2 || (this.tmpPose2 = makePose());
+        throwPose(tp, uT);
+        mixPose(P, P, tp, smoothstep(0.1, 0.6, dive.u) * smoothstep(0, 0.5, uT + 0.2));
+      }
+      person.animState = 'dive';
+      return;
     }
     if (throwing) {
       const uT = clamp((playT - (throwing.t0 - 0.32)) / 0.32, 0, 1) * THROW_RELEASE_U + clamp((playT - throwing.t0) / 0.3, 0, 1) * (1 - THROW_RELEASE_U);
@@ -342,12 +382,10 @@ export class Actors {
     }
     if (catchT !== null && playT >= 0) {
       const dtC = playT - catchT;
-      if (catchDive && dtC > -0.55 && dtC < 0.8) {
-        divePose(P, clamp((dtC + 0.55) / 1.1, 0, 1));
-        person.animState = 'dive';
-        return;
-      }
-      if (dtC > -0.5 && dtC < 1.2) {
+      // the catch pose ends when his throw begins (afterwards he is following through, not catching again)
+      const nextThrow = plan.throws.find((q) => q.from === pos && q.t0 > catchT - 0.05);
+      const catchEnd = nextThrow ? nextThrow.t0 - 0.32 - catchT : 1.2;
+      if (dtC > -0.5 && dtC < Math.min(1.2, catchEnd)) {
         // glove up to meet the ball, then to the chest
         person.root.updateMatrixWorld(true);
         const b = this.ballPos;
@@ -762,7 +800,7 @@ export class Actors {
       const person = this.fielders[seg.pos];
       person.root.updateMatrixWorld(true);
       person.gloveWorld(out);
-      out.y = Math.max(out.y, 1.2);
+      out.y = Math.max(out.y, person.animState === 'dive' ? 0.3 : 1.2);
       return { kind: 'carry', trail: 0 };
     }
     if (seg.kind === 'throw') {
