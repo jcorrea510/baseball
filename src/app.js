@@ -20,6 +20,7 @@ import { PitchGuide } from './render/pitchGuide.js';
 import { pitchGuide } from './game/pitchGuide.js';
 import { LandingRing } from './render/landingRing.js';
 import { landingSpot, landingRing } from './game/landing.js';
+import * as SEA from './game/season.js';
 
 // scorekeeping numbers for the error banner (E6 = an error by the shortstop)
 const POSITION_NUMBER = { P: 1, C: 2, '1B': 3, '2B': 4, '3B': 5, SS: 6, LF: 7, CF: 8, RF: 9 };
@@ -194,12 +195,44 @@ export class App {
           this.ui.show('locker');
         }
         break;
-      case 'start': this.audio.uiClick(); this.startGame(d.mode); break;
+      case 'start': this.audio.uiClick(); if (d.mode === 'season') this.openMenu('season'); else this.startGame(d.mode); break;
+      // ---- season
+      case 'seasonNew': this.audio.uiClick(); this.prog.data.season = SEA.newSeason(null, { level: d.level, length: d.length }); this.prog.save(); this.showMenuScreen('season'); break;
+      case 'seasonReset': this.audio.uiBack(); this.prog.data.season = null; this.prog.save(); this.showMenuScreen('season'); break;
+      case 'seasonNext': {
+        this.audio.uiClick();
+        const old = this.prog.data.season;
+        SEA.finishSeason(old);
+        this.prog.data.season = SEA.newSeason(old, {});
+        this.prog.save();
+        this.showMenuScreen('season');
+        break;
+      }
+      case 'seasonPlay': this.audio.uiClick(); this.startSeasonGame(); break;
+      case 'seasonHub': this.audio.uiClick(); this.quitToMenu(); break;
+      case 'standings': case 'roster': case 'shop': this.audio.uiClick(); this.rosterSel = null; this.replaceFor = null; this.openMenu(a); break;
+      case 'rosterTap': {
+        const sea = this.prog.data.season;
+        if (!this.rosterSel) this.rosterSel = d.id;
+        else if (this.rosterSel === d.id) this.rosterSel = null;
+        else { SEA.swapPlayers(sea, this.rosterSel, d.id); this.rosterSel = null; this.prog.save(); }
+        this.audio.uiClick();
+        this.showMenuScreen('roster');
+        break;
+      }
+      case 'shopBuy': {
+        const sea = this.prog.data.season;
+        if (sea.roster.length >= CONFIG.season.roster.size) { this.audio.uiClick(); this.replaceFor = d.id; this.rosterSel = null; this.openMenu('roster'); break; }
+        this.signPlayer(d.id, null);
+        break;
+      }
+      case 'seasonReplace': this.signPlayer(d.shopId, d.id); break;
+      case 'uiTick': this.audio.uiClick(); break;
       case 'setting': this.changeSetting(d.key, d.value, !!d.live); break;
       case 'settingDone': this.prog.save(); this.previewSound(d.key); break;
       case 'pause': this.setPaused(true); break;
       case 'resume': this.setPaused(false); break;
-      case 'restart': this.setPaused(false); this.startGame(this.mode); break;
+      case 'restart': this.setPaused(false); if (this.seasonGame) this.startSeasonGame(); else this.startGame(this.mode); break;
       case 'playAgain': this.audio.uiClick(); this.startGame(this.lastMode); break;
       case 'quit': this.audio.uiBack(); this.quitToMenu(); break;
       case 'mute': this.toggleMute(); break;
@@ -238,7 +271,36 @@ export class App {
     if (name === 'career') this.ui.buildCareer(this.prog);
     if (name === 'settings') this.ui.buildSettings(this.settings);
     if (name === 'credits') this.ui.buildCredits(this.audio.files.list.length > 0);
+    if (name === 'season') this.ui.buildSeason(this.prog.data.season, this.settings);
+    if (name === 'standings') this.ui.buildStandings(this.prog.data.season);
+    if (name === 'roster') this.ui.buildRoster(this.prog.data.season, this.rosterSel, this.replaceFor);
+    if (name === 'shop') this.ui.buildShop(this.prog.data.season);
     this.ui.show(name);
+  }
+
+  // Season: buy a player from the shop (with a full roster he replaces `outId`)
+  signPlayer(shopId, outId) {
+    const sea = this.prog.data.season;
+    const p = sea.shop.find((x) => x.id === shopId);
+    const r = SEA.buyPlayer(sea, shopId, outId);
+    if (!r.ok) { this.audio.uiBack(); this.ui.toast(r.reason === 'coins' ? 'Not enough coins' : 'Pick a player', 1600); return; }
+    this.prog.save();
+    this.audio.unlockChime();
+    this.ui.toast(`Signed ${p.name}`, 1800);
+    this.replaceFor = null;
+    if (outId) { this.nav.pop(); this.showMenuScreen('shop'); } else this.showMenuScreen('shop');
+  }
+
+  // Season: your next game, against the team on the schedule (your roster, their strength)
+  startSeasonGame() {
+    const sea = this.prog.data.season;
+    const setup = sea && SEA.gameSetup(sea);
+    if (!setup) return;
+    this.seasonGame = setup.game;
+    this.startGame('quick', {
+      engine: { difficulty: setup.level, innings: setup.innings, lineup: setup.lineup, opponent: setup.opponent, oppLineup: setup.oppLineup },
+      cfg: setup.cfg,
+    });
   }
 
   goModes() { this.nav = ['title']; this.showMenuScreen('modes'); }
@@ -284,6 +346,7 @@ export class App {
   }
 
   quitToMenu() {
+    const toSeason = this.returnTo === 'season';
     this.gameToken++;
     this.engine = null; this.bot = null; this.paused = false; this.fast = false; this.slowMo = null; this.hitStop = 0;
     this.ui.hideHud(); this.hideOverlays();
@@ -291,14 +354,18 @@ export class App {
     this.actors.configure({ engine: this.demo, playerUniformKey: this.prog.data.equipped.uniform, batStyle: this.prog.data.equipped.bat });
     this.fx.clear();
     this.S.env.set(this.settings.tod, false);
-    this.goModes();
+    this.seasonGame = null;
+    if (toSeason) { this.nav = ['title', 'modes']; this.showMenuScreen('season'); } else this.goModes();
   }
 
   hideOverlays() { this.zone.visible = false; this.pitchMarker.visible = false; this.guide.hide(); this.landRing.hide(); this.landing = null; }
 
   // ---------------------------------------------------------------- starting a game
-  startGame(mode) {
+  // `extra` (Season games): { engine: more Engine options, cfg: the config for this opponent }
+  startGame(mode, extra = null) {
     if (!mode) mode = 'quick';
+    if (!extra) this.seasonGame = null;
+    this.returnTo = extra ? 'season' : 'modes';
     this.lastMode = mode;
     this.mode = mode;
     const st = this.settings;
@@ -310,7 +377,8 @@ export class App {
       waitForBatter: mode === 'quick' && !this.params.get('bot'), // the pitcher waits for Ready before each new batter
       practice: this.engine && this.engine.mode === 'practice' ? { ...this.engine.practice } : undefined,
       seed: this.params.get('seed') ? +this.params.get('seed') : undefined,
-    });
+      ...(extra ? extra.engine : {}),
+    }, extra && extra.cfg ? extra.cfg : CONFIG);
     this.engine = eng;
     this.audio.setUmpire(eng.seed); // this game's umpire has his own voice
     this.engine.setAim(0);
@@ -571,6 +639,13 @@ export class App {
   // Small facts on the next batter's card (bats left / right; season numbers are added in Season mode).
   batterChips(b) {
     const out = [];
+    const sea = this.prog.data.season;
+    if (b.con !== undefined && sea) {
+      // a Season player: his season so far and his ratings
+      const t = sea.stats[b.id] || {};
+      out.push(`${SEA.avg(t.h || 0, t.ab || 0)} AVG`, `${t.hr || 0} HR`, `CON ${b.con} · POW ${b.pow} · SPD ${b.spd}`);
+      return out;
+    }
     if (b.hand) out.push(b.hand === 'L' ? 'Bats left' : 'Bats right');
     return out;
   }
@@ -641,13 +716,26 @@ export class App {
     this.ui.hideHud();
     this.hideOverlays();
     this.audio.applause(2.4, 0.9);
+    // a Season game: the standings, your players' season numbers and your coins
+    let seasonInfo = null;
+    if (this.seasonGame) {
+      const sea = this.prog.data.season;
+      const lines = {};
+      for (const b of e.lineup) lines[b.id] = e.lineOf(b);
+      const label = this.seasonGame.label;
+      const r = SEA.recordGame(sea, { won: p.won, runsFor: p.game.score.top, runsAgainst: p.game.score.bottom, lines });
+      const me = sea.teams[0];
+      seasonInfo = { items: r.items, coins: sea.coins, label, record: `${me.w}–${me.l}` };
+      p.season = true;
+      this.seasonGame = null;
+    }
     const { records, unlocked } = this.prog.recordGame(p);
     const g = p.game;
     if (g) g.line = lineScore(e.game);
     this.ui.buildTitle(this.prog);
     const names = { away: PLAYER_TEAM.name.toUpperCase(), home: e.opponent.name.toUpperCase(), awayAbbr: PLAYER_TEAM.abbr, homeAbbr: e.opponent.abbr };
     this.later(() => {
-      this.ui.showGameOver(p, records, unlocked, names); // (new unlocks are listed on it as badges)
+      this.ui.showGameOver(p, records, unlocked, names, seasonInfo); // (new unlocks are listed on it as badges)
       if (unlocked.length) this.audio.unlockChime();
     }, 900);
     this.screen = 'over';
@@ -742,7 +830,7 @@ export class App {
     const cur = this.ui.current;
     if (cur === 'howto') { const b = this.ui.screens.howto.querySelector('[data-a=howtoDone]'); if (b) b.click(); return; }
     if (this.screen === 'game' && (!cur || cur === 'pause')) { this.setPaused(!this.paused); return; }
-    if (['modes', 'locker', 'career', 'settings', 'credits'].includes(cur)) this.onAction('back');
+    if (['modes', 'locker', 'career', 'settings', 'credits', 'season', 'standings', 'roster', 'shop'].includes(cur)) this.onAction('back');
   }
 
   practiceSpeed(d) {

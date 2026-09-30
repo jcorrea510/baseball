@@ -252,32 +252,32 @@ const cache = new Map();
  * The (cached) profile for a runner going from base `from` to base `to`.
  * kind: 'run' (top speed, stops on the last base) | 'through' (batter running through first) | 'trot' (home-run trot) | 'jog' (walk to first).
  */
-export function runnerProfile(from, to, kind = 'run', cfg = CONFIG) {
+export function runnerProfile(from, to, kind = 'run', cfg = CONFIG, spd = 1) {
   const R = cfg.runner;
   if (to <= from) return stationary(from, cfg); // a runner who stays where he is
-  const key = `${from}>${to}|${kind}|${R.speed}|${R.accelTime}|${R.brake}|${R.latAccel}|${R.turnBrake}|${R.turnLen}|${R.turnRadius}|${R.lead}|${R.leadSecond}|${R.overrun}|${R.trotSpeed}`;
+  const key = `${from}>${to}|${kind}|${spd}|${R.speed}|${R.accelTime}|${R.brake}|${R.latAccel}|${R.turnBrake}|${R.turnLen}|${R.turnRadius}|${R.lead}|${R.leadSecond}|${R.overrun}|${R.trotSpeed}`;
   let p = cache.get(key);
   if (!p) {
     const route = buildRoute(from, to, { through: kind === 'through' }, cfg);
-    const vmax = kind === 'trot' ? R.trotSpeed : kind === 'jog' ? R.jogSpeed : R.speed;
+    const vmax = kind === 'trot' ? R.trotSpeed : kind === 'jog' ? R.jogSpeed : R.speed * spd; // (spd: a fast or slow runner, Season ratings)
     p = buildProfile(route, { vmax, accelTime: kind === 'trot' ? R.accelTime * 1.4 : R.accelTime, brake: kind === 'trot' ? R.brake * 0.6 : R.brake, turnBrake: R.turnBrake, latAccel: R.latAccel });
     cache.set(key, p);
   }
   return p;
 }
 
-/** When (seconds after the play's contact) does he touch base `to`? tStart = when he leaves (default: reaction delay, or the batter's). */
-export function runnerArrival(cfg, from, to, tStart, kind = 'run') {
+/** When (seconds after the play's contact) does he touch base `to`? tStart = when he leaves (default: reaction delay, or the batter's). spd = his speed (x). */
+export function runnerArrival(cfg, from, to, tStart, kind = 'run', spd = 1) {
   const R = cfg.runner;
   const t0 = tStart ?? (from === 0 ? R.batterStart : R.startDelay);
-  return t0 + (runnerProfile(from, to, kind, cfg).tBase[to] ?? 0);
+  return t0 + (runnerProfile(from, to, kind, cfg, spd).tBase[to] ?? 0);
 }
 
 /** When has he finished (stopped)? */
-export function runnerFinish(cfg, from, to, tStart, kind = 'run') {
+export function runnerFinish(cfg, from, to, tStart, kind = 'run', spd = 1) {
   const R = cfg.runner;
   const t0 = tStart ?? (from === 0 ? R.batterStart : R.startDelay);
-  return t0 + runnerProfile(from, to, kind, cfg).duration;
+  return t0 + runnerProfile(from, to, kind, cfg, spd).duration;
 }
 
 /** Which profile does a move use? (`move` is a plan.moves entry: { from, to, out, outBase, tStart, trot }.) */
@@ -297,9 +297,10 @@ export function runnerState(move, t, cfg = CONFIG, out = {}) {
   const R = cfg.runner;
   const toBase = move.out && move.to === 0 ? move.outBase : move.to;
   const kind = moveKind(move);
+  const spd = move.spd || 1;
   let t0 = move.tStart ?? (move.from === 0 ? R.batterStart : R.startDelay);
-  if (kind === 'through') t0 += runnerProfile(0, 1, 'run', cfg).tBase[1] - runnerProfile(0, 1, 'through', cfg).tBase[1];
-  const p = runnerProfile(move.from, Math.max(toBase, move.from), kind, cfg);
+  if (kind === 'through') t0 += runnerProfile(0, 1, 'run', cfg, spd).tBase[1] - runnerProfile(0, 1, 'through', cfg, spd).tBase[1];
+  const p = runnerProfile(move.from, Math.max(toBase, move.from), kind, cfg, spd);
   const tt = t - t0;
   p.at(tt, out);
   // The inning ended while he was still running (move.stopAt, seconds after contact): he eases up and coasts to a stop
@@ -329,9 +330,10 @@ export function runnerState(move, t, cfg = CONFIG, out = {}) {
 // (the bag itself, not his lead-off spot). move = { from, back: true, tStart, backAt } (times in the play's clock).
 // ---------------------------------------------------------------------------------------------------------------
 const covered = (v, tau, A) => v * (tau - A * (1 - Math.exp(-tau / A)));
-function retreatPlan(from, tStart, backAt, cfg) {
+function retreatPlan(from, tStart, backAt, cfg, spd = 1) {
   const R = cfg.runner;
-  const p = runnerProfile(from, from + 1, 'run', cfg);
+  const V = R.speed * spd;
+  const p = runnerProfile(from, from + 1, 'run', cfg, spd);
   const q = p.at(Math.max(0, backAt - tStart), {});
   const B = R.brake * 0.8; // (he pulls up hard, but not as hard as a slide into a bag)
   const tb = q.speed / B;
@@ -341,13 +343,13 @@ function retreatPlan(from, tStart, backAt, cfg) {
   const lead = Math.hypot(lx - bx, lz - bz);
   const dist = s2 + lead; // back to the bag
   // time to run `dist` from a standstill (same get-up-to-speed curve as every run)
-  let lo = 0, hi = dist / R.speed + 4 * R.accelTime + 1;
-  for (let k = 0; k < 40; k++) { const mid = (lo + hi) / 2; if (covered(R.speed, mid, R.accelTime) < dist) lo = mid; else hi = mid; }
-  return { p, s1: q.s, v1: q.speed, B, tb, s2, lead, dist, tRun: hi, tTurn: backAt + tb, tHome: backAt + tb + hi, bx, bz };
+  let lo = 0, hi = dist / V + 4 * R.accelTime + 1;
+  for (let k = 0; k < 40; k++) { const mid = (lo + hi) / 2; if (covered(V, mid, R.accelTime) < dist) lo = mid; else hi = mid; }
+  return { p, s1: q.s, v1: q.speed, B, tb, s2, lead, dist, tRun: hi, tTurn: backAt + tb, tHome: backAt + tb + hi, bx, bz, V };
 }
 /** When is a runner who is going back on the bag again? */
-export function retreatArrival(cfg, from, tStart, backAt) {
-  return retreatPlan(from, tStart, backAt, cfg).tHome;
+export function retreatArrival(cfg, from, tStart, backAt, spd = 1) {
+  return retreatPlan(from, tStart, backAt, cfg, spd).tHome;
 }
 // a point `s` ft along his way to the next base (negative = between his lead-off spot and the bag)
 function alongRoute(rp, s, out) {
@@ -359,7 +361,8 @@ function alongRoute(rp, s, out) {
 }
 export function retreatState(move, t, cfg = CONFIG, out = {}) {
   const t0 = move.tStart ?? cfg.runner.startDelay;
-  const rp = move._rp && move._rp.key === `${move.from}|${t0}|${move.backAt}` ? move._rp : (move._rp = Object.assign(retreatPlan(move.from, t0, move.backAt, cfg), { key: `${move.from}|${t0}|${move.backAt}` }));
+  const key = `${move.from}|${t0}|${move.backAt}|${move.spd || 1}`;
+  const rp = move._rp && move._rp.key === key ? move._rp : (move._rp = Object.assign(retreatPlan(move.from, t0, move.backAt, cfg, move.spd || 1), { key }));
   out.kind = 'back'; out.tStart = t0; out.profile = rp.p; out.total = rp.dist;
   if (t <= move.backAt) {
     rp.p.at(t - t0, out);
@@ -378,12 +381,12 @@ export function retreatState(move, t, cfg = CONFIG, out = {}) {
     return out;
   }
   const tau = t - rp.tTurn;
-  const d = Math.min(rp.dist, covered(cfg.runner.speed, tau, cfg.runner.accelTime));
+  const d = Math.min(rp.dist, covered(rp.V, tau, cfg.runner.accelTime));
   alongRoute(rp, rp.s2 - d, out);
   const done = tau >= rp.tRun;
   out.heading = heading0 + Math.PI;
-  out.speed = done ? 0 : cfg.runner.speed * (1 - Math.exp(-tau / cfg.runner.accelTime));
-  out.accel = done ? 0 : (cfg.runner.speed - out.speed) / cfg.runner.accelTime;
+  out.speed = done ? 0 : rp.V * (1 - Math.exp(-tau / cfg.runner.accelTime));
+  out.accel = done ? 0 : (rp.V - out.speed) / cfg.runner.accelTime;
   out.sLeft = rp.dist - d; out.side = 0; out.turn = 0;
   out.waiting = false; out.running = !done; out.done = done;
   return out;

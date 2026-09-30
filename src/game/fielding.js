@@ -376,7 +376,7 @@ function planPlayCore(i, cfg) {
       if (!bases[b]) continue;
       const m = { from: b + 1, to: 4, out: false, trot: true };
       // a runner who was already going with the pitch carries on from where he is, at a trot
-      if (rs(b + 1) !== undefined) m.tStart = -runnerProfile(b + 1, 4, 'trot', cfg).tAtS(runnerProfile(b + 1, b + 2, 'run', cfg).at(-rs(b + 1), {}).s);
+      if (rs(b + 1) !== undefined) m.tStart = -runnerProfile(b + 1, 4, 'trot', cfg).tAtS(runnerProfile(b + 1, b + 2, 'run', cfg, sp(b + 1)).at(-rs(b + 1), {}).s);
       plan.moves.push(m);
     }
     plan.moves.push({ from: 0, to: 4, out: false, trot: true });
@@ -427,11 +427,11 @@ function planPlayCore(i, cfg) {
       const throwHome = tCatch + F.transfer[f.type] + throwTime(dist(air.ball.x, air.ball.z, home[0], home[1]), f, cfg) + F.tagTime;
       // runner on 3rd
       if (bases[2] && rs(3) === undefined && depth > 170) {
-        const arrive = runnerArrival(cfg, 3, 4, tCatch + 0.15);
+        const arrive = arrivalAt(cfg, 3, 4, tCatch + 0.15);
         if (arrive < throwHome - F.runnerMargin) {
           plan.moves.push({ from: 3, to: 4, out: false, tStart: tCatch + 0.15, tag: true });
           plan.result = 'sacFly';
-          plan.endTime = Math.max(plan.endTime, runnerFinish(cfg, 3, 4, tCatch + 0.15) + 0.35);
+          plan.endTime = Math.max(plan.endTime, finishAt(cfg, 3, 4, tCatch + 0.15) + 0.35);
           plan.events.push({ t: throwHome, type: 'throwLate' });
           // the throw home (late)
           const c = defense.C;
@@ -442,10 +442,10 @@ function planPlayCore(i, cfg) {
       if (bases[1] && rs(2) === undefined && depth > 250 && !(bases[2] && plan.moves.every((m) => m.from !== 3))) {
         const d3 = dist(air.ball.x, air.ball.z, BASE_XZ[3][0], BASE_XZ[3][1]);
         const throw3 = tCatch + F.transfer[f.type] + throwTime(d3, f, cfg);
-        const arrive = runnerArrival(cfg, 2, 3, tCatch + 0.15);
+        const arrive = arrivalAt(cfg, 2, 3, tCatch + 0.15);
         if (arrive < throw3 - F.runnerMargin - 0.25) {
           plan.moves.push({ from: 2, to: 3, out: false, tStart: tCatch + 0.15, tag: true });
-          plan.endTime = Math.max(plan.endTime, runnerFinish(cfg, 2, 3, tCatch + 0.15) + 0.35); // the play lasts until he is there
+          plan.endTime = Math.max(plan.endTime, finishAt(cfg, 2, 3, tCatch + 0.15) + 0.35); // the play lasts until he is there
         }
       }
     }
@@ -526,7 +526,7 @@ function endInningStop(plan, outs, cfg) {
   let running = false;
   for (const m of plan.moves) {
     if (m.out || m.to <= m.from) continue;
-    if (runnerFinish(cfg, m.from, m.to, m.tStart) > stopAt) { m.stopAt = stopAt; running = true; }
+    if (finishAt(cfg, m.from, m.to, m.tStart) > stopAt) { m.stopAt = stopAt; running = true; }
   }
   if (!running) return;
   let end = tOut + 0.8;
@@ -540,6 +540,11 @@ function endInningStop(plan, outs, cfg) {
 // planPlay runs.)
 let RUN = null;
 const rs = (b) => (RUN ? RUN[b] : undefined);
+// Each runner's speed (x the standard runner; Season players' Speed rating): `i.speeds` = { 0: the batter, 1..3: the runners }.
+let SPD = null;
+const sp = (b) => (SPD && SPD[b]) || 1;
+const arrivalAt = (cfg, from, to, tStart, kind = 'run') => runnerArrival(cfg, from, to, tStart, kind, sp(from));
+const finishAt = (cfg, from, to, tStart, kind = 'run') => runnerFinish(cfg, from, to, tStart, kind, sp(from));
 
 // Give every runner move of a going runner his real start; one who ends up staying put has to go back to his base.
 function runningStarts(plan, cfg) {
@@ -549,7 +554,7 @@ function runningStarts(plan, cfg) {
     if (!m.out && m.to <= m.from) {
       m.back = true;
       m.backAt = Math.max(m.tStart + 0.2, plan.pickupT ?? plan.catchT ?? cfg.steal.readFoul);
-      plan.endTime = Math.max(plan.endTime, retreatArrival(cfg, m.from, m.tStart, m.backAt) + 0.25);
+      plan.endTime = Math.max(plan.endTime, retreatArrival(cfg, m.from, m.tStart, m.backAt, sp(m.from)) + 0.25);
     }
   }
   // (a going runner the plan did not mention holds his base: he goes back too)
@@ -568,7 +573,7 @@ function runnersGoBack(plan, f, air, type, bases, outs, defense, cfg) {
   for (const b of [3, 2, 1]) {
     if (!bases[b - 1] || rs(b) === undefined) continue;
     const backAt = type === 'line' ? Math.max(air.t, rs(b) + 0.2) : Math.max(rs(b) + 0.2, Math.min(air.t, cfg.steal.readFly));
-    const retT = retreatArrival(cfg, b, rs(b), backAt);
+    const retT = retreatArrival(cfg, b, rs(b), backAt, sp(b));
     if (!triedOut && outs + plan.outsMade < 3) {
       triedOut = true;
       const tReady = air.t + F.transfer[f.type];
@@ -596,6 +601,10 @@ function runnersGoBack(plan, f, air, type, bases, outs, defense, cfg) {
 // The catcher throws at the lead runner; the out is made only if the man covering the bag has the ball there before the runner
 // arrives (plus the moment it takes to put the tag on). A hopeless throw is not made.
 export function planSteal(i, cfg = CONFIG) {
+  SPD = i.speeds || null;
+  try { return planStealCore(i, cfg); } finally { SPD = null; }
+}
+function planStealCore(i, cfg) {
   const F = cfg.fielding;
   const defense = i.defense;
   const C = defense.C;
@@ -611,7 +620,7 @@ export function planSteal(i, cfg = CONFIG) {
   const tReady = i.transfer;
   const from = { x: C.x, z: C.z };
   plan.carries.push({ pos: 'C', t0: 0, t1: tReady });
-  const runnerT = runnerArrival(cfg, lead, target, i.running[lead]);
+  const runnerT = arrivalAt(cfg, lead, target, i.running[lead]);
   const opts = coverOptions({ base: target, thrower: C, tReady, from, tag: cfg.steal.tagTime, coverStart: i.coverStart }, plan, defense, cfg).filter((o) => !o.self);
   const way = opts[0];
   let leadMove = { from: lead, to: target, out: false, tStart: i.running[lead] };
@@ -635,9 +644,10 @@ export function planSteal(i, cfg = CONFIG) {
   for (const b of going.slice(1)) plan.moves.push({ from: b, to: b + 1, out: false, tStart: i.running[b] });
   if (going.length > 1) plan.doubleSteal = true;
   let end = 0;
-  for (const m of plan.moves) end = Math.max(end, m.out ? m.outAt : runnerFinish(cfg, m.from, m.to, m.tStart));
+  for (const m of plan.moves) end = Math.max(end, m.out ? m.outAt : finishAt(cfg, m.from, m.to, m.tStart));
   for (const th of plan.throws) end = Math.max(end, th.t1);
   plan.endTime = end + 0.6;
+  speedsOnMoves(plan);
   endInningStop(plan, i.outs || 0, cfg);
   settleThrows(plan);
   addCalls(plan, cfg);
@@ -702,16 +712,21 @@ function dropFly(plan, i, f, air, bases, outs, defense, cfg) {
 // ---------------------------------------------------------------------------
 export function planPlay(i, cfg = CONFIG) {
   RUN = i.running || null;
-  let plan;
+  SPD = i.speeds || null;
   try {
-    plan = planPlayCore(i, cfg);
+    const plan = planPlayCore(i, cfg);
     if (RUN) runningStarts(plan, cfg);
-  } finally { RUN = null; }
-  if (!i.simple) endInningStop(plan, i.outs || 0, cfg);
-  addSupport(plan, i, cfg);
-  settleThrows(plan);
-  addCalls(plan, cfg);
-  return plan;
+    speedsOnMoves(plan);
+    if (!i.simple) endInningStop(plan, i.outs || 0, cfg);
+    addSupport(plan, i, cfg);
+    settleThrows(plan);
+    addCalls(plan, cfg);
+    return plan;
+  } finally { RUN = null; SPD = null; }
+}
+// (the renderer draws each runner at his own speed)
+function speedsOnMoves(plan) {
+  if (SPD) for (const m of plan.moves) { const f = sp(m.from); if (f !== 1) m.spd = f; }
 }
 
 // A close play gets a "Safe!" call: the throw reaches the base just AFTER the runner (within a beat).
@@ -722,7 +737,7 @@ function addCalls(plan, cfg) {
     if (plan.events.some((e) => e.type === 'out' && e.base === base)) continue; // that one is an out
     for (const m of plan.moves) {
       if (m.out || m.to !== base) continue;
-      const arrive = runnerArrival(cfg, m.from, base, m.tStart);
+      const arrive = arrivalAt(cfg, m.from, base, m.tStart);
       if (m.stopAt !== undefined && arrive > m.stopAt) continue; // the inning was already over: he never got there
       const margin = th.t1 - arrive;
       if (margin >= 0 && margin <= cfg.fielding.closePlay) { plan.events.push({ t: th.t1 + 0.1, type: 'safe', base }); return; }
@@ -884,12 +899,12 @@ function tryInfieldOut({ f, tF, tReady, pf, bases, forced, outs, defense, cfg, p
   for (const b of forced) leadForced = Math.max(leadForced, b);
   if (leadForced > 0) {
     const targetBase = leadForced + 1 > 3 ? 4 : leadForced + 1; // runner from `leadForced` heads to the next base
-    const runnerArr = runnerArrival(cfg, leadForced, Math.min(4, leadForced + 1), rs(leadForced));
+    const runnerArr = arrivalAt(cfg, leadForced, Math.min(4, leadForced + 1), rs(leadForced));
     const way = outAt(targetBase, runnerArr, ctx, plan, cfg);
     if (way) options.push({ kind: 'force', base: targetBase, t: way.tOut, margin: runnerArr - way.tOut, way });
   }
   // Batter at first
-  const batterTo1 = runnerArrival(cfg, 0, 1);
+  const batterTo1 = arrivalAt(cfg, 0, 1);
   const way1 = outAt(1, batterTo1, ctx, plan, cfg);
   if (way1) options.push({ kind: 'first', base: 1, t: way1.tOut, margin: batterTo1 - way1.tOut, way: way1 });
 
@@ -959,7 +974,7 @@ function finishInfieldOut(plan, at, ctx) {
     plan.result = 'fieldersChoice';
     if (secondOutPossible) {
       const tRelay = tOut + F.transfer.IF * 0.85;
-      const arrival = runnerArrival(cfg, 0, 1);
+      const arrival = arrivalAt(cfg, 0, 1);
       const opts = coverOptions({ base: 1, thrower: recv, tReady: tRelay, from: rp, runnerT: arrival }, plan, defense, cfg);
       if (opts.length) {
         const w2 = opts[0];
@@ -983,7 +998,7 @@ function finishInfieldOut(plan, at, ctx) {
   }
   plan.endTime = endT + 0.8;
   // the play is not over while a runner who moved up is still running (he would otherwise be cut off mid-stride)
-  for (const m of plan.moves) if (!m.out && m.to > m.from) plan.endTime = Math.max(plan.endTime, runnerFinish(cfg, m.from, m.to, m.tStart) + 0.3);
+  for (const m of plan.moves) if (!m.out && m.to > m.from) plan.endTime = Math.max(plan.endTime, finishAt(cfg, m.from, m.to, m.tStart) + 0.3);
   void leadForced; void tF;
   return plan;
 }
@@ -1002,17 +1017,17 @@ function advanceOnGroundout({ bases, forced, outsAfter, f, pf, tReady, cfg, skip
     else if (canAdvance) {
       if (b === 3) {
         const defenseHome = tReady + throwTime(dist(pf.x, pf.z, 0, 0), f, cfg) + F.tagTime;
-        if (runnerArrival(cfg, 3, 4, rs(3)) + F.runnerMargin < defenseHome) d = 4;
+        if (arrivalAt(cfg, 3, 4, rs(3)) + F.runnerMargin < defenseHome) d = 4;
       } else if (b === 2 && (dest[3] === 4 || !occupied[3])) {
         if (f.x > 0) d = 3; // a grounder to the right side
         else if (bunt || rs(2) !== undefined) { // (a runner going with the pitch has the same head start) // on a bunt he breaks for third as it is put down: he takes it unless a throw there would beat him
           const [tx, tz] = BASE_XZ[3];
-          if (runnerArrival(cfg, 2, 3, rs(2)) + F.runnerMargin < tReady + throwTime(dist(pf.x, pf.z, tx, tz), f, cfg) + 0.3) d = 3;
+          if (arrivalAt(cfg, 2, 3, rs(2)) + F.runnerMargin < tReady + throwTime(dist(pf.x, pf.z, tx, tz), f, cfg) + 0.3) d = 3;
         }
       } else if (b === 1 && rs(1) !== undefined && (dest[2] >= 3 || !occupied[2])) {
         // a runner going with the pitch keeps going to second unless a throw there would beat him
         const [tx, tz] = BASE_XZ[2];
-        if (runnerArrival(cfg, 1, 2, rs(1)) + F.runnerMargin < tReady + throwTime(dist(pf.x, pf.z, tx, tz), f, cfg) + F.tagTime) d = 2;
+        if (arrivalAt(cfg, 1, 2, rs(1)) + F.runnerMargin < tReady + throwTime(dist(pf.x, pf.z, tx, tz), f, cfg) + F.tagTime) d = 2;
       }
     }
     dest[b] = d;
@@ -1038,7 +1053,7 @@ function finishHit(plan, ctx) {
     let target = b;
     if (forced.has(b)) target = b + 1;
     for (let m = 4; m > target; m--) {
-      const arrive = runnerArrival(cfg, b, m, rs(b));
+      const arrive = arrivalAt(cfg, b, m, rs(b));
       if (arrive + F.runnerMargin < D[m]) { target = m; break; }
     }
     if (target < 4 && target >= ceiling) target = Math.max(b, ceiling - 1);
@@ -1049,7 +1064,7 @@ function finishHit(plan, ctx) {
   // Batter
   let bd = 0;
   for (let m = 4; m >= 1; m--) {
-    const arrive = runnerArrival(cfg, 0, m);
+    const arrive = arrivalAt(cfg, 0, m);
     if (arrive + F.runnerMargin < D[m]) { bd = m; break; }
   }
   if (bd === 0) bd = 1; // an infield hit / safe on a close play (we only reach here when no out could be made)
@@ -1123,7 +1138,7 @@ function finishHit(plan, ctx) {
   // The play ends when every runner has stopped and the throw is in.
   let last = plan.ballEnd;
   for (const m of plan.moves) {
-    last = Math.max(last, runnerFinish(cfg, m.from, m.to, m.tStart));
+    last = Math.max(last, finishAt(cfg, m.from, m.to, m.tStart));
   }
   plan.endTime = last + 0.35;
   void outs; void tF;

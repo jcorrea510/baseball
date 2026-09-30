@@ -60,7 +60,7 @@ export function auditPlan(plan, defense, cfg = CONFIG) {
     else {
       const from = mv.from;
       // (a runner doubled off is going back to the base he left)
-      const arrive = mv.back ? retreatArrival(cfg, from, mv.tStart, mv.backAt) : runnerArrival(cfg, from, e.base, mv.tStart);
+      const arrive = mv.back ? retreatArrival(cfg, from, mv.tStart, mv.backAt, mv.spd || 1) : runnerArrival(cfg, from, e.base, mv.tStart, 'run', mv.spd || 1);
       if (!(e.t + F.outMargin * 0.5 <= arrive)) problems.push(`out at base ${e.base}: the runner arrives at ${arrive.toFixed(2)} s, the out is made at ${e.t.toFixed(2)} s`);
     }
   }

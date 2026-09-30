@@ -36,9 +36,9 @@ export const OPPONENTS = [
   { id: 'stampede', name: 'Prairie Stampede', abbr: 'PST', color: '#2e6b3a', uniform: { primary: '#2e6b3a', secondary: '#eadcaa', trim: '#eadcaa', pants: '#eee7d0', cap: '#1f4a28', capBill: '#1f4a28', socks: '#2e6b3a', helmet: '#1f4a28', sleeve: '#2e6b3a', text: 'STAMPEDE' } },
 ];
 
-const FIRST = ['J.', 'M.', 'D.', 'T.', 'C.', 'R.', 'A.', 'L.', 'K.', 'B.', 'S.', 'E.', 'N.', 'P.', 'G.', 'H.', 'W.', 'F.'];
-const LAST = ['Alvarez', 'Bennett', 'Castillo', 'Dawson', 'Ellis', 'Fontaine', 'Grayson', 'Hollis', 'Ishikawa', 'Jimenez', 'Kowalski', 'Lindgren', 'Marlow', 'Nakamura', 'Okafor', 'Pruitt', 'Quinn', 'Rourke', 'Santos', 'Tanaka', 'Underhill', 'Vasquez', 'Whitaker', 'Yoder', 'Zielinski', 'Brennan', 'Delgado', 'Faulkner', 'Haddad', 'Iverson', 'Mercer', 'Novak', 'Ortega', 'Petrov', 'Reyes', 'Sutton', 'Thibodeaux', 'Voss', 'Walsh', 'Abbott'];
-const SKINS = ['#f2c9a0', '#e0ac82', '#c68642', '#a3683b', '#7b4a2a', '#f7d7b5', '#5d3a22', '#d9a066'];
+export const FIRST = ['J.', 'M.', 'D.', 'T.', 'C.', 'R.', 'A.', 'L.', 'K.', 'B.', 'S.', 'E.', 'N.', 'P.', 'G.', 'H.', 'W.', 'F.'];
+export const LAST = ['Alvarez', 'Bennett', 'Castillo', 'Dawson', 'Ellis', 'Fontaine', 'Grayson', 'Hollis', 'Ishikawa', 'Jimenez', 'Kowalski', 'Lindgren', 'Marlow', 'Nakamura', 'Okafor', 'Pruitt', 'Quinn', 'Rourke', 'Santos', 'Tanaka', 'Underhill', 'Vasquez', 'Whitaker', 'Yoder', 'Zielinski', 'Brennan', 'Delgado', 'Faulkner', 'Haddad', 'Iverson', 'Mercer', 'Novak', 'Ortega', 'Petrov', 'Reyes', 'Sutton', 'Thibodeaux', 'Voss', 'Walsh', 'Abbott'];
+export const SKINS = ['#f2c9a0', '#e0ac82', '#c68642', '#a3683b', '#7b4a2a', '#f7d7b5', '#5d3a22', '#d9a066'];
 
 export function makeLineup(seed, prefix = '') {
   const rng = createRng(seed);

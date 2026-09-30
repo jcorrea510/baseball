@@ -3,6 +3,7 @@ import { CONFIG, DIFFICULTIES } from '../config.js';
 import { UNIFORMS, BATS } from '../game/teams.js';
 import { UNLOCKS, unlockKey } from '../game/progression.js';
 import { logoSVG, wordSVG } from './logo.js';
+import * as SEA from '../game/season.js';
 
 function h(tag, cls, html) {
   const e = document.createElement(tag);
@@ -51,6 +52,12 @@ const ICONS = {
   bat: '<path d="M4 20l2-2M6.5 17.5l10.8-10.8a2.6 2.6 0 0 1 3.7 3.7L10.2 21.2"/>',
   crowd: '<circle cx="7" cy="9" r="2.4"/><circle cx="17" cy="9" r="2.4"/><circle cx="12" cy="7.5" r="2.8"/><path d="M2.5 19c.4-3 2.2-4.8 4.5-4.8M21.5 19c-.4-3-2.2-4.8-4.5-4.8M6.5 20c.5-3.8 2.8-6 5.5-6s5 2.2 5.5 6"/>',
   trash: '<path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13"/>',
+  trophy: '<path d="M8 4h8v5a4 4 0 0 1-8 0zM8 6H4.5v1.5A3.5 3.5 0 0 0 8 11M16 6h3.5v1.5A3.5 3.5 0 0 1 16 11M12 13v4M8.5 20h7M10 17h4v3h-4z"/>',
+  coin: '<circle cx="12" cy="12" r="8.5"/><path d="M14.8 9.2c-.5-.9-1.6-1.4-2.8-1.4-1.6 0-2.8.9-2.8 2.1 0 2.8 5.8 1.4 5.8 4.2 0 1.2-1.3 2.1-3 2.1-1.3 0-2.4-.6-2.9-1.5M12 6v1.8M12 16.2V18"/>',
+  list: '<path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/>',
+  users: '<circle cx="9" cy="8.5" r="3.2"/><path d="M3.5 19.5c.6-3.3 2.8-5 5.5-5s4.9 1.7 5.5 5M15.5 5.6a3.2 3.2 0 0 1 0 6M17.5 14.7c1.6.6 2.7 2.2 3 4.8"/>',
+  cart: '<path d="M3.5 4.5h2.2l2.2 10.2h10.4l1.9-7.2H6.6"/><circle cx="9.5" cy="19" r="1.4"/><circle cx="17" cy="19" r="1.4"/>',
+  swap: '<path d="M7 4v14M7 18l-3-3M7 18l3-3M17 20V6M17 6l-3 3M17 6l3 3"/>',
 };
 const icon = (name, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`;
 
@@ -72,6 +79,15 @@ function focusSelector(el) {
 
 const PITCH_LABEL = { fastball: 'Fastball', changeup: 'Changeup', curveball: 'Curveball', slider: 'Slider', heater: 'Heater', mixed: 'Mixed' };
 const avgText = (hits, ab) => (ab > 0 ? (hits / ab).toFixed(3).replace(/^0/, '') : '.000');
+const ordinal = (n) => n + (n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th');
+// a team's strength as 1-5 stars
+const stars = (rating, bare = false) => {
+  const n = Math.max(1, Math.min(5, Math.round(((rating ?? 50) - 25) / 10)));
+  const st = `<span class="stars" aria-label="${n} of 5">${'<b>★</b>'.repeat(n)}${'<i>★</i>'.repeat(5 - n)}</span>`;
+  return bare ? st : `<span class="chip">${st}</span>`;
+};
+// a player's Contact / Power / Speed
+const ratingCells = (p) => ['con', 'pow', 'spd'].map((k) => `<span class="rt ${p[k] >= 70 ? 'hi' : p[k] <= 40 ? 'lo' : ''}">${p[k]}<small>${{ con: 'CON', pow: 'POW', spd: 'SPD' }[k]}</small></span>`).join('');
 // Small screens fold the practice chooser away so it never covers the play.
 const smallScreen = () => typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-height: 520px), (max-width: 900px)').matches;
 
@@ -294,7 +310,10 @@ export class UI {
     const c = prog.data.career;
     const q = hs.quick[st.difficulty];
     const derbyBest = hs.derby[st.difficulty] || 0;
+    const sea = prog.data.season;
+    const seaBest = sea ? `Year ${sea.year} · ${sea.teams[0].w}–${sea.teams[0].l}` : '';
     const modes = [
+      { mode: 'season', ic: 'trophy', title: 'Season', chips: [`${CONFIG.season.innings} innings`, 'Playoffs'], best: seaBest },
       { mode: 'quick', ic: 'ball', title: 'Quick Game', chips: ['3 innings', 'vs CPU'], best: q ? `Best ${q.runs}–${q.against}` : '' },
       { mode: 'derby', ic: 'bolt', title: 'Home Run Derby', chips: ['10 outs', 'Homers only'], best: derbyBest ? `Best ${derbyBest} HR` : '' },
       { mode: 'practice', ic: 'target', title: 'Practice', chips: ['Pick the pitch', 'Runners, no outs'], best: c.practiceSwings ? `${c.practiceSwings} swings` : '' },
@@ -477,7 +496,7 @@ export class UI {
   hideSummary() { this.overlay('summary', false); }
 
   // ---------------- game over
-  showGameOver(p, records, unlocked, teamNames) {
+  showGameOver(p, records, unlocked, teamNames, seasonInfo = null) {
     const s = this.fresh('over');
     const d = h('div', 'over panel rise');
     const st = p.stats;
@@ -485,7 +504,7 @@ export class UI {
     if (p.mode === 'quick') {
       const g = p.game;
       const win = p.won;
-      head = `<div class="label">${p.game.walkOff ? 'Walk-off' : 'Final'}</div><div class="result ${win ? 'win' : 'loss'}">${headline(win ? 'YOU WIN' : 'YOU LOSE', win ? 'gold' : 'red')}</div>`;
+      head = `<div class="label">${seasonInfo ? `${seasonInfo.label} · ` : ''}${p.game.walkOff ? 'Walk-off' : 'Final'}${seasonInfo ? ` · Record ${seasonInfo.record}` : ''}</div><div class="result ${win ? 'win' : 'loss'}">${headline(win ? 'YOU WIN' : 'YOU LOSE', win ? 'gold' : 'red')}</div>`;
       const n = Math.max(g.line.top.length, 3);
       let hdr = '<tr><th></th>' + Array.from({ length: n }, (_, i) => `<th>${i + 1}</th>`).join('') + '<th>R</th><th>H</th><th>E</th></tr>';
       const row = (name, ab, arr, R, H, E) => `<tr><td class="tn"><span class="full">${name}</span><span class="ab">${ab}</span></td>` + Array.from({ length: n }, (_, i) => `<td>${arr[i] === undefined ? '' : arr[i]}</td>`).join('') + `<td class="r">${R}</td><td>${H}</td><td>${E}</td></tr>`;
@@ -498,7 +517,10 @@ export class UI {
     }
     d.innerHTML = `${head}${table}<div class="statgrid">${grid.map(([v, l]) => `<div class="stat"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('')}</div>
       <div class="badges">${records.map((r) => `<span class="badge">${icon('star')}${r}</span>`).join('')}${unlocked.map((u) => `<span class="badge unlock">${icon('unlock')}${u.name}</span>`).join('')}</div>
-      <div class="row" style="margin-top:12px"><button class="btn" data-a="playAgain">${icon('play')}Again</button><button class="btn ghost" data-a="quit">${icon('home')}Menu</button></div>`;
+      ${seasonInfo ? `<div class="earned">${seasonInfo.items.map(([l, c]) => `<span class="badge">${l} +${c}</span>`).join('')}<span class="badge coinbadge">${icon('coin')}${seasonInfo.coins}</span></div>` : ''}
+      <div class="row" style="margin-top:12px">${seasonInfo
+    ? `<button class="btn" data-a="seasonHub">${icon('play')}Continue</button>`
+    : `<button class="btn" data-a="playAgain">${icon('play')}Again</button><button class="btn ghost" data-a="quit">${icon('home')}Menu</button>`}</div>`;
     s.appendChild(d);
     s.onclick = (e) => { const b = e.target.closest('[data-a]'); if (b) this.act(b.dataset.a); };
     this.show('over');
@@ -539,6 +561,135 @@ export class UI {
       if (b.dataset.confirm && !this.confirmed(b)) return;
       this.act(b.dataset.a);
     };
+  }
+
+  // ---------------------------------------------------------------- season
+  // The Season hub: your next game, your record, and the way to the standings, the roster and the shop. With no season yet it
+  // is where one is started (level and length).
+  buildSeason(sea, st) {
+    const s = this.fresh('season');
+    const d = h('div', 'season panel rise');
+    const coins = sea ? `<span class="coins">${icon('coin')}${sea.coins}</span>` : '';
+    if (!sea) {
+      const pick = (this.seasonPick ||= { level: st.difficulty, length: 'short' });
+      const seg = (key, items, cur) => `<div class="seg" data-pick="${key}">${items.map(([v, l]) => `<button data-v="${v}" class="${cur === v ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+      const n = (k) => (CONFIG.season.cycles[k] * 8);
+      d.innerHTML = `${this.backHead('Season')}
+        <div class="setup">
+          <div class="grp"><span class="label">Level</span>${seg('level', DIFFICULTIES.map((k) => [k, CONFIG.difficulty[k].label]), pick.level)}</div>
+          <div class="grp"><span class="label">Length</span>${seg('length', [['short', `${n('short')} games`], ['full', `${n('full')} games`]], pick.length)}</div>
+          <button class="btn wide" data-a="seasonNew">${icon('play')}Start season</button>
+        </div>`;
+    } else {
+      const me = sea.teams[0];
+      const g = SEA.nextGame(sea);
+      const table = SEA.standings(sea);
+      const place = table.findIndex((x) => x.i === 0) + 1;
+      let hero;
+      if (g) {
+        const t = sea.teams[g.opp];
+        const series = g.kind === 'final' ? `<span class="chip">Series ${g.series[0]}–${g.series[1]}</span>` : '';
+        hero = `<div class="next">
+          <div class="label">${g.label}</div>
+          <div class="match"><span class="tm"><i style="background:${me.color}"></i>${me.abbr}<small>${me.w}–${me.l}</small></span><span class="vs">at</span><span class="tm"><i style="background:${t.color}"></i>${t.abbr}<small>${t.w}–${t.l}</small></span></div>
+          <div class="oppname">${t.name}${stars(t.rating, true)}${series}</div>
+          <button class="btn wide" data-a="seasonPlay">${icon('play')}Play</button>
+        </div>`;
+      } else {
+        const fin = SEA.finishOf(sea);
+        const champ = sea.champion !== null && sea.champion !== undefined ? sea.teams[sea.champion] : null;
+        hero = `<div class="next done">
+          <div class="label">Season ${sea.year} · ${me.w}–${me.l}</div>
+          <div class="result ${fin === 'Champions' ? 'win' : 'loss'}">${headline(fin === 'Champions' ? 'CHAMPIONS' : fin === 'Runner-up' ? 'RUNNER-UP' : 'SEASON OVER', fin === 'Champions' ? 'gold' : 'red')}</div>
+          ${champ && sea.champion !== 0 ? `<div class="oppname">${icon('trophy')}${champ.name}</div>` : ''}
+          <button class="btn wide" data-a="seasonNext">${icon('play')}Season ${sea.year + 1}</button>
+        </div>`;
+      }
+      const last = sea.games[sea.games.length - 1];
+      const lastTxt = last ? `<span class="chip ${last.won ? 'w' : 'l'}">${last.won ? 'W' : 'L'} ${last.rf}–${last.ra} ${sea.teams[last.opp].abbr}</span>` : '';
+      const chips = `<span class="summary-row"><span class="chip">${CONFIG.difficulty[sea.level].label}</span><span class="chip">${me.w}–${me.l}</span>${me.w + me.l ? `<span class="chip">${ordinal(place)}</span>` : ''}${lastTxt}</span>`;
+      d.innerHTML = `${this.backHead(`Season ${sea.year}`, chips + coins)}
+        ${hero}
+        <div class="row hubbtns">
+          <button class="btn small ghost" data-a="standings">${icon('list')}Standings</button>
+          <button class="btn small ghost" data-a="roster">${icon('users')}Roster</button>
+          <button class="btn small ghost" data-a="shop">${icon('cart')}Shop</button>
+        </div>
+        <div class="row foot"><button class="btn small ghost warn" data-a="seasonReset" data-confirm="Start over?">${icon('trash')}New league</button></div>`;
+    }
+    s.appendChild(d);
+    this.refocus(s);
+    s.onclick = (e) => {
+      const pk = e.target.closest('.seg[data-pick] button');
+      if (pk) { this.seasonPick[pk.parentNode.dataset.pick] = pk.dataset.v; for (const b of pk.parentNode.children) b.classList.toggle('on', b === pk); this.act('uiTick'); return; }
+      const b = e.target.closest('[data-a]'); if (!b) return;
+      if (b.dataset.confirm && !this.confirmed(b)) return;
+      this.act(b.dataset.a, { ...this.seasonPick });
+    };
+  }
+
+  buildStandings(sea) {
+    const s = this.fresh('standings');
+    const d = h('div', 'season panel rise');
+    const rows = SEA.standings(sea);
+    const cut = CONFIG.season.playoffTeams;
+    const tr = (x) => `<tr class="${x.i === 0 ? 'me' : ''} ${x.rank === cut ? 'cut' : ''}"><td>${x.rank}</td><td class="tn"><i style="background:${x.team.color}"></i><span class="full">${x.team.name}</span><span class="ab">${x.team.abbr}</span></td><td>${x.team.w}</td><td>${x.team.l}</td><td>${x.gb ? x.gb : '–'}</td><td class="st">${x.i === 0 ? '' : stars(x.team.rating, true)}</td></tr>`;
+    let bracket = '';
+    const po = sea.playoffs;
+    if (po) {
+      const nm = (i) => sea.teams[i].abbr;
+      const semi = (m) => `<div class="mu"><span class="${m.winner === m.a ? 'won' : ''}">${nm(m.a)}</span><span class="${m.winner === m.b ? 'won' : ''}">${nm(m.b)}</span></div>`;
+      const f = po.final;
+      bracket = `<div class="bracket"><div><div class="label">Semifinals</div>${po.semis.map(semi).join('')}</div>
+        <div><div class="label">World Series</div>${f ? `<div class="mu"><span class="${sea.champion === f.a ? 'won' : ''}">${nm(f.a)} ${f.wa}</span><span class="${sea.champion === f.b ? 'won' : ''}">${nm(f.b)} ${f.wb}</span></div>` : '<div class="mu"><span>–</span><span>–</span></div>'}</div></div>`;
+    }
+    d.innerHTML = `${this.backHead('Standings')}${bracket}
+      <table class="standings"><tr><th></th><th></th><th>W</th><th>L</th><th>GB</th><th></th></tr>${rows.map(tr).join('')}</table>`;
+    s.appendChild(d);
+    s.onclick = (e) => { const b = e.target.closest('[data-a]'); if (b) this.act(b.dataset.a); };
+  }
+
+  // The roster: tap a player, then another, to swap them (batting order, or bench <-> lineup). With `replaceFor` (buying a
+  // player when the roster is full) tapping a player lets him go and the new man takes his place.
+  buildRoster(sea, sel = null, replaceFor = null) {
+    const s = this.fresh('roster');
+    const d = h('div', 'season panel rise');
+    const n = CONFIG.season.roster.lineup;
+    const buying = replaceFor ? sea.shop.find((p) => p.id === replaceFor) : null;
+    const row = (p, i) => {
+      const t = sea.stats[p.id] || {};
+      const short = buying && sea.coins + SEA.refund(p) < SEA.price(buying); // (letting him go would not bring in enough)
+      const extra = buying ? `<span class="price">+${SEA.refund(p)}</span>` : `<span class="line">${SEA.avg(t.h || 0, t.ab || 0)}<small>AVG</small></span><span class="line">${t.hr || 0}<small>HR</small></span><span class="line">${t.rbi || 0}<small>RBI</small></span>`;
+      return `${i === n ? '<div class="label benchlab">Bench</div>' : ''}<button class="prow ${sel === p.id ? 'sel' : ''}" data-id="${p.id}" ${short ? 'disabled' : ''}><span class="ord">${i < n ? i + 1 : ''}</span><span class="who"><b>${p.name}</b><small>${p.pos} · #${p.number} · ${p.hand === 'L' ? 'L' : 'R'}</small></span>${ratingCells(p)}${extra}</button>`;
+    };
+    const head = buying ? `Replace who?` : 'Roster';
+    d.innerHTML = `${this.backHead(head, `<span class="coins">${icon('coin')}${sea.coins}</span>`)}
+      ${buying ? `<div class="prow buying">${`<span class="ord">${icon('cart')}</span><span class="who"><b>${buying.name}</b><small>${buying.pos} · ${SEA.price(buying)}</small></span>`}${ratingCells(buying)}</div>` : ''}
+      <div class="plist">${sea.roster.map(row).join('')}</div>`;
+    s.appendChild(d);
+    this.refocus(s);
+    s.onclick = (e) => {
+      const r = e.target.closest('.prow[data-id]');
+      if (r) { this.act(buying ? 'seasonReplace' : 'rosterTap', { id: r.dataset.id, shopId: replaceFor }); return; }
+      const b = e.target.closest('[data-a]'); if (b) this.act(b.dataset.a);
+    };
+  }
+
+  buildShop(sea) {
+    const s = this.fresh('shop');
+    const d = h('div', 'season panel rise');
+    const full = sea.roster.length >= CONFIG.season.roster.size;
+    const back = full ? Math.max(...sea.roster.map((p) => SEA.refund(p))) : 0; // (with a full roster the man he replaces brings a little back)
+    const card = (p) => {
+      const cost = SEA.price(p);
+      const afford = sea.coins + back >= cost;
+      return `<div class="prow shopp"><span class="ord ovr">${SEA.overall(p)}</span><span class="who"><b>${p.name}</b><small>${p.pos} · #${p.number} · ${p.hand}</small></span>${ratingCells(p)}<button class="btn small ${afford ? '' : 'ghost'}" data-a="shopBuy" data-id="${p.id}" ${afford ? '' : 'disabled'}>${icon('coin')}${cost}</button></div>`;
+    };
+    d.innerHTML = `${this.backHead('Shop', `<span class="coins">${icon('coin')}${sea.coins}</span>`)}
+      <div class="plist">${sea.shop.map(card).join('')}</div>`;
+    s.appendChild(d);
+    this.refocus(s);
+    s.onclick = (e) => { const b = e.target.closest('[data-a]'); if (b && !b.disabled) this.act(b.dataset.a, { id: b.dataset.id }); };
   }
 
   // ---------------------------------------------------------------- HUD updates
@@ -585,7 +736,8 @@ export class UI {
     el.querySelector('.line').textContent = today;
     el.querySelector('.bextra').innerHTML = info.map((c) => `<span class="chip">${c}</span>`).join('');
     el.classList.add('show');
-    this.hideTiming(); // (the last swing's meter belongs to the previous batter)
+    this.hideTiming(); // (the last swing's meter and the hit readout belong to the previous batter)
+    this.hideCallout();
   }
   hideBatterUp() { this.q.batterUp.classList.remove('show'); }
   // the Steal button shows only while a runner could go (can), and is lit while they are going (on)

@@ -19,6 +19,7 @@ export const DEFAULT_SAVE = () => ({
   high: { quick: { rookie: null, pro: null, allstar: null }, derby: { rookie: 0, pro: 0, allstar: 0 } },
   unlocked: { bats: ['ash'], uniforms: ['classic'] },
   equipped: { bat: 'ash', uniform: 'classic' },
+  season: null, // Season mode (game/season.js), or null before the first one
 });
 
 // Milestones. Each has a test on the saved data (after the latest game has been added).
@@ -105,6 +106,7 @@ export class Progress {
     if (res.mode === 'quick') {
       c.games++;
       if (res.won) c.wins++;
+      if (res.season) { const unlocked = this.checkUnlocks(); this.save(); return { records, unlocked }; } // (a Season game: no Quick Game best)
       const score = res.game.score;
       const margin = score.top - score.bottom;
       const prev = this.data.high.quick[res.difficulty];

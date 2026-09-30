@@ -471,6 +471,49 @@ export const CONFIG = {
   // --------------------------------------------------------------------------
   //  Progression
   // --------------------------------------------------------------------------
+  // --------------------------------------------------------------------------
+  //  Season mode (game/season.js)
+  // --------------------------------------------------------------------------
+  season: {
+    innings: 6, // innings in a season game
+    cycles: { short: 1, full: 2 }, // how many times you play every other team (8 opponents: 8 or 16 games)
+    // CPU team strength ratings (50 = the level you picked). Shuffled onto the teams each season; the schedule goes from the
+    // weakest opponent to the strongest. `yearStep`: the next season's teams are this much better after a title (half after a
+    // playoff trip), up to `yearCap` in all.
+    teamRatings: [36, 41, 45, 49, 53, 57, 62, 68],
+    teamJitter: 3,
+    yearStep: 4,
+    yearCap: 24,
+    // How a team's rating changes the game against it. s = (rating - 50) / spread, about -1 (weak) .. +1 (strong).
+    strength: {
+      spread: 20,
+      fastballMph: 3, // their pitcher throws this much harder per unit of s
+      heartShift: 0.1, // share of pitches moved from the heart of the zone to the edges/chase per unit of s
+      commandSigma: 0.15, // x(1 - this*s): better teams hit their spots
+      offense: 0.3, // their hits x(1 + this*s) when they bat, strikeouts x(1 - this*s/1.5)
+      errors: 0.35, // their fielding errors x(1 - this*s)
+      catcher: 0.07, // their catcher's exchange x(1 - this*s) (quicker against steals)
+    },
+    simK: 0.055, // two CPU teams: P(A wins) = 1 / (1 + e^(-simK * (ratingA - ratingB)))
+    simRuns: 4.4, // average runs a CPU team scores in a simulated game (for the standings' run totals)
+    playoffTeams: 4, // semifinal (1 game): 1 vs 4, 2 vs 3; World Series: best of `finalGames`
+    finalGames: 3,
+    // Coins: what a game is worth, and the price of players (by overall rating)
+    coins: { start: 200, win: 25, marginBonus: 2, marginCap: 10, loss: 10, playoffWin: 50, playoffLoss: 20, title: 150 },
+    price: { base: 30, over: 40, power: 1.6, scale: 1.25, round: 5, refund: 0.3 }, // price = base + scale * (ovr - over)^power
+    roster: { size: 12, lineup: 9 },
+    starters: 50, // average rating of the players you start with
+    bench: 42,
+    ratingSd: 9,
+    shop: { size: 5, refresh: 2, mean: 60, sd: 9, min: 44, max: 90 }, // free agents on offer; `refresh` are replaced after every game
+  },
+  // What a batter's ratings (0-99, 50 = average) do in a game. Only Season players have ratings; everyone else is average.
+  ratings: {
+    conWindow: 0.18, // Contact: timing windows x(1 + this * (con-50)/50)
+    powMph: 6, // Power: exit velocity +- this many mph at 99 / 1 (on a well hit ball)
+    spdSpeed: 0.08, // Speed: running speed x(1 + this * (spd-50)/50)
+  },
+
   storageKey: 'sandlot.save.v1',
 };
 

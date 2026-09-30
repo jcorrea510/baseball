@@ -12,6 +12,7 @@ import { createDefense, planPlay, planSteal, fielderBackTime } from './fielding.
 import * as rules from './rules.js';
 import { simulateHalf } from './aiHalf.js';
 import { makeLineup, makePitcher, OPPONENTS, PLAYER_TEAM } from './teams.js';
+import { ratingEffects } from './season.js';
 
 export class Engine {
   /**
@@ -24,6 +25,11 @@ export class Engine {
    * @param {object} [o.opponent]       team from teams.js
    * @param {number} [o.inputDelayMs]   swing timing adjustment: ms taken off every press (laggy screens / controllers)
    * @param {boolean} [o.waitForBatter] hold the first pitch to each new batter until batterReady() is called
+   * Season games also pass:
+   * @param {number} [o.innings]        game length (default modes.quick.innings)
+   * @param {Array}  [o.lineup]         your nine batters, in order (Season players carry con / pow / spd ratings)
+   * @param {Array}  [o.oppLineup]      the other team's names
+   * (and the config itself - `cfg` - is the Season's one for this opponent: see season.gameConfig)
    */
   constructor(o = {}, cfg = CONFIG) {
     this.cfg = cfg;
@@ -45,8 +51,8 @@ export class Engine {
     this.opponent = o.opponent || OPPONENTS[this.rng.int(0, OPPONENTS.length - 1)];
     this.playerTeam = PLAYER_TEAM;
 
-    this.lineup = makeLineup(this.seed, 'p');
-    this.oppLineup = makeLineup(this.seed ^ 0x5bd1e995, 'o');
+    this.lineup = o.lineup ? o.lineup.map((b) => ({ ...b })) : makeLineup(this.seed, 'p');
+    this.oppLineup = o.oppLineup || makeLineup(this.seed ^ 0x5bd1e995, 'o');
     if (this.handSetting !== 'auto') for (const b of this.lineup) b.hand = this.handSetting;
     this.pitcher = makePitcher(this.seed);
     this.defense = createDefense(cfg, this.rng);
@@ -74,7 +80,7 @@ export class Engine {
     this.lastPlayResult = null;
     this.over = false;
 
-    this.game = this.mode === 'quick' ? rules.createGame({ innings: cfg.modes.quick.innings, extraRunner: cfg.modes.quick.extraInningRunner }) : null;
+    this.game = this.mode === 'quick' ? rules.createGame({ innings: o.innings ?? cfg.modes.quick.innings, extraRunner: cfg.modes.quick.extraInningRunner }) : null;
     // Practice keeps runners on base and counts the runs of the session - but nobody is ever out for good (outs reset every play)
     this.pgame = this.mode === 'practice' ? rules.createGame({ innings: 1e6, extraRunner: false }) : null;
     this.derby = { outs: 0, maxOuts: cfg.modes.derby.outs, hr: 0, streak: 0, bestStreak: 0, longest: 0, results: [] };
@@ -267,7 +273,13 @@ export class Engine {
   planStealNow() {
     const s = this.steal;
     const running = Object.fromEntries(s.bases.map((b) => [b, s.start[b] - this.pitch.tCatch]));
-    return planSteal({ bases: this.bases, outs: this.outs, defense: this.defense, running, transfer: s.transfer, coverStart: s.coverStart }, this.cfg);
+    return planSteal({ bases: this.bases, outs: this.outs, defense: this.defense, running, transfer: s.transfer, coverStart: s.coverStart, speeds: this.runnerSpeeds() }, this.cfg);
+  }
+  // How fast the batter (0) and each runner (1-3) are (Season players' Speed rating; everyone else 1).
+  runnerSpeeds() {
+    const out = { 0: ratingEffects(this.batter, this.cfg).speed };
+    this.bases.forEach((r, i) => { out[i + 1] = r && typeof r === 'object' ? ratingEffects(r, this.cfg).speed : 1; });
+    return out;
   }
 
   // Player input. `sinceUpdate` = seconds between the last engine update and the actual input event
@@ -279,15 +291,17 @@ export class Engine {
     const times = resolveSwingTimes(tPress, pitch.tCross, this.cfg);
     const loc = pitch.target;
     const bunting = this.buntStance;
-    const contact = bunting ? computeBunt({ errorMs: times.errorMs, locX: loc.x, locY: loc.y, windowScale: this.windowScale, aim: this.aim, batterHand: this.batterHand, rng: this.rng }, this.cfg) : computeContact({
+    const eff = ratingEffects(this.batter, this.cfg); // (Season players: Contact widens the timing windows, Power adds exit velocity)
+    const windowScale = this.windowScale * eff.window;
+    const contact = bunting ? computeBunt({ errorMs: times.errorMs, locX: loc.x, locY: loc.y, windowScale, aim: this.aim, batterHand: this.batterHand, rng: this.rng }, this.cfg) : computeContact({
       errorMs: times.errorMs,
       locX: loc.x, locY: loc.y,
       pitchSpeed: pitch.speedMph,
-      windowScale: this.windowScale,
+      windowScale,
       speedScale: pitchWindowScale(pitch.type),
       aim: this.aim,
       batterHand: this.batterHand,
-      ...(this.mode === 'derby' ? derbyBatting(this.cfg) : {}),
+      ...(this.mode === 'derby' ? derbyBatting(this.cfg) : { evBonus: eff.ev }),
       rng: this.rng,
     }, this.cfg);
     if (this.contactOverride) { delete contact.reason; Object.assign(contact, { made: true, grade: 'good' }, this.contactOverride(this)); }
@@ -451,7 +465,7 @@ export class Engine {
     // fielding errors: one roll per ball in play (only in real games)
     const errorRoll = simple ? undefined : this.errorRollOverride ?? this.rng.next(); // (errorRollOverride: QA hook, 0 = always an error)
     const running = this.steal && !simple ? Object.fromEntries(this.steal.bases.map((b) => [b, this.steal.start[b] - s.tHit])) : null; // runners going with the pitch
-    const plan = planPlay({ sim, contact: c, bases: this.bases, outs: this.outs, defense: this.defense, simple, errorRoll, errorScale: this.d.errorScale, running }, this.cfg);
+    const plan = planPlay({ sim, contact: c, bases: this.bases, outs: this.outs, defense: this.defense, simple, errorRoll, errorScale: this.d.errorScale, running, speeds: this.runnerSpeeds() }, this.cfg);
     const proj = projectDistance(params, this.cfg);
     const fb = sim.firstBounce;
     const distance = plan.homer ? proj.distance : fb ? Math.hypot(fb.x, fb.z) : proj.distance;
