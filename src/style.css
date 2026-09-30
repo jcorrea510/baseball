@@ -228,6 +228,19 @@ svg.wordart { display: block; height: 1.08em; width: auto; max-width: 100%; marg
 .banner.hold.show { animation: bannerHold 2.4s var(--ease) forwards; }
 @keyframes bannerHold { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.6); } 8% { opacity: 1; transform: translate(-50%, -50%) scale(1.12); } 14% { transform: translate(-50%, -50%) scale(1); } 88% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -58%) scale(1.03); } }
 
+/* the next batter's card and the Ready button (bottom centre, above the meter row) */
+.batterup { position: absolute; left: 50%; top: 40%; transform: translate(-50%, 12px); display: flex; flex-direction: column; align-items: center; gap: 10px; opacity: 0; visibility: hidden; pointer-events: auto; transition: opacity .2s, transform .25s var(--ease), visibility 0s linear .2s; }
+.batterup.show { opacity: 1; visibility: visible; transform: translate(-50%, 0); transition: opacity .2s, transform .25s var(--ease), visibility 0s; }
+.batterup .bcard { padding: 8px 18px 9px; border-radius: var(--r-md); background: var(--glass); border: 1px solid var(--line); text-align: center; box-shadow: 0 10px 30px rgba(0, 0, 0, .45); }
+.batterup .who { font-size: 18px; font-weight: 900; letter-spacing: .02em; white-space: nowrap; }
+.batterup .who b { color: var(--amber-hi); margin-right: 8px; }
+.batterup .who .pos { margin-left: 8px; font-size: 11px; font-weight: 800; letter-spacing: .12em; color: var(--ink-3); }
+.batterup .line { margin-top: 2px; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
+.batterup .bextra { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.batterup .bextra:empty { display: none; }
+.batterup .btn { min-width: 170px; }
+@media (max-height: 520px) { .batterup { top: 34%; gap: 6px; } .batterup .who { font-size: 15px; } .batterup .btn { min-height: 40px; } }
+
 /* timing meter, bottom centre */
 .meter { position: absolute; left: 50%; bottom: calc(var(--safe-b) + 100px); transform: translateX(-50%); width: clamp(240px, 32vw, 400px); opacity: 0; transition: opacity .2s; pointer-events: none; }
 .meter.show { opacity: 1; }

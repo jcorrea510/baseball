@@ -202,6 +202,7 @@ export class App {
       case 'quit': this.audio.uiBack(); this.quitToMenu(); break;
       case 'mute': this.toggleMute(); break;
       case 'skipSummary': if (this.engine) this.engine.skipSummary(); break;
+      case 'batterReady': if (this.engine) this.engine.batterReady(); break;
       case 'aim': this.aimTouch = d; break;
       case 'practice': if (this.engine) { Object.assign(this.engine.practice, d); } break;
       default: break;
@@ -302,6 +303,7 @@ export class App {
     blurFocus(); // a menu button left focused would otherwise catch Space / Enter
     const eng = new Engine({
       mode, difficulty: st.difficulty, hand: st.hand, inputDelayMs: st.inputDelayMs,
+      waitForBatter: mode === 'quick' && !this.params.get('bot'), // the pitcher waits for Ready before each new batter
       practice: this.engine && this.engine.mode === 'practice' ? { ...this.engine.practice } : undefined,
       seed: this.params.get('seed') ? +this.params.get('seed') : undefined,
     });
@@ -341,8 +343,9 @@ export class App {
   bindEngine(e) {
     const ui = this.ui, audio = this.audio, cam = this.cam, fx = this.fx;
     const F = CONFIG.feel;
-    e.on('paStart', ({ batter }) => {
+    e.on('paStart', ({ batter, waiting }) => {
       ui.setBatter(batter);
+      if (waiting) ui.showBatterUp(batter, e.lineOf(batter), this.batterChips(batter)); else ui.hideBatterUp();
       this.pitchMarker.visible = false;
       this.actors.loose.spent = false;
       this.actors.loose.active = false;
@@ -351,6 +354,7 @@ export class App {
       this.updateScoreboard();
     });
     e.on('count', (c) => { ui.setCount(c.balls, c.strikes, c.outs); this.updateScoreboard(); });
+    e.on('batterReady', () => ui.hideBatterUp());
     e.on('windup', ({ pitch }) => {
       this.pitchMarker.visible = false;
       ui.hideBanner();
@@ -542,6 +546,13 @@ export class App {
     this.ui.flash(0.3, 160);
   }
 
+  // Small facts on the next batter's card (bats left / right; season numbers are added in Season mode).
+  batterChips(b) {
+    const out = [];
+    if (b.hand) out.push(b.hand === 'L' ? 'Bats left' : 'Bats right');
+    return out;
+  }
+
   // setTimeout that is dropped if the game it belongs to has been quit or restarted in the meantime
   later(fn, ms) {
     const token = this.gameToken;
@@ -672,7 +683,7 @@ export class App {
       this.audio.unlock();
       if (this.screen === 'game') { e.preventDefault(); swing(e); }
     });
-    for (const ev of ['pointerdown', 'touchend', 'click', 'keydown']) window.addEventListener(ev, () => this.audio.unlock(), { passive: true });
+    for (const ev of ['pointerdown', 'touchend', 'click', 'keydown']) window.addEventListener(ev, () => { if (this.audio.hidden && document.hasFocus()) this.audio.setHidden(false); this.audio.unlock(); }, { passive: true });
     this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     document.addEventListener('visibilitychange', () => {
       if (document.hidden && this.screen === 'game' && !this.paused && this.engine && !this.engine.over) this.setPaused(true);
@@ -684,7 +695,9 @@ export class App {
     window.addEventListener('blur', () => {
       this.aimKeys.left = this.aimKeys.right = false;
       if (this.screen === 'game' && !this.paused && this.engine && !this.engine.over && !this.params.get('bot')) this.setPaused(true);
+      this.audio.setHidden(true); // another app has the focus: the ballpark goes quiet (menus included)
     });
+    window.addEventListener('focus', () => this.audio.setHidden(document.hidden));
   }
 
   // Esc: back out of whatever is showing (a menu goes back, the pause menu resumes, a game pauses).
@@ -706,6 +719,7 @@ export class App {
     if (!e || this.paused || e.over) return;
     if (this.ui.current && this.ui.current !== 'game') return;
     switch (e.phase) {
+      case 'ready': if (e.awaitingBatter) e.batterReady(); break;
       case 'pitch': {
         let stamp = ev && ev.timeStamp;
         if (!stamp || stamp > 1e12) stamp = performance.now();
@@ -798,8 +812,6 @@ export class App {
     this.ball.updateTrail(realDt, cam, this.S.size.h, this.actors.trailPts);
     this.fx.update(realDt, cam, this.S.size.h);
     this.S.env.update(realDt, cam);
-    const night = this.S.env.name === 'night' ? 1 : this.S.env.name === 'dusk' ? 0.4 : 0;
-    this.ball.setHaloBoost(1 + night * 0.6);
     this.S.stadium.update(realDt, this.time, this.S.env);
     // Rookie "swing now" cue: the strike-zone box lights up and a green ring closes in on it at the ideal moment to press the button
     if (this.zoneParts) {

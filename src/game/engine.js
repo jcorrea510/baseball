@@ -23,6 +23,7 @@ export class Engine {
    * @param {object} [o.practice]       { type, speed, location }
    * @param {object} [o.opponent]       team from teams.js
    * @param {number} [o.inputDelayMs]   swing timing adjustment: ms taken off every press (laggy screens / controllers)
+   * @param {boolean} [o.waitForBatter] hold the first pitch to each new batter until batterReady() is called
    */
   constructor(o = {}, cfg = CONFIG) {
     this.cfg = cfg;
@@ -34,6 +35,9 @@ export class Engine {
     this.handSetting = o.hand || 'auto';
     // Swing timing adjustment (Settings): a screen or controller that lags reports every press this much late, so it is taken off.
     this.inputDelay = Math.max(0, Math.min(cfg.timing.inputDelayMaxMs, o.inputDelayMs || 0)) / 1000;
+    // Wait for the player before the first pitch to each new batter (a "Ready" button); off for tests and the bot.
+    this.waitForBatter = !!o.waitForBatter;
+    this.batterReadyFlag = true;
     this.practice = { type: 'fastball', speed: cfg.modes.practice.speedDefault, location: 'random', ...(o.practice || {}) };
     this.opponent = o.opponent || OPPONENTS[this.rng.int(0, OPPONENTS.length - 1)];
     this.playerTeam = PLAYER_TEAM;
@@ -70,6 +74,7 @@ export class Engine {
     this.game = this.mode === 'quick' ? rules.createGame({ innings: cfg.modes.quick.innings, extraRunner: cfg.modes.quick.extraInningRunner }) : null;
     this.derby = { outs: 0, maxOuts: cfg.modes.derby.outs, hr: 0, streak: 0, bestStreak: 0, longest: 0, results: [] };
     this.stats = newStats();
+    this.lines = {}; // each batter's line today: { pa, ab, h, hr, rbi, bb, k } by batter id
     this.batterIndex = 0;
     this.batter = this.lineup[0];
   }
@@ -115,7 +120,8 @@ export class Engine {
     this.pitch = null; this.swing = null; this.play = null;
     this.setPhase('ready');
     this.readyUntil = this.time + (first ? this.cfg.pace.firstPitchDelay + 0.3 : this.cfg.pace.firstPitchDelay * 0.65);
-    this.emit('paStart', { batter: this.batter, index: this.batterIndex, count: this.count });
+    this.batterReadyFlag = !this.waitForBatter;
+    this.emit('paStart', { batter: this.batter, index: this.batterIndex, count: this.count, waiting: !this.batterReadyFlag });
     this.emitCount();
   }
 
@@ -130,7 +136,7 @@ export class Engine {
     switch (this.phase) {
       case 'ready':
         // the next pitch waits for the batter AND for the pitcher (and catcher) to be back in place and set
-        if (this.time >= this.readyUntil && this.time >= this.fieldersSetAt) this.startWindup();
+        if (this.batterReadyFlag && this.time >= this.readyUntil && this.time >= this.fieldersSetAt) this.startWindup();
         break;
       case 'windup':
         if (this.time >= this.pitch.tRelease) this.release();
@@ -188,6 +194,16 @@ export class Engine {
     this.setPhase('pitch');
     this.emit('release', { pitch: this.pitch });
   }
+
+  // The player is ready for the first pitch to this batter. Returns true when the game was waiting for it.
+  batterReady() {
+    if (this.batterReadyFlag) return false;
+    this.batterReadyFlag = true;
+    this.readyUntil = Math.max(this.readyUntil, this.time + this.cfg.pace.afterReady);
+    this.emit('batterReady', { batter: this.batter });
+    return true;
+  }
+  get awaitingBatter() { return this.phase === 'ready' && !this.batterReadyFlag; }
 
   // Player input. `sinceUpdate` = seconds between the last engine update and the actual input event
   // (so timing does not depend on frame rate). Returns true if the swing was accepted.
@@ -275,6 +291,7 @@ export class Engine {
       this.stats.pa++;
       if (res.result === 'walk') { this.stats.walks++; this.stats.rbi += res.runs; } // a bases-loaded walk drives in a run
       if (res.result.startsWith('strikeout')) { this.stats.strikeouts++; this.stats.ab++; }
+      this.creditBatter(res.result, res.runs);
       this.emit('result', {
         kind: 'pa', result: res.result, text: rules.RESULT_TEXT[res.result], runs: res.runs, outs: g.outs, halfOver: res.halfOver,
         batter: this.batter, ...info,
@@ -414,6 +431,7 @@ export class Engine {
     }
     this.stats.rbi += res.runs;
     this.stats.runs += res.scoredRunners.filter((r) => r === this.batter).length;
+    this.creditBatter(play.result, res.runs);
     this.emitCount();
     this.emit('result', {
       kind: 'pa', result: play.result, text: rules.RESULT_TEXT[play.result] || play.result.toUpperCase(),
@@ -422,6 +440,25 @@ export class Engine {
     });
     this.finishPitch(this.cfg.pace.playEndPause + (res.runs > 0 ? 0.35 : 0), res.halfOver || g.over, true, play.result);
     if (g.over) this.pendingNext = 'half';
+  }
+
+  // The batter's line for today (and the result of this plate appearance for season stats).
+  creditBatter(result, runs = 0) {
+    const b = this.batter;
+    if (!b) return;
+    const L = this.lineOf(b);
+    L.pa++;
+    if (result === 'walk') L.bb++;
+    else if (result !== 'sacFly' && result !== 'sacBunt') L.ab++;
+    if (rules.isHitResult(result)) L.h++;
+    if (result === 'homer' || result === 'insideParkHomer') L.hr++;
+    if (/^strikeout/.test(result)) L.k++;
+    L.rbi += runs;
+    this.emit('batterLine', { batter: b, line: { ...L }, result, runs });
+  }
+  lineOf(b) {
+    const id = b && b.id !== undefined ? b.id : 'x';
+    return this.lines[id] || (this.lines[id] = { pa: 0, ab: 0, h: 0, hr: 0, rbi: 0, bb: 0, k: 0 });
   }
 
   // ------------------------------------------------------------------ Home Run Derby

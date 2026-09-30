@@ -120,6 +120,7 @@ export class UI {
         <div class="cell"><div class="v longest">--</div><div class="l">Longest</div></div>
         <div class="cell"><div class="v streak">0</div><div class="l">Streak</div></div>
       </div>
+      <div class="batterup"><div class="bcard"><div class="who"></div><div class="line"></div></div><div class="bextra"></div><button class="btn" data-a="batterReady">${icon('play')}Ready</button></div>
       <div class="meter"><div class="bar"><div class="tick"></div><div class="mark"></div></div><div class="lab"><span>EARLY</span><span>LATE</span></div><div class="txt"></div></div>
       <div class="aimgauge"><span>Aim</span><div class="track"><div class="knob"></div></div><span class="aimlab">CENTER</span></div>
       <button class="touchaim l" data-aim="-1" aria-label="Aim left">${icon('chevLeft')}</button><button class="touchaim r" data-aim="1" aria-label="Aim right">${icon('chevRight')}</button>
@@ -138,7 +139,7 @@ export class UI {
     this.q = {
       pitchinfo: $(hud, '.pitchinfo'), banner: $(hud, '.banner'), callout: $(hud, '.callout'), meter: $(hud, '.meter'), hint: $(hud, '.hint'),
       derby: $(hud, '.derbybox'), bug: $(hud, '.bug'), tag: $(hud, '.batter-tag'), practice: $(hud, '.practice'), flash: $(hud, '.flash'),
-      aimKnob: $(hud, '.aimgauge .knob'), aimLab: $(hud, '.aimlab'), aimGauge: $(hud, '.aimgauge'),
+      aimKnob: $(hud, '.aimgauge .knob'), aimLab: $(hud, '.aimlab'), aimGauge: $(hud, '.aimgauge'), batterUp: $(hud, '.batterup'),
     };
     hud.addEventListener('click', (e) => {
       const b = e.target.closest('[data-a]');
@@ -170,7 +171,7 @@ export class UI {
       this.act('practice', { location: b.dataset.loc });
     });
     $(hud, '.practice .prhead').addEventListener('click', () => this.q.practice.classList.toggle('collapsed'));
-    for (const el of hud.querySelectorAll('.practice, .hudbtns')) el.addEventListener('pointerdown', (e) => e.stopPropagation());
+    for (const el of hud.querySelectorAll('.practice, .hudbtns, .batterup')) el.addEventListener('pointerdown', (e) => e.stopPropagation());
 
     // ---------------- toast + rotate hint
     this.toastEl = h('div', 'toast');
@@ -540,7 +541,7 @@ export class UI {
   }
   hideHud() {
     this.hud.classList.remove('show');
-    for (const k of ['banner', 'meter', 'callout', 'pitchinfo', 'hint']) this.q[k].classList.remove('show');
+    for (const k of ['banner', 'meter', 'callout', 'pitchinfo', 'hint', 'batterUp']) this.q[k].classList.remove('show');
   }
 
   setTeams(away, home) {
@@ -568,6 +569,17 @@ export class UI {
     b.querySelectorAll('.dot.o').forEach((d, i) => d.classList.toggle('on', i < outs));
   }
   setBatter(b) { this.q.tag.innerHTML = b ? `<b>#${b.number}</b>${b.name}` : ''; }
+  // The next batter's card and the Ready button (the pitcher waits for it). line = today's { ab, h, hr, rbi, bb }; info = extra chips.
+  showBatterUp(b, line, info = []) {
+    const el = this.q.batterUp;
+    el.querySelector('.who').innerHTML = `<b>#${b.number}</b>${b.name}${b.pos ? `<span class="pos">${b.pos}</span>` : ''}`;
+    const today = !line || !line.pa ? 'First at-bat' : [`${line.h} for ${line.ab}`, line.hr ? `${line.hr} HR` : '', line.rbi ? `${line.rbi} RBI` : '', line.bb ? `${line.bb} BB` : ''].filter(Boolean).join(' · ');
+    el.querySelector('.line').textContent = today;
+    el.querySelector('.bextra').innerHTML = info.map((c) => `<span class="chip">${c}</span>`).join('');
+    el.classList.add('show');
+    this.hideTiming(); // (the last swing's meter belongs to the previous batter)
+  }
+  hideBatterUp() { this.q.batterUp.classList.remove('show'); }
   setDerby(d) {
     const q = this.q.derby;
     q.querySelector('.hr').textContent = d.hr;

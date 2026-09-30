@@ -342,3 +342,23 @@ describe('the next pitch waits for the pitcher and catcher', () => {
     for (const w of windups) expect(w.t + 1e-9).toBeGreaterThanOrEqual(w.set);
   });
 });
+
+describe('waiting for the batter', () => {
+  it('with waitForBatter the first pitch to each new batter waits for batterReady()', () => {
+    const e = new Engine({ mode: 'quick', seed: 3, waitForBatter: true });
+    e.pitchOverride = strikePitch;
+    e.start();
+    for (let i = 0; i < 600; i++) e.update(DT); // 5 s: nothing happens
+    expect(e.phase).toBe('ready');
+    expect(e.awaitingBatter).toBe(true);
+    expect(e.batterReady()).toBe(true);
+    expect(e.batterReady()).toBe(false);
+    let pitches = 0;
+    e.on('release', () => pitches++);
+    while (e.stats.strikeouts < 1 && e.time < 60) e.update(DT);
+    expect(pitches).toBe(3); // three strikes to the same batter without asking again
+    for (let i = 0; i < 600; i++) e.update(DT);
+    expect(e.awaitingBatter).toBe(true); // the next batter waits again
+    expect(pitches).toBe(3);
+  });
+});
