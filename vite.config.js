@@ -39,5 +39,7 @@ export default defineConfig(({ command }) => ({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.js'],
+    // Several tests play thousands of simulated plays (2-4 s here, slower on GitHub's machines): the 5 s default is too tight.
+    testTimeout: 60000,
   },
 }));
