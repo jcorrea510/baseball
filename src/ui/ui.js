@@ -123,6 +123,7 @@ export class UI {
       <div class="batterup"><div class="bcard"><div class="who"></div><div class="line"></div></div><div class="bextra"></div><button class="btn" data-a="batterReady">${icon('play')}Ready</button></div>
       <div class="meter"><div class="bar"><div class="tick"></div><div class="mark"></div></div><div class="lab"><span>EARLY</span><span>LATE</span></div><div class="txt"></div></div>
       <div class="aimgauge"><span>Aim</span><div class="track"><div class="knob"></div></div><span class="aimlab">CENTER</span></div>
+      <button class="buntbtn" data-a="bunt" aria-pressed="false" title="Bunt (B)">${icon('bat')}<span>Bunt</span></button>
       <button class="touchaim l" data-aim="-1" aria-label="Aim left">${icon('chevLeft')}</button><button class="touchaim r" data-aim="1" aria-label="Aim right">${icon('chevRight')}</button>
       <div class="practice panel collapsed">
         <button class="prhead" aria-label="Pitch settings">${icon('sliders')}<span>Pitch</span>${icon('chevDown', 'chev')}</button>
@@ -171,7 +172,7 @@ export class UI {
       this.act('practice', { location: b.dataset.loc });
     });
     $(hud, '.practice .prhead').addEventListener('click', () => this.q.practice.classList.toggle('collapsed'));
-    for (const el of hud.querySelectorAll('.practice, .hudbtns, .batterup')) el.addEventListener('pointerdown', (e) => e.stopPropagation());
+    for (const el of hud.querySelectorAll('.practice, .hudbtns, .batterup, .buntbtn')) el.addEventListener('pointerdown', (e) => e.stopPropagation());
 
     // ---------------- toast + rotate hint
     this.toastEl = h('div', 'toast');
@@ -327,7 +328,7 @@ export class UI {
         <div class="step"><span class="n">2</span><svg class="pic" viewBox="0 0 120 70"><rect x="38" y="6" width="44" height="44" rx="6" fill="rgba(255,255,255,.08)" stroke="#fff" stroke-dasharray="4 3"/><circle cx="60" cy="28" r="6" fill="#fff" stroke="#c62828" stroke-width="1.5"/><rect x="32" y="54" width="56" height="12" rx="6" fill="#ffb52e"/><text x="60" y="63" text-anchor="middle" font-size="9" font-weight="800" fill="#1b1204">SWING</text></svg><h4>Swing</h4><p>At the plate</p></div>
         <div class="step"><span class="n">3</span><svg class="pic" viewBox="0 0 120 70"><path d="M60 64 L12 12 M60 64 L108 12" stroke="#fff" stroke-width="2" opacity=".55"/><path d="M60 62 L40 22" stroke="#ffb52e" stroke-width="4" stroke-linecap="round"/><path d="M60 62 L80 22" stroke="#ffb52e" stroke-width="4" stroke-linecap="round" opacity=".45"/><circle cx="60" cy="64" r="4" fill="#fff"/></svg><h4>Aim</h4><p>${touch ? 'Arrow buttons' : 'Hold A or D'}</p></div>
       </div>
-      <div class="keys">${touch ? key(['Tap'], 'Swing') + key(['◀', '▶'], 'Aim') : key(['Space'], 'Swing') + key(['A', 'D'], 'Aim') + key(['Z'], 'Zone') + key(['M'], 'Mute') + key(['Esc'], 'Pause')}</div>
+      <div class="keys">${touch ? key(['Tap'], 'Swing') + key(['◀', '▶'], 'Aim') : key(['Space'], 'Swing') + key(['A', 'D'], 'Aim') + key(['B'], 'Bunt') + key(['Z'], 'Zone') + key(['M'], 'Mute') + key(['Esc'], 'Pause')}</div>
       <div class="row"><button class="btn" data-a="howtoDone">${icon('check')}Got it</button></div>`;
     s.appendChild(d);
     s.onclick = (e) => { const b = e.target.closest('[data-a]'); if (b) { this.act('howtoDone'); if (onDone) onDone(); } };
@@ -580,6 +581,7 @@ export class UI {
     this.hideTiming(); // (the last swing's meter belongs to the previous batter)
   }
   hideBatterUp() { this.q.batterUp.classList.remove('show'); }
+  setBunt(on) { const b = this.hud.querySelector('.buntbtn'); b.classList.toggle('on', !!on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
   setDerby(d) {
     const q = this.q.derby;
     q.querySelector('.hr').textContent = d.hr;

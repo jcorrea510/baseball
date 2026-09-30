@@ -164,6 +164,23 @@ export const CONFIG = {
   },
 
   // --------------------------------------------------------------------------
+  //  Bunting (B squares the batter around; the swing button pushes the bat at the ball)
+  // --------------------------------------------------------------------------
+  bunt: {
+    windowMs: [45, 115], // ms of timing error: inside the first, a clean bunt; worse up to the second; beyond it the bunt misses
+    reachRatio: 1.3, // (zone widths) pitches further out than this cannot be bunted
+    exitVelocity: [24, 42], // mph: a soft, well-placed bunt .. one that got away from you
+    goodLaunch: -12, // degrees: a good bunt is pushed down into the grass
+    popLaunch: 32, // ...a bad one pops up
+    launchSpread: 6,
+    spray: [4, 22], // degrees off centre (random side) when you do not aim
+    aimSpray: [16, 30], // ...and toward the line you aim at (hold left / right)
+    sprayNoise: 6,
+    foulChance: 0.45, // chance a poor bunt is pushed foul (scaled down for a good one)
+    leadMargin: 0.35, // s: on a bunt the fielder only goes after the lead runner when he would beat him by this much (else the sure out at first)
+  },
+
+  // --------------------------------------------------------------------------
   //  Difficulty levels
   // --------------------------------------------------------------------------
   difficulty: {

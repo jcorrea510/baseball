@@ -203,6 +203,7 @@ export class App {
       case 'mute': this.toggleMute(); break;
       case 'skipSummary': if (this.engine) this.engine.skipSummary(); break;
       case 'batterReady': if (this.engine) this.engine.batterReady(); break;
+      case 'bunt': if (this.engine) this.engine.setBunt(!this.engine.buntStance); break;
       case 'aim': this.aimTouch = d; break;
       case 'practice': if (this.engine) { Object.assign(this.engine.practice, d); } break;
       default: break;
@@ -321,6 +322,7 @@ export class App {
     this.S.env.set(st.tod, true);
     this.ui.hideAll();
     this.ui.showHud(mode);
+    this.ui.setBunt(false);
     this.ui.setTeams({ abbr: PLAYER_TEAM.abbr, color: PLAYER_TEAM.color }, { abbr: eng.opponent.abbr, color: eng.opponent.color });
     this.ui.setMuteIcon(this.audio.muted);
     if (eng.game) this.ui.setGameState(eng.game);
@@ -355,6 +357,7 @@ export class App {
     });
     e.on('count', (c) => { ui.setCount(c.balls, c.strikes, c.outs); this.updateScoreboard(); });
     e.on('batterReady', () => ui.hideBatterUp());
+    e.on('buntStance', ({ on }) => ui.setBunt(on));
     e.on('windup', ({ pitch }) => {
       this.pitchMarker.visible = false;
       ui.hideBanner();
@@ -417,6 +420,12 @@ export class App {
     this.playOuts = 0;
     this.landing = landingSpot(c.sim, c.plan, CONFIG); // (null for grounders, home runs and balls that hit the wall first)
     const grade = c.grade;
+    if (c.contact && c.contact.bunt) {
+      // a bunt: a soft tock off the bat, no sparks, no freeze-frame, no shake
+      audio.batCrack(0.05, 45);
+      this.lastContact = c;
+      return;
+    }
     const q = grade === 'perfect' ? 1 : grade === 'good' ? 0.62 : 0.25;
     audio.batCrack(q, c.exitVelocity);
     if (grade === 'perfect') this.hitStop = F.hitStopPerfect;
@@ -587,9 +596,10 @@ export class App {
     else if (res === 'walk') { cls = 'neutral'; sub = runsText.replace(' · ', ''); audio.crowdSwell(0.2, 1.2); }
     else if (res === 'strikeoutSwinging' || res === 'strikeoutLooking') { cls = 'bad'; sub = res === 'strikeoutLooking' ? 'Looking' : 'Swinging'; audio.crowdGroan(0.7); }
     else if (res === 'out') { cls = 'bad'; sub = r.detail ? r.detail : ''; audio.crowdGroan(0.4); }
-    else if (['groundout', 'flyout', 'lineout', 'popout', 'foulOut', 'doublePlay', 'fieldersChoice', 'sacFly'].includes(res)) {
-      cls = res === 'sacFly' ? 'good' : 'bad'; sub = res === 'sacFly' ? `1 run` : (r.text && res === 'doublePlay' ? '2 outs' : `${Math.round(r.exitVelocity || 0)} mph`);
-      if (res !== 'sacFly') audio.crowdGroan(0.35);
+    else if (['groundout', 'flyout', 'lineout', 'popout', 'foulOut', 'doublePlay', 'fieldersChoice', 'sacFly', 'sacBunt'].includes(res)) {
+      const sac = res === 'sacFly' || res === 'sacBunt';
+      cls = sac ? 'good' : 'bad'; sub = res === 'sacFly' ? `1 run` : res === 'sacBunt' ? (r.runs > 0 ? '' : 'Runner up') : (r.text && res === 'doublePlay' ? '2 outs' : `${Math.round(r.exitVelocity || 0)} mph`);
+      if (!sac) audio.crowdGroan(0.35);
       if (runsText) sub += runsText;
     }
     if (e.mode === 'practice' && r.kind === 'play') { big = r.text; sub = `${Math.round(r.exitVelocity)} mph · ${Math.round(r.distance)} ft`; cls = res === 'homer' ? 'hr' : 'neutral'; }
@@ -660,6 +670,7 @@ export class App {
           this.escape();
           break;
         case 'KeyM': this.toggleMute(); break;
+        case 'KeyB': if (inGame && this.engine) this.engine.setBunt(!this.engine.buntStance); break;
         case 'KeyZ': if (this.engine) { this.changeSetting('zone', !this.settings.zone); } break;
         case 'ArrowLeft': case 'KeyA': if (!inGame) break; e.preventDefault(); this.aimKeys.left = true; break;
         case 'ArrowRight': case 'KeyD': if (!inGame) break; e.preventDefault(); this.aimKeys.right = true; break;

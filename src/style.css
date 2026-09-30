@@ -262,6 +262,13 @@ svg.wordart { display: block; height: 1.08em; width: auto; max-width: 100%; marg
 body.touch .touchaim { display: flex; }
 body.touch .aimgauge { display: none; }
 
+/* bunt: a toggle above the aim control (lit while the batter is squared around) */
+.buntbtn { appearance: none; position: absolute; right: calc(var(--safe-r) + 16px); bottom: calc(var(--safe-b) + 66px); display: none; align-items: center; gap: 8px; height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--line); background: var(--glass); color: var(--ink-2); font: inherit; font-size: 12px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; cursor: pointer; pointer-events: auto; transition: background var(--dur), color var(--dur), border-color var(--dur); }
+.hud[data-mode="quick"] .buntbtn, .hud[data-mode="practice"] .buntbtn { display: inline-flex; }
+.buntbtn svg.i { width: 18px; height: 18px; }
+.buntbtn.on { background: linear-gradient(180deg, var(--amber-hi), var(--amber)); color: var(--amber-ink); border-color: var(--amber); }
+body.touch .buntbtn { bottom: auto; top: calc(var(--safe-t) + 66px); right: calc(var(--safe-r) + 12px); }
+
 /* practice: pitch chooser that folds away */
 .practice { backdrop-filter: none; -webkit-backdrop-filter: none; position: absolute; right: calc(var(--safe-r) + 12px); top: calc(var(--safe-t) + 10px); width: 216px; display: none; flex-direction: column; align-items: stretch; pointer-events: auto; overflow: hidden; }
 .hud[data-mode="practice"] .practice { display: flex; }

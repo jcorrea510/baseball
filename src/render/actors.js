@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { Person, makeBat, restyleBat, disposeBat, mixPose, makePose, copyPose } from './rig.js';
-import { batterPose, pitcherPose, catcherPose, fielderReady, runPose, runReachPose, runCadence, runnerLeadPose, slidePose, slideGetUp, throwPose, catchPose, divePose, celebratePose, standingPose, umpirePose, THROW_RELEASE_U } from './poses.js';
+import { batterPose, buntPose, pitcherPose, catcherPose, fielderReady, runPose, runReachPose, runCadence, runnerLeadPose, slidePose, slideGetUp, throwPose, catchPose, divePose, celebratePose, standingPose, umpirePose, THROW_RELEASE_U } from './poses.js';
 import { UNIFORMS } from '../game/teams.js';
 import { BASE_XZ, MOUND_XZ, clampToField } from '../physics/field.js';
 import { sampleBall } from '../physics/ballistics.js';
@@ -57,7 +57,7 @@ export class Actors {
 
   // ---------------------------------------------------------------- setup
   configure({ engine, playerUniformKey = 'classic', batStyle = 'ash' }) {
-    const key = [engine.opponent.id, engine.pitcher.hand, engine.seed, playerUniformKey, batStyle].join('|');
+    const key = [engine.opponent.id, engine.pitcher.hand, engine.seed, playerUniformKey, batStyle, engine.lineup.map((b) => b.hand + b.id + (b.skin || '')).join(',')].join('|');
     this.batStyle = batStyle;
     if (key === this.cfgKey) return;
     this.cfgKey = key;
@@ -531,6 +531,16 @@ export class Actors {
       if (!swing.made) sw.early = clamp(-swing.errorMs / 100, -0.6, 0.6);
     }
     batterPose(P, time, sw);
+    // squared around to bunt: blend into the bunt stance (and push the bat out if he bunts at this pitch)
+    const st = this.state.get(person);
+    const bunting = E.buntStance || (swing && swing.bunt && phase !== 'ready');
+    if (st) st.buntK = damp(st.buntK || 0, bunting ? 1 : 0, 9, Math.max(0.001, time - (st.buntT ?? time)) || 0.016);
+    if (st) st.buntT = time;
+    if (st && st.buntK > 0.01) {
+      const bp = makePose();
+      buntPose(bp, time, swing && swing.bunt && sw ? sw : null);
+      mixPose(P, P, bp, st.buntK);
+    }
     // ease back to the stance for the next pitch after the swing is over
     if (sw && (phase === 'result' || phase === 'ready')) {
       const doneT = sw.tHit + sw.follow;

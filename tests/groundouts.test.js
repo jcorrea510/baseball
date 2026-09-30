@@ -187,3 +187,28 @@ describe('force plays and double plays', () => {
     }
   });
 });
+
+describe('bunts', () => {
+  it('every bunt play is a legal play, and a good sacrifice bunt usually moves the runner up', async () => {
+    const { computeBunt } = await import('../src/game/contact.js');
+    const rng = createRng(31);
+    const defense = createDefense();
+    const problems = [];
+    let tries = 0, advanced = 0;
+    for (let i = 0; i < 500; i++) {
+      const c = computeBunt({ errorMs: rng.range(-25, 25), locX: rng.range(-0.5, 0.5), locY: rng.range(1.9, 3.0), aim: rng.next() < 0.5 ? -1 : 1, rng });
+      if (!c.made) continue;
+      const sim = simulateBattedBall({ ...c, start: { x: 0, y: 2.6, z: -1 } });
+      const plan = planPlay({ sim, contact: c, bases: ['r1', null, null], outs: 0, defense }, CONFIG);
+      const bad = auditPlan(plan, defense);
+      if (bad.length) problems.push(`bunt ${i}: ${bad.join('; ')}`);
+      if (plan.result === 'foul' || plan.caught) continue;
+      tries++;
+      const r1 = plan.moves.find((m) => m.from === 1);
+      if (r1 && !r1.out && r1.to >= 2) advanced++;
+    }
+    expect(problems).toEqual([]);
+    expect(tries).toBeGreaterThan(300);
+    expect(advanced / tries).toBeGreaterThan(0.65);
+  });
+});

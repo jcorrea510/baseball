@@ -482,9 +482,11 @@ function planPlayCore(i, cfg) {
   const groundBall = pick.ball.y < 2 && (type === 'ground' || sim.bounces > 0 || type === 'line' || type === 'fly');
 
   // --- Try to record an out on an infield play ---
+  const bunt = !!contact.bunt;
+  plan.bunt = bunt;
   if (isInfieldPlay && groundBall) {
-    const attempt = tryInfieldOut({ f, tF, tReady, pf, bases, forced, outs, defense, cfg, plan });
-    if (attempt) return finishInfieldOut(plan, attempt, { f, tF, tReady, pf, bases, forced, outs, defense, cfg });
+    const attempt = tryInfieldOut({ f, tF, tReady, pf, bases, forced, outs, defense, cfg, plan, bunt });
+    if (attempt) return finishInfieldOut(plan, attempt, { f, tF, tReady, pf, bases, forced, outs, defense, cfg, bunt });
   }
 
   // --- Otherwise it is a hit. Work out how far everyone goes. ---
@@ -685,7 +687,7 @@ function outAt(base, runnerT, ctx, plan, cfg) {
   return opts[0] || null;
 }
 
-function tryInfieldOut({ f, tF, tReady, pf, bases, forced, outs, defense, cfg, plan }) {
+function tryInfieldOut({ f, tF, tReady, pf, bases, forced, outs, defense, cfg, plan, bunt = false }) {
   const ctx = { f, tF, tReady, pf, defense };
   const options = [];
 
@@ -708,7 +710,8 @@ function tryInfieldOut({ f, tF, tReady, pf, bases, forced, outs, defense, cfg, p
   let choice;
   const force = options.find((o) => o.kind === 'force');
   const first = options.find((o) => o.kind === 'first');
-  if (force && outs < 2) choice = force;
+  // On a bunt the fielder charging in takes the sure out at first, unless the lead runner is clearly beaten.
+  if (force && outs < 2 && (!bunt || !first || force.margin >= cfg.bunt.leadMargin)) choice = force;
   else choice = options.sort((a, b) => b.margin - a.margin)[0];
   return { choice, force, first, leadForced };
 }
@@ -734,7 +737,7 @@ function planOut(plan, way, base, thrower, from, tReady, cfg, role = 'cover') {
 }
 
 function finishInfieldOut(plan, at, ctx) {
-  const { f, tF, tReady, pf, bases, forced, outs, defense, cfg } = ctx;
+  const { f, tF, tReady, pf, bases, forced, outs, defense, cfg, bunt = false } = ctx;
   const F = cfg.fielding;
   const { choice, leadForced } = at;
 
@@ -752,7 +755,7 @@ function finishInfieldOut(plan, at, ctx) {
     plan.moves.push({ from: 0, to: 0, out: true, outAt: tOut, outBase: 1 });
     plan.result = 'groundout';
     plan.batterDest = 0;
-    plan.moves.push(...advanceOnGroundout({ bases, forced, outsAfter: outs + 1, f, pf, tReady, cfg }));
+    plan.moves.push(...advanceOnGroundout({ bases, forced, outsAfter: outs + 1, f, pf, tReady, cfg, bunt }));
   } else {
     // force out at `choice.base`: the runner from base-1 is out
     const outFrom = choice.base === 4 ? 3 : choice.base - 1;
@@ -762,7 +765,7 @@ function finishInfieldOut(plan, at, ctx) {
     // (computed after we know whether a second out is made; provisional with one out)
     plan._pendingRunners = { skip };
     // Try for the second out (double play): the man with the ball relays to first - if someone can be on the bag with it in time
-    const secondOutPossible = outs + 1 < 3;
+    const secondOutPossible = outs + 1 < 3 && !bunt; // (on a bunt the fielders are out of position: no relay for two)
     plan.batterDest = 1;
     plan.moves.push({ from: 0, to: 1, out: false });
     plan.result = 'fieldersChoice';
@@ -787,7 +790,7 @@ function finishInfieldOut(plan, at, ctx) {
   }
   if (plan._pendingRunners) {
     const outsAfter = outs + plan.outsMade;
-    plan.moves.push(...advanceOnGroundout({ bases, forced, outsAfter, f, pf, tReady, cfg, skip: plan._pendingRunners.skip }));
+    plan.moves.push(...advanceOnGroundout({ bases, forced, outsAfter, f, pf, tReady, cfg, skip: plan._pendingRunners.skip, bunt }));
     delete plan._pendingRunners;
   }
   plan.endTime = endT + 0.8;
@@ -797,7 +800,7 @@ function finishInfieldOut(plan, at, ctx) {
   return plan;
 }
 
-function advanceOnGroundout({ bases, forced, outsAfter, f, pf, tReady, cfg, skip }) {
+function advanceOnGroundout({ bases, forced, outsAfter, f, pf, tReady, cfg, skip, bunt = false }) {
   // Runners move up on a routine groundout when there is room and fewer than two outs.
   const moves = [];
   const F = cfg.fielding;
@@ -812,7 +815,13 @@ function advanceOnGroundout({ bases, forced, outsAfter, f, pf, tReady, cfg, skip
       if (b === 3) {
         const defenseHome = tReady + throwTime(dist(pf.x, pf.z, 0, 0), f, cfg) + F.tagTime;
         if (runnerArrival(cfg, 3, 4) + F.runnerMargin < defenseHome) d = 4;
-      } else if (b === 2 && f.x > 0 && (dest[3] === 4 || !occupied[3])) d = 3;
+      } else if (b === 2 && (dest[3] === 4 || !occupied[3])) {
+        if (f.x > 0) d = 3; // a grounder to the right side
+        else if (bunt) { // on a bunt he breaks for third as it is put down: he takes it unless a throw there would beat him
+          const [tx, tz] = BASE_XZ[3];
+          if (runnerArrival(cfg, 2, 3) + F.runnerMargin < tReady + throwTime(dist(pf.x, pf.z, tx, tz), f, cfg) + 0.3) d = 3;
+        }
+      }
     }
     dest[b] = d;
   }

@@ -110,3 +110,34 @@ export function derbyBatting(cfg = CONFIG) {
   const d = cfg.modes.derby;
   return { evBonus: d.evBonus, goodQuality: d.goodQuality, goodLaunch: d.goodLaunch, pullBonus: d.pullBonus, pullSpan: d.pullSpan };
 }
+
+/**
+ * A bunt: the bat is held out square and pushed at the ball. Much easier to time than a swing (bigger windows), but the ball comes
+ * off slowly: a good bunt rolls 30-70 ft down a line; a mistimed one or a high pitch pops up or goes foul. Aim picks the line.
+ * @param {object} i  { errorMs, locX, locY, windowScale?, aim?, batterHand?, rng }
+ */
+export function computeBunt(i, cfg = CONFIG) {
+  const B = cfg.bunt;
+  const rng = i.rng;
+  const ratio = zoneRatio(i.locX, i.locY, cfg);
+  const scale = i.windowScale ?? 1;
+  const abs = Math.abs(i.errorMs);
+  const base = { bunt: true, errorMs: i.errorMs, zoneRatio: ratio, timing: { grade: 'bunt', abs } };
+  if (ratio > B.reachRatio) return { ...base, grade: 'miss', made: false, reason: 'reach' };
+  if (abs > B.windowMs[1] * scale) return { ...base, grade: 'miss', made: false, reason: 'timing' };
+  // quality 1 = a soft, placed bunt; 0 = barely got a piece of it
+  const tq = 1 - clamp(invLerp(B.windowMs[0] * scale, B.windowMs[1] * scale, abs), 0, 1);
+  const high = clamp(invLerp(cfg.timing.zoneCenterY, cfg.pitch.zoneTop + 0.4, i.locY), 0, 1); // a high pitch is hard to keep down
+  const outside = clamp(invLerp(0.9, B.reachRatio, ratio), 0, 1);
+  const q = clamp(tq * (1 - 0.45 * high) * (1 - 0.5 * outside), 0, 1);
+  const exitVelocity = clamp(lerp(B.exitVelocity[1], B.exitVelocity[0], q) + rng.gauss(0, 2.5), 14, 52);
+  // good bunts are pushed down into the grass; poor ones pop up
+  const launchAngle = clamp(lerp(B.popLaunch, B.goodLaunch, q) + high * 14 + rng.gauss(0, B.launchSpread), -30, 60);
+  const aim = clamp(i.aim ?? 0, -1, 1);
+  const side = Math.abs(aim) > 0.1 ? Math.sign(aim) : (rng.next() < 0.5 ? -1 : 1);
+  const placed = Math.abs(aim) > 0.1 ? B.aimSpray : B.spray;
+  let sprayAngle = side * rng.range(placed[0], placed[1]) + rng.gauss(0, B.sprayNoise * (1.4 - q));
+  if (rng.next() < B.foulChance * (1 - q)) sprayAngle = side * rng.range(47, 70); // pushed foul
+  const backspin = clamp(200 + 40 * Math.max(launchAngle, 0), 150, 1600);
+  return { ...base, grade: q > 0.55 ? 'good' : 'weak', made: true, quality: q, exitVelocity, launchAngle, sprayAngle: clamp(sprayAngle, -80, 80), backspin, hook: 0, pulled: false };
+}

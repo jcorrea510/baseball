@@ -213,7 +213,7 @@ export function inningLabel(g) {
 
 export const RESULT_TEXT = {
   single: 'SINGLE', double: 'DOUBLE', triple: 'TRIPLE', homer: 'HOME RUN', insideParkHomer: 'INSIDE-THE-PARK HR',
-  groundout: 'GROUNDOUT', flyout: 'FLYOUT', lineout: 'LINEOUT', popout: 'POP OUT', foulOut: 'FOUL OUT', sacFly: 'SAC FLY',
+  groundout: 'GROUNDOUT', flyout: 'FLYOUT', lineout: 'LINEOUT', popout: 'POP OUT', foulOut: 'FOUL OUT', sacFly: 'SAC FLY', sacBunt: 'SAC BUNT',
   doublePlay: 'DOUBLE PLAY', fieldersChoice: "FIELDER'S CHOICE", walk: 'WALK', strikeoutSwinging: 'STRIKEOUT', strikeoutLooking: 'STRIKEOUT',
   foul: 'FOUL', ball: 'BALL', calledStrike: 'STRIKE', swingingStrike: 'STRIKE',
 };

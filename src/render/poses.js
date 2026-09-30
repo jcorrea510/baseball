@@ -125,6 +125,33 @@ export function batterPose(P, time, swing) {
   return P;
 }
 
+// ---------------------------------------------------------------- bunt
+// Squared around to bunt: hips and shoulders turned to face the pitcher, knees bent, the bat held level across the front of the
+// plate at chest height. `push` = { contact:[x,y,z] (ball in pose space), tStart, tHit } when he pushes the bat out to meet the ball.
+const BUNT_DIR = (() => { const yaw = 0.18, p = 0.1; return [Math.sin(yaw) * Math.cos(p), Math.sin(p), Math.cos(yaw) * Math.cos(p)]; })();
+export function buntPose(P, time, push = null) {
+  resetPose(P);
+  const breathe = Math.sin(time * 1.6);
+  P.hipY = 2.62 + breathe * 0.015;
+  P.pelvisYaw = 1.0; P.torsoYaw = 0.42; P.pelvisPitch = 0.16; P.torsoPitch = 0.34;
+  P.headYaw = 0.05; P.headPitch = 0.12;
+  set3(P.footL, 0.5, ANK, -0.6); set3(P.footR, 0.15, ANK, 0.62);
+  set3(P.kneeL, 1, 0.1, -0.2); set3(P.kneeR, 1, 0.1, 0.3);
+  let knob = [0.95, 3.75, -0.15];
+  if (push && time >= push.tStart) {
+    // the sweet spot (1.9 ft up the bat) goes out to where the ball crosses, then the bat gives a little as it "catches" the ball
+    const C = push.contact;
+    const meet = [C[0] - BUNT_DIR[0] * 1.9, C[1] - BUNT_DIR[1] * 1.9, C[2] - BUNT_DIR[2] * 1.9];
+    const u = smoothstep(push.tStart, push.tHit, time);
+    const give = time > push.tHit ? smoothstep(push.tHit, push.tHit + 0.25, time) : 0;
+    knob = [lerp(knob[0], meet[0], u) - 0.25 * give, lerp(knob[1], meet[1], u), lerp(knob[2], meet[2], u)];
+  }
+  set3(P.bat, knob[0], knob[1], knob[2]);
+  P.batYaw = 0.18; P.batPitch = 0.1; P.batVis = 1;
+  P.poleL = [0.6, -0.8, -0.4]; P.poleR = [0.4, -0.8, 0.6];
+  return P;
+}
+
 // ---------------------------------------------------------------- pitcher
 // u runs 0..1 up to the moment of release; `post` is seconds after release.
 // release = hand position at release in pose space; tell = { slot: -1..1 (arm height), lag: 0..1 (slower arm) }

@@ -6,7 +6,7 @@ import { createRng } from '../util/rng.js';
 import { buildPitch, isStrike } from '../physics/pitch.js';
 import { simulateBattedBall, projectDistance } from '../physics/ballistics.js';
 import { resolveSwingTimes, describeError } from './timing.js';
-import { computeContact, derbyBatting } from './contact.js';
+import { computeContact, computeBunt, derbyBatting } from './contact.js';
 import { choosePitch, pitchWindowScale } from './pitcherAI.js';
 import { createDefense, planPlay, fielderBackTime } from './fielding.js';
 import * as rules from './rules.js';
@@ -38,6 +38,7 @@ export class Engine {
     // Wait for the player before the first pitch to each new batter (a "Ready" button); off for tests and the bot.
     this.waitForBatter = !!o.waitForBatter;
     this.batterReadyFlag = true;
+    this.buntStance = false; // squared around to bunt (B): the swing button then pushes the bat at the ball
     this.practice = { type: 'fastball', speed: cfg.modes.practice.speedDefault, location: 'random', ...(o.practice || {}) };
     this.opponent = o.opponent || OPPONENTS[this.rng.int(0, OPPONENTS.length - 1)];
     this.playerTeam = PLAYER_TEAM;
@@ -121,6 +122,7 @@ export class Engine {
     this.setPhase('ready');
     this.readyUntil = this.time + (first ? this.cfg.pace.firstPitchDelay + 0.3 : this.cfg.pace.firstPitchDelay * 0.65);
     this.batterReadyFlag = !this.waitForBatter;
+    this.setBunt(false);
     this.emit('paStart', { batter: this.batter, index: this.batterIndex, count: this.count, waiting: !this.batterReadyFlag });
     this.emitCount();
   }
@@ -205,6 +207,14 @@ export class Engine {
   }
   get awaitingBatter() { return this.phase === 'ready' && !this.batterReadyFlag; }
 
+  // Square around to bunt (or pull back). Any time before the swing, not in the Derby. Returns the stance now.
+  setBunt(on) {
+    const can = this.mode !== 'derby' && !this.swing && ['idle', 'ready', 'windup', 'pitch', 'halfBreak'].includes(this.phase);
+    const v = !!on && can;
+    if (v !== this.buntStance) { this.buntStance = v; this.emit('buntStance', { on: v }); }
+    return this.buntStance;
+  }
+
   // Player input. `sinceUpdate` = seconds between the last engine update and the actual input event
   // (so timing does not depend on frame rate). Returns true if the swing was accepted.
   swingPressed(sinceUpdate = 0) {
@@ -213,7 +223,8 @@ export class Engine {
     const tPress = this.time + Math.max(-0.02, Math.min(0.05, sinceUpdate)) - this.inputDelay;
     const times = resolveSwingTimes(tPress, pitch.tCross, this.cfg);
     const loc = pitch.target;
-    const contact = computeContact({
+    const bunting = this.buntStance;
+    const contact = bunting ? computeBunt({ errorMs: times.errorMs, locX: loc.x, locY: loc.y, windowScale: this.windowScale, aim: this.aim, batterHand: this.batterHand, rng: this.rng }, this.cfg) : computeContact({
       errorMs: times.errorMs,
       locX: loc.x, locY: loc.y,
       pitchSpeed: pitch.speedMph,
@@ -230,9 +241,9 @@ export class Engine {
     this.swing = {
       tPress, tBarrel: times.barrelTime, tHit, errorMs: times.errorMs,
       grade: contact.grade, made: contact.made, contact, resolved: false,
-      follow: this.cfg.timing.followThrough,
+      follow: this.cfg.timing.followThrough, bunt: bunting,
     };
-    this.stats.swings++;
+    if (bunting) this.stats.bunts++; else this.stats.swings++;
     this.emit('swing', { swing: this.swing, pitch, errorText: describeError(times.errorMs) });
     return true;
   }
@@ -305,6 +316,7 @@ export class Engine {
 
   finishPitch(pause, halfOver = false, paEnded = false, kind = null) {
     this.paEnded = paEnded;
+    this.setBunt(false); // (a batter squares around again for each pitch he wants to bunt)
     this.lastPA = paEnded ? { result: kind, time: this.time } : this.lastPA;
     this.setPhase('result');
     this.resultUntil = this.time + pause;
@@ -403,8 +415,18 @@ export class Engine {
     // ---------------- quick game ----------------
     const g = this.game;
     if (plan.result === 'foul') {
-      rules.pitchFoul(g);
       this.stats.fouls++;
+      if (c.bunt && g.strikes >= 2) {
+        // a bunt foul with two strikes is strike three
+        const res = rules.pitchStrike(g, { swinging: true });
+        this.stats.pa++; this.stats.strikeouts++; this.stats.ab++;
+        this.creditBatter(res.result, 0);
+        this.emitCount();
+        this.emit('result', { kind: 'pa', result: res.result, text: 'STRIKEOUT', detail: 'Bunted foul', runs: 0, outs: g.outs, halfOver: res.halfOver, batter: this.batter, ...summary });
+        this.finishPitch(this.cfg.pace.callDisplay + 0.45, res.halfOver, true, res.result);
+        return;
+      }
+      rules.pitchFoul(g);
       this.emitCount();
       this.emit('result', { kind: 'pitch', call: 'foul', text: 'FOUL', ...summary });
       this.finishPitch(0.28);
@@ -417,11 +439,13 @@ export class Engine {
       outsMade: plan.outsMade,
     };
     if (plan.result === 'foulOut') play.result = 'foulOut';
+    // a bunt that is out at first but moves a runner up (with fewer than two outs) is a sacrifice: it does not count as an at-bat
+    if (c.bunt && play.result === 'groundout' && g.outs < 2 && play.moves.some((m) => !m.out && m.to > m.from)) play.result = 'sacBunt';
     const outsBefore = g.outs;
     const res = rules.applyPlay(g, play, this.batter);
     this.stats.pa++;
     const isHit = rules.isHitResult(play.result);
-    if (play.result !== 'sacFly') this.stats.ab++;
+    if (play.result !== 'sacFly' && play.result !== 'sacBunt') this.stats.ab++;
     if (isHit) {
       this.stats.hits++;
       if (play.result === 'homer' || play.result === 'insideParkHomer') {
@@ -553,7 +577,7 @@ export class Engine {
 
 function newStats() {
   return {
-    pitchesSeen: 0, swings: 0, whiffs: 0, contacts: 0, fouls: 0, hits: 0, hr: 0, ab: 0, pa: 0, walks: 0, strikeouts: 0, rbi: 0, runs: 0,
+    pitchesSeen: 0, swings: 0, bunts: 0, whiffs: 0, contacts: 0, fouls: 0, hits: 0, hr: 0, ab: 0, pa: 0, walks: 0, strikeouts: 0, rbi: 0, runs: 0,
     perfect: 0, good: 0, early: 0, late: 0, maxEV: 0, evSum: 0, evN: 0, longestHR: 0,
   };
 }

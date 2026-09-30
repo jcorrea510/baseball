@@ -362,3 +362,71 @@ describe('waiting for the batter', () => {
     expect(pitches).toBe(3);
   });
 });
+
+describe('bunting', () => {
+  const pitchAndBunt = (e) => {
+    while (!(e.phase === 'pitch' && e.time > e.pitch.tCross - 0.16)) e.update(DT);
+    e.swingPressed(0);
+  };
+
+  it('B squares the batter around; the swing then bunts (a soft ball), and the stance resets after the pitch', () => {
+    const e = new Engine({ mode: 'quick', seed: 21 });
+    e.pitchOverride = strikePitch;
+    e.start();
+    expect(e.setBunt(true)).toBe(true);
+    pitchAndBunt(e);
+    expect(e.swing.bunt).toBe(true);
+    expect(e.swing.contact.bunt).toBe(true);
+    let contact = null;
+    e.on('contact', (c) => { contact = c; });
+    while (!contact && e.time < 60) e.update(DT);
+    expect(contact.exitVelocity).toBeLessThan(50);
+    while (e.phase !== 'ready' && e.time < 60) e.update(DT);
+    expect(e.buntStance).toBe(false);
+  });
+
+  it('there is no bunting in the Derby', () => {
+    const e = new Engine({ mode: 'derby', seed: 2 });
+    e.start();
+    expect(e.setBunt(true)).toBe(false);
+  });
+
+  it('a foul bunt with two strikes is strike three', () => {
+    const e = new Engine({ mode: 'quick', seed: 5 });
+    e.pitchOverride = strikePitch;
+    e.contactOverride = () => ({ exitVelocity: 26, launchAngle: -6, sprayAngle: 62, backspin: 300, hook: 0 });
+    e.start();
+    e.game.strikes = 2;
+    e.setBunt(true);
+    pitchAndBunt(e);
+    let r = null;
+    e.on('result', (x) => { r = r || x; });
+    while (!r && e.time < 60) e.update(DT);
+    expect(r.kind).toBe('pa');
+    expect(r.result).toBe('strikeoutSwinging');
+    expect(e.game.outs).toBe(1);
+  });
+
+  it('a sacrifice bunt that moves the runner up is not an at-bat', () => {
+    let found = false;
+    for (let seed = 1; seed < 40 && !found; seed++) {
+      const e = new Engine({ mode: 'quick', seed });
+      e.pitchOverride = strikePitch;
+      e.contactOverride = () => ({ exitVelocity: 24, launchAngle: -12, sprayAngle: -22, backspin: 300, hook: 0 });
+      e.start();
+      e.game.bases[0] = { id: 'r1' };
+      e.setBunt(true);
+      pitchAndBunt(e);
+      let r = null;
+      e.on('result', (x) => { if (x.kind === 'pa') r = r || x; });
+      while (!r && e.time < 60) e.update(DT);
+      if (r && r.result === 'sacBunt') {
+        found = true;
+        expect(e.stats.ab).toBe(0);
+        expect(e.stats.pa).toBe(1);
+        expect(e.game.bases[1]).toBeTruthy(); // the runner is on second
+      }
+    }
+    expect(found).toBe(true);
+  });
+});
