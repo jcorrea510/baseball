@@ -386,9 +386,11 @@ export function jerseyTexture({ primary, secondary, trim, text = '', number = 0,
   g.addColorStop(0, 'rgba(0,0,0,0.25)'); g.addColorStop(0.15, 'rgba(0,0,0,0)'); g.addColorStop(0.85, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,0.3)');
   ctx.fillStyle = g; ctx.fillRect(0, 0, 256, 256);
   if (mirror) {
-    // left-handed batter: the whole figure is mirrored, so pre-flip the artwork to read correctly
+    // left-handed batter: the whole figure is mirrored (left-right), so pre-flip the artwork to read correctly. The flip is about
+    // the FRONT of the shirt (u = 0.25), so the name stays on the chest and the number on the back: u -> 0.5 - u (wrapping round).
     const m = makeCanvas(256, 256);
-    m.ctx.translate(256, 0); m.ctx.scale(-1, 1); m.ctx.drawImage(canvas, 0, 0);
+    for (const off of [128, 384]) { m.ctx.setTransform(-1, 0, 0, 1, off, 0); m.ctx.drawImage(canvas, 0, 0); }
+    m.ctx.setTransform(1, 0, 0, 1, 0, 0);
     return toTexture(m.canvas, { anisotropy: 4 });
   }
   return toTexture(canvas, { anisotropy: 4 });
