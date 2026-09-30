@@ -365,7 +365,7 @@ export class App {
       this.actors.fielders.P.root.updateMatrixWorld(true);
       const rh = this.actors.fielders.P.handWorld('R');
       this.fx.releaseGlint(rh.x, rh.y, rh.z);
-      ui.showPitchInfo(pitch.announce ? LABEL[pitch.type] : '', pitch.speedMph, false, 1900);
+      ui.showPitchInfo(pitch.announce || (e.d.typeAtRelease && e.mode !== 'derby') ? LABEL[pitch.type] : '', pitch.speedMph, false, 1900);
     });
     e.on('swing', ({ swing, pitch, errorText }) => {
       audio.swingWhoosh();

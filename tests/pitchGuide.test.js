@@ -1,4 +1,5 @@
-// The pitch guide: a soft circle that guesses where the pitch will cross the plate - late, a little off, and less exact on harder levels.
+// The pitch guide: a soft circle that guesses where the pitch will cross the plate. It appears just after the ball leaves the hand (never
+// before the throw), early enough to decide on, a little off, and less exact on harder levels.
 import { describe, it, expect } from 'vitest';
 import { CONFIG, DIFFICULTIES } from '../src/config.js';
 import { buildPitch, isStrike } from '../src/physics/pitch.js';
@@ -13,11 +14,11 @@ const mk = (type, x, y, level = 'pro', id = 1, speed = 82) => {
 const at = (pitch, f, level) => pitchGuide(pitch, pitch.flight.T * f, CONFIG, level);
 
 describe('when it shows', () => {
-  it('is invisible at release, fades in part-way through the flight, and is gone when the ball is at the plate', () => {
+  it('is invisible at release, fades in just after the ball leaves the hand, and is gone when the ball is at the plate', () => {
     for (const lv of DIFFICULTIES) {
       const p = mk('fastball', 0.2, 2.5, lv);
       expect(at(p, 0, lv).visible).toBe(false);
-      expect(at(p, 0.05, lv).alpha).toBe(0);
+      expect(at(p, 0.02, lv).alpha).toBe(0);
       let last = -1;
       for (let f = 0; f <= 0.999; f += 0.02) { const a = at(p, f, lv).alpha; expect(a).toBeGreaterThanOrEqual(last - 1e-9); last = a; }
       expect(last).toBeGreaterThan(0.4 * CONFIG.pitch.guide.maxAlpha);
@@ -26,11 +27,12 @@ describe('when it shows', () => {
     }
   });
 
-  it('never shows at release on any level ("fade it in partway through the pitch, not at release")', () => {
+  it('never shows before the ball is thrown on any level (you cannot know before the pitch)', () => {
     for (const lv of DIFFICULTIES) for (const type of ['fastball', 'curveball', 'slider', 'changeup']) {
       const p = mk(type, 0, 2.5, lv);
-      expect(CONFIG.difficulty[lv].guide.fadeIn[0]).toBeGreaterThanOrEqual(0.15);
-      expect(at(p, 0.1, lv).visible).toBe(false);
+      expect(CONFIG.difficulty[lv].guide.fadeIn[0]).toBeGreaterThan(0);
+      expect(at(p, 0, lv).visible).toBe(false);
+      expect(at(p, -0.2, lv).visible).toBe(false);
     }
   });
 
@@ -58,7 +60,7 @@ describe('where it points', () => {
     }
   });
 
-  it('a breaking pitch only shows where it ends up late; a fastball is nearly right earlier', () => {
+  it('a breaking pitch only shows where it ends up after a moment; a fastball is nearly right sooner', () => {
     const level = 'allstar';
     const errAt = (type, f) => {
       let e = 0, n = 0;
@@ -69,9 +71,9 @@ describe('where it points', () => {
       }
       return e / n;
     };
-    expect(errAt('curveball', 0.5)).toBeGreaterThan(errAt('fastball', 0.5) + 0.3); // the curve's drop is not shown yet
-    expect(errAt('curveball', 0.5)).toBeGreaterThan(1.0);
-    expect(errAt('curveball', 0.98)).toBeLessThan(errAt('curveball', 0.5) - 0.4); // ...and shows up late
+    expect(errAt('curveball', 0.1)).toBeGreaterThan(errAt('fastball', 0.1) + 0.3); // the curve's drop is not shown yet
+    expect(errAt('curveball', 0.1)).toBeGreaterThan(1.0);
+    expect(errAt('curveball', 0.98)).toBeLessThan(errAt('curveball', 0.1) - 0.4); // ...and shows up soon after
     expect(errAt('curveball', 0.98)).toBeLessThan(1.6 * CONFIG.difficulty[level].guide.error + 0.05);
   });
 
@@ -85,34 +87,30 @@ describe('where it points', () => {
   });
 });
 
-describe('it helps, but it is not a giveaway', () => {
+describe('it helps in time, but it is not a giveaway', () => {
   const N = 2500;
   const stats = Object.fromEntries(DIFFICULTIES.map((lv) => [lv, guideStats(lv, N, 9)]));
-  const right = (lv) => stats[lv].readRight / stats[lv].n;
+  // "when you must decide": the swing starts swingDelay before the plate, and a person needs timing.decideTime to see and press
+  const decide = (lv) => stats[lv].atDecide / stats[lv].n;
+  const decideEdge = (lv) => stats[lv].atDecideBorderline / stats[lv].borderline;
 
-  it('the circle is on the right side of the zone most of the time on Rookie, less often on Pro, and often not on All-Star', () => {
-    expect(right('rookie')).toBeGreaterThan(0.94);
-    expect(right('pro')).toBeGreaterThan(0.84); expect(right('pro')).toBeLessThan(0.95);
-    expect(right('allstar')).toBeGreaterThan(0.70); expect(right('allstar')).toBeLessThan(0.87);
-    expect(right('rookie')).toBeGreaterThan(right('pro')); expect(right('pro')).toBeGreaterThan(right('allstar'));
+  it('is showing when you have to decide (the old guide came too late to act on)', () => {
+    expect(stats.rookie.alphaAtDecide / stats.rookie.n).toBeGreaterThan(0.95);
+    expect(stats.pro.alphaAtDecide / stats.pro.n).toBeGreaterThan(0.9);
+    expect(stats.allstar.alphaAtDecide / stats.allstar.n).toBeGreaterThan(0.7);
   });
 
-  it('at the moment the swing has to start it is fully shown, and still only a guide', () => {
-    const s = (lv) => stats[lv].atSwing / stats[lv].n;
-    expect(stats.rookie.alphaAtSwing / stats.rookie.n).toBeGreaterThan(0.95);
-    expect(stats.allstar.alphaAtSwing / stats.allstar.n).toBeGreaterThan(0.9); // (visible even on All-Star, just late)
-    expect(s('rookie')).toBeGreaterThan(0.94);
-    expect(s('pro')).toBeGreaterThan(0.82); expect(s('pro')).toBeLessThan(0.94);
-    expect(s('allstar')).toBeGreaterThan(0.68); expect(s('allstar')).toBeLessThan(0.84);
-    // the guess of a swing-time reader is barely better than always saying "strike" on All-Star borderline pitches
-    expect(stats.allstar.atSwingBorderline / stats.allstar.borderline).toBeLessThan(0.68);
+  it('when you must decide it is on the right side of the zone mostly on Rookie, less on Pro, and often not on All-Star', () => {
+    expect(decide('rookie')).toBeGreaterThan(0.93);
+    expect(decide('pro')).toBeGreaterThan(0.8); expect(decide('pro')).toBeLessThan(0.92);
+    expect(decide('allstar')).toBeGreaterThan(0.64); expect(decide('allstar')).toBeLessThan(0.8);
+    expect(decide('rookie')).toBeGreaterThan(decide('pro')); expect(decide('pro')).toBeGreaterThan(decide('allstar'));
   });
 
-  it('on borderline pitches the harder levels are close to a coin flip', () => {
-    const b = (lv) => stats[lv].readRightBorderline / stats[lv].borderline;
-    expect(b('rookie')).toBeGreaterThan(0.85);
-    expect(b('allstar')).toBeLessThan(0.72);
-    expect(b('allstar')).toBeGreaterThan(0.5);
+  it('borderline pitches stay hard: close to a coin flip on All-Star, far from certain on Pro', () => {
+    expect(decideEdge('rookie')).toBeGreaterThan(0.85);
+    expect(decideEdge('pro')).toBeLessThan(0.82);
+    expect(decideEdge('allstar')).toBeLessThan(0.7); expect(decideEdge('allstar')).toBeGreaterThan(0.5);
   });
 
   it('never gives a clean number: no NaN, radius and position are sane', () => {

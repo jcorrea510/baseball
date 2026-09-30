@@ -10,7 +10,7 @@ import { pitchGuide } from '../src/game/pitchGuide.js';
 export function guideStats(level, n = 6000, seed = 3, cfg = CONFIG) {
   const rng = createRng(seed);
   const d = cfg.difficulty[level];
-  const out = { level, n, readRight: 0, readRightBorderline: 0, borderline: 0, atSwing: 0, atSwingBorderline: 0, alphaAtSwing: 0, err: 0, errBreaking: 0, breaking: 0, earlyRight: {}, seconds: 0 };
+  const out = { level, n, readRight: 0, readRightBorderline: 0, borderline: 0, atSwing: 0, atSwingBorderline: 0, alphaAtSwing: 0, atDecide: 0, atDecideBorderline: 0, alphaAtDecide: 0, atDecideBreaking: 0, err: 0, errBreaking: 0, breaking: 0, earlyRight: {}, seconds: 0 };
   const marks = [0.3, 0.5, 0.7, 0.9];
   for (const m of marks) out.earlyRight[m] = 0;
   let T = 0;
@@ -28,6 +28,10 @@ export function guideStats(level, n = 6000, seed = 3, cfg = CONFIG) {
     const gs = pitchGuide(pitch, flight.T - cfg.timing.swingDelay, cfg, level);
     out.alphaAtSwing += gs.alpha / cfg.pitch.guide.maxAlpha;
     if (isStrike(gs.x, gs.y, cfg) === truth) { out.atSwing++; if (edge) out.atSwingBorderline++; }
+    // ... and when a person has to DECIDE: the swing starts swingDelay before the plate, and it takes a reaction time to see and press
+    const gd = pitchGuide(pitch, Math.max(0, flight.T - cfg.timing.swingDelay - cfg.timing.decideTime), cfg, level);
+    out.alphaAtDecide += gd.alpha / cfg.pitch.guide.maxAlpha;
+    if (isStrike(gd.x, gd.y, cfg) === truth) { out.atDecide++; if (edge) out.atDecideBorderline++; if (['curveball', 'slider', 'changeup'].includes(p.type)) out.atDecideBreaking++; }
     const e = Math.hypot(g.x - p.target.x, g.y - p.target.y);
     out.err += e;
     if (['curveball', 'slider', 'changeup'].includes(p.type)) { out.breaking++; out.errBreaking += e; }
@@ -41,10 +45,10 @@ export function guideStats(level, n = 6000, seed = 3, cfg = CONFIG) {
 if (process.argv[1] && process.argv[1].endsWith('guidecheck.mjs')) {
   const n = +(process.argv[2] || 6000);
   const pct = (a, b) => (100 * a / Math.max(1, b)).toFixed(0).padStart(3) + '%';
-  console.log('level     circle on the right side of the zone at the moment the swing must start: overall / borderline pitches, how visible it is then | at the plate: overall / borderline | miss at the plate (ft)');
+  console.log('level     right side of the zone when you must DECIDE (overall / borderline / breaking, how visible) | when the swing must start | at the plate | miss at the plate (ft)');
   for (const lv of DIFFICULTIES) {
     const s = guideStats(lv, n);
     const L = CONFIG.difficulty[lv].guide;
-    console.log(`${lv.padEnd(9)} ${pct(s.atSwing, s.n)} / ${pct(s.atSwingBorderline, s.borderline)}   ${(100 * s.alphaAtSwing / s.n).toFixed(0)}% visible | ${pct(s.readRight, s.n)} / ${pct(s.readRightBorderline, s.borderline)} | ${(s.err / s.n).toFixed(2)} ft   (starts fading in ${((1 - L.fadeIn[0]) * s.seconds).toFixed(2)} s before the plate, full ${((1 - L.fadeIn[1]) * s.seconds).toFixed(2)} s before; a ${s.seconds.toFixed(2)} s flight)`);
+    console.log(`${lv.padEnd(9)} ${pct(s.atDecide, s.n)} / ${pct(s.atDecideBorderline, s.borderline)} / ${pct(s.atDecideBreaking, s.breaking)}  ${(100 * s.alphaAtDecide / s.n).toFixed(0)}% visible | ${pct(s.atSwing, s.n)} / ${pct(s.atSwingBorderline, s.borderline)}   ${(100 * s.alphaAtSwing / s.n).toFixed(0)}% visible | ${pct(s.readRight, s.n)} / ${pct(s.readRightBorderline, s.borderline)} | ${(s.err / s.n).toFixed(2)} ft   (starts fading in ${((1 - L.fadeIn[0]) * s.seconds).toFixed(2)} s before the plate, full ${((1 - L.fadeIn[1]) * s.seconds).toFixed(2)} s before; a ${s.seconds.toFixed(2)} s flight)`);
   }
 }

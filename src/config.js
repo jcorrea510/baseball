@@ -116,6 +116,7 @@ export const CONFIG = {
     earlyMs: 80, // beyond "good", up to here = weak/foul contact
     lateMs: 56, // late window is shorter (the catcher has the ball by then)
     swingDelay: 0.115, // seconds from pressing the button until the bat is at the plate
+    decideTime: 0.22, // s a person needs to see where a pitch is going and press (used to judge how readable the pitch guide is)
     inputDelayMaxMs: 150, // the Settings "Swing timing" adjustment goes up to this (ms taken off every press on a laggy screen)
     inputDelayStepMs: 10,
     followThrough: 0.42,
@@ -173,11 +174,12 @@ export const CONFIG = {
       locations: { heart: 0.68, edge: 0.16, chase: 0.09, waste: 0.07 },
       // Pitch guide (see pitch.guide): fadeIn = fractions of the flight (0 = release, 1 = plate) where it starts and finishes fading in;
       // reveal = where it starts / finishes showing the pitch's break; error = feet the guess is typically off.
-      guide: { fadeIn: [0.2, 0.4], reveal: [0.1, 0.3], error: 0.14 },
+      guide: { fadeIn: [0.03, 0.18], reveal: [0.02, 0.3], error: 0.12 },
       commandSigma: 0.12, // ft of pitcher inaccuracy
       movementScale: 0.6,
       tellStrength: 1.0,
-      announcePitch: true,
+      announcePitch: true, // the pitch type is shown as he winds up
+      typeAtRelease: true, // ...and when it leaves his hand
       windup: 1.05,
       derbyFoulIsOut: false,
       // Odds for each plate appearance when the computer bats (its half-innings are simulated).
@@ -189,11 +191,12 @@ export const CONFIG = {
       fastball: [80, 90],
       mix: { fastball: 0.46, changeup: 0.18, curveball: 0.18, slider: 0.18, heater: 0 },
       locations: { heart: 0.52, edge: 0.08, chase: 0.21, waste: 0.19 },
-      guide: { fadeIn: [0.28, 0.5], reveal: [0.25, 0.6], error: 0.36 },
+      guide: { fadeIn: [0.05, 0.22], reveal: [0.05, 0.45], error: 0.27 },
       commandSigma: 0.28,
       movementScale: 1.0,
       tellStrength: 0.6,
       announcePitch: false,
+      typeAtRelease: true, // the pitch type shows the moment it leaves his hand (a batter reads the spin): a curveball will drop
       windup: 0.92,
       derbyFoulIsOut: true,
       swingCue: false,
@@ -205,11 +208,12 @@ export const CONFIG = {
       fastball: [88, 98],
       mix: { fastball: 0.36, changeup: 0.18, curveball: 0.17, slider: 0.19, heater: 0.1 },
       locations: { heart: 0.32, edge: 0.15, chase: 0.29, waste: 0.24 },
-      guide: { fadeIn: [0.4, 0.62], reveal: [0.4, 0.75], error: 0.66 },
+      guide: { fadeIn: [0.06, 0.22], reveal: [0.04, 0.42], error: 0.33 },
       commandSigma: 0.42,
       movementScale: 1.25,
       tellStrength: 0.28,
       announcePitch: false,
+      typeAtRelease: false, // All-Star: read it yourself (arm slot tells)
       windup: 0.85,
       derbyFoulIsOut: true,
       swingCue: false,
