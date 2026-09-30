@@ -14,8 +14,8 @@
 //   6. built game, no WebGL  -> must show the "couldn't start 3D graphics" screen (never a spinner that never ends)
 //   7. raw source files      -> what GitHub publishes if Pages is set to "Deploy from a branch" instead of "GitHub
 //                               Actions"; must show the "game files didn't load" screen
-//   8. own umpire recordings -> files dropped into public/sounds/umpire are found by the build, downloaded after the first click and
-//                               played instead of the built-in voice (and the folder being empty costs no failed downloads)
+//   8. umpire recordings     -> files in the recordings folder are found by the build, downloaded after the first click and
+//                               played; a call without a file is silent (and no missing file is ever requested)
 // Scenario 7 is the exact failure that once left the live site stuck on "Warming up the ballpark" forever; scenarios
 // 3-5 guard the Vercel deployment that once showed a GitHub-only message because the build assumed /baseball/.
 //
@@ -27,7 +27,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
-import { toWav } from '../src/audio/voiceRender.js';
+
+// A mono 16-bit .wav file from samples (-1..1).
+function toWav(samples, rate) {
+  const n = samples.length, buf = Buffer.alloc(44 + n * 2);
+  buf.write('RIFF', 0); buf.writeUInt32LE(36 + n * 2, 4); buf.write('WAVE', 8); buf.write('fmt ', 12);
+  buf.writeUInt32LE(16, 16); buf.writeUInt16LE(1, 20); buf.writeUInt16LE(1, 22); buf.writeUInt32LE(rate, 24);
+  buf.writeUInt32LE(rate * 2, 28); buf.writeUInt16LE(2, 32); buf.writeUInt16LE(16, 34); buf.write('data', 36); buf.writeUInt32LE(n * 2, 40);
+  for (let i = 0; i < n; i++) buf.writeInt16LE(Math.max(-32767, Math.min(32767, Math.round(samples[i] * 32767))), 44 + i * 2);
+  return buf;
+}
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BASE = (process.env.BASE_PATH || '/baseball/').replace(/\/?$/, '/');
@@ -187,7 +196,7 @@ const scenarios = [
     },
   },
   {
-    name: 'own umpire recordings are found, loaded and played (calls without a file use the built-in voice)',
+    name: 'umpire recordings are found, loaded and played (a call without a file is silent)',
     dir: () => {
       // two short "recordings" (a beep each), as if the owner had dropped strike.wav and out.wav into public/sounds/umpire
       const rec = path.join(os.tmpdir(), `sandlot-smoke-${process.pid}-owner-recordings`);
@@ -210,10 +219,10 @@ const scenarios = [
         const a = window.__app.audio, played = [];
         const real = a.playFile.bind(a);
         a.playFile = (buf, o) => { played.push(Math.round(buf.duration * 100) / 100); return real(buf, o); };
-        a.umpireMode = 'synth'; a.muted = false;
+        a.umpireMode = 'on'; a.muted = false;
         return { strike: a.callUmpire('strike'), out: a.callUmpire('out'), ball: a.callUmpire('ball'), played, mode: a.umpireMode };
       });
-      if (!r.strike || !r.out || !r.ball) throw new Error('a call failed to play: ' + JSON.stringify(r));
+      if (!r.strike || !r.out || r.ball) throw new Error('strike and out should play their recordings and ball (no file) nothing: ' + JSON.stringify(r));
       if (r.played.length !== 2 || Math.abs(r.played[0] - 0.5) > 0.02 || Math.abs(r.played[1] - 0.25) > 0.02) throw new Error('the recordings were not played (strike then out, and not for "ball"): ' + JSON.stringify(r));
       if (problems.length) throw new Error('console/network problems:\n    ' + problems.join('\n    '));
     },

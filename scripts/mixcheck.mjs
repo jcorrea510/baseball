@@ -16,8 +16,8 @@ const res = await page.evaluate(async () => {
     const ctx = new OfflineAudioContext(2, rate * dur, rate);
     const a = new AudioEngine();
     a.volume = 0.8;
-    if (setup) setup(a);
     a.build(ctx);
+    if (setup) await setup(a, ctx);
     a.setUmpire(3);
     fn(a);
     const buf = await ctx.startRendering();
@@ -38,10 +38,10 @@ const res = await page.evaluate(async () => {
   out['bat weak'] = await measure((a) => a.batCrack(0.25, 60));
   out['glove pop (pitch)'] = await measure((a) => a.glovePop(0.8));
   out['swing whoosh'] = await measure((a) => a.swingWhoosh());
-  out['umpire strike'] = await measure((a) => a.callUmpire('strike'));
-  out['umpire ball'] = await measure((a) => a.callUmpire('ball'));
-  out['umpire strike3'] = await measure((a) => a.callUmpire('strike3'), 3);
-  out['umpire out (base)'] = await measure((a) => a.callUmpire('out', { pan: 0.55 }));
+  const rec = (a, ctx) => a.files.load(ctx); // the umpire's recordings, decoded into this offline context
+  for (const k of ['strike', 'strike1', 'strike2', 'strike3', 'ball', 'foul', 'out', 'safe', 'playball']) {
+    out['umpire ' + k] = await measure((a) => a.callUmpire(k, { pan: k === 'out' || k === 'safe' ? 0.55 : 0 }), 3, rec);
+  }
   out['crowd idle'] = await measure((a) => a.startAmbience(), 4);
   out['crowd swell big'] = await measure((a) => { a.startAmbience(); a.crowdSwell(0.95, 2.4); }, 4);
   out['applause single'] = await measure((a) => a.applause(1.2, 0.5), 3);

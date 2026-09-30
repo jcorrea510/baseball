@@ -1,6 +1,9 @@
 // The file names the game understands in public/sounds/umpire/ (no imports: the build script uses this too).
 //
-//     strike.mp3    "Strike!"                     (also used for a swinging strike)
+//     strike.mp3    "Strike!"                     (any strike; strike1 / strike2 are used first when they exist)
+//     strike1.mp3   "Strike one!"                 (the first strike of a count)
+//     strike2.mp3   "Strike two!"
+//     playball.mp3  "Play ball!"                  (the start of a game)
 //     ball.mp3      "Ball!"                       (also used for ball four, unless ball4.mp3 exists)
 //     strike3.mp3   "Strike three! You're out!"
 //     foul.mp3      "Foul ball!"
@@ -15,6 +18,9 @@
 export const FILES_FOR = {
   strike: ['strike'],
   strikeSwing: ['strike'],
+  strike1: ['strike1', 'strike'],
+  strike2: ['strike2', 'strike'],
+  playball: ['playball'],
   strike3: ['strike3'],
   strike3Swing: ['strike3'],
   ball: ['ball'],
@@ -24,7 +30,7 @@ export const FILES_FOR = {
   out: ['out'],
 };
 /** Every call name that can have a recording. */
-export const FILE_NAMES = ['strike', 'ball', 'strike3', 'foul', 'out', 'safe', 'ball4'];
+export const FILE_NAMES = ['strike', 'strike1', 'strike2', 'ball', 'strike3', 'foul', 'out', 'safe', 'ball4', 'playball'];
 export const FILE_EXTENSIONS = ['mp3', 'wav', 'ogg'];
 
 /** "Strike_B.MP3" -> { name: 'strike', take: 'b' };  anything the game does not understand -> null. */

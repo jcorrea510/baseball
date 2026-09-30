@@ -390,7 +390,7 @@ export class UI {
         ${slider('sfxVolume', 'bat', 'Effects', st.sfxVolume)}
         ${slider('umpireVolume', 'mic', 'Umpire', st.umpireVolume)}
         ${slider('crowdVolume', 'crowd', 'Crowd', st.crowdVolume)}
-        ${seg('umpire', 'mic', 'Umpire voice', [['synth', 'Voice'], ['speech', 'Browser'], ['off', 'Off']], st.umpire).replace('setrow stack', 'setrow wide')}
+        ${seg('umpire', 'mic', 'Umpire voice', [['on', 'On'], ['off', 'Off']], st.umpire === 'off' ? 'off' : 'on').replace('setrow stack', 'setrow wide')}
       </div>
       <div class="label">Game</div>
       <div class="setgrid">
@@ -439,7 +439,7 @@ export class UI {
       ['Built with', 'Vite'],
       ['Players, ballpark, crowd', 'Drawn in code'],
       ['Sound', 'Synthesized live in your browser'],
-      ['Umpire', recordings ? 'Recorded calls' : 'Synthesized voice'],
+      ['Umpire', recordings ? 'Recorded calls' : 'Signals only'],
     ];
     d.innerHTML = `${this.backHead('Credits')}
       <div class="mini-logo">${logoSVG({ id: 'credits', swoosh: false })}</div>

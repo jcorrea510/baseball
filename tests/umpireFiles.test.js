@@ -1,5 +1,5 @@
-// Your own umpire recordings (public/sounds/umpire): found by name, several takes, ignored when missing, and used before the
-// built-in voice. Plus the browser-voice fallback: which voice is chosen and how each call is spoken.
+// The umpire's recordings (public/sounds/umpire): found by name, several takes pooled per call, ignored when missing; the
+// recordings are his only voice (a call without one is silent).
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -9,7 +9,6 @@ import { UmpireFiles, FILES_FOR, FILE_NAMES } from '../src/audio/umpireFiles.js'
 import { parseUmpireFile } from '../src/audio/umpireNames.js';
 import { listUmpireFiles, umpireDir } from '../scripts/umpireFiles.mjs';
 import { AudioEngine } from '../src/audio/audio.js';
-import { speechPlan, pickBestVoice } from '../src/audio/umpireVoice.js';
 import { CONFIG } from '../src/config.js';
 import { createRng } from '../src/util/rng.js';
 
@@ -52,9 +51,14 @@ describe('which file names are understood', () => {
     expect(umpireDir('/repo', { SANDLOT_UMPIRE_DIR: '/tmp/x' })).toBe('/tmp/x');
   });
 
-  it('the folder in the repo has its instructions and no stray recordings', () => {
+  it('the folder in the repo has its instructions and a recording for every call the game makes', () => {
     const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-    expect(fs.existsSync(path.join(repo, 'public', 'sounds', 'umpire', 'README.txt'))).toBe(true);
+    const dir = path.join(repo, 'public', 'sounds', 'umpire');
+    expect(fs.existsSync(path.join(dir, 'README.txt'))).toBe(true);
+    const names = new Set(listUmpireFiles(dir).map((f) => parseUmpireFile(f)).filter(Boolean).map((x) => x.name));
+    for (const kind of ['strike', 'strike1', 'strike2', 'strikeSwing', 'strike3', 'strike3Swing', 'ball', 'ball4', 'foul', 'safe', 'out', 'playball']) {
+      expect(FILES_FOR[kind].some((n) => names.has(n)), kind).toBe(true);
+    }
   });
 });
 
@@ -98,6 +102,7 @@ describe('loading your recordings', () => {
     expect(a.f.pick('strikeSwing').name).toBe('strike');
     expect(a.f.pick('strike3Swing')).toBe(null);
     expect(a.f.pick('ball4').name).toBe('ball');
+    expect(a.f.pick('strike1').name).toBe('strike'); // (no strike1.mp3: the plain strike)
     const b = files(['ball.mp3', 'ball4.mp3'], { '/sounds/umpire/ball.mp3': 'ball', '/sounds/umpire/ball4.mp3': 'ball4' });
     await b.f.load(b.w.ctx);
     expect(b.f.pick('ball4').name).toBe('ball4');
@@ -163,17 +168,28 @@ function fakeAudio() {
   return { a, log };
 }
 
-describe('recordings come first, then the built-in voice', () => {
-  it('plays your recording when there is one, and the built-in voice for the rest', () => {
+describe('the recordings are the umpire\'s only voice', () => {
+  it('plays a recording when there is one; a call without one is silent', () => {
     const { a, log } = fakeAudio();
     const take = { name: 'mine' };
     a.files.takes.set('strike', [take]);
     expect(a.callUmpire('strike')).toBe(true);
-    expect(log.sources[0]).toBe(take); // (your file, not a freshly rendered buffer)
+    expect(log.sources[0]).toBe(take);
     expect(log.buffers).toBe(0);
-    expect(a.callUmpire('ball')).toBe(true); // no ball file: synthesized
-    expect(log.buffers).toBe(1);
-    expect(log.sources[1]).not.toBe(take);
+    expect(a.callUmpire('ball')).toBe(false); // no ball file: nothing (no synthesized voice any more)
+    expect(log.sources.length).toBe(1);
+  });
+
+  it('a first strike mixes "Strike one!" with the plain "Strike!" takes', () => {
+    const { a } = fakeAudio();
+    const one = { name: 'one' }, plain = { name: 'plain' }, drawn = { name: 'drawn' };
+    a.files.takes.set('strike1', [one]);
+    a.files.takes.set('strike', [plain, drawn]);
+    const seen = new Set();
+    a.setUmpire(4);
+    for (let i = 0; i < 60; i++) seen.add(a.files.pick('strike1', a.callRng).name);
+    expect([...seen].sort()).toEqual(['drawn', 'one', 'plain']);
+    expect(a.files.pick('strike2', a.callRng).name).not.toBe('one'); // strike two never says "one"
   });
 
   it('nothing plays when the umpire is off or muted, even with recordings', () => {
@@ -181,41 +197,8 @@ describe('recordings come first, then the built-in voice', () => {
     a.files.takes.set('strike', [{ name: 'mine' }]);
     a.umpireMode = 'off';
     expect(a.callUmpire('strike')).toBe(false);
-    a.umpireMode = 'synth'; a.muted = true;
+    a.umpireMode = 'on'; a.muted = true;
     expect(a.callUmpire('strike')).toBe(false);
     expect(log.sources.length).toBe(0);
-  });
-});
-
-describe('the browser voice', () => {
-  const V = (name, lang = 'en-US', localService = true) => ({ name, lang, localService });
-
-  it('prefers a deep, local, American voice and avoids obviously female or non-English ones', () => {
-    const voices = [V('Samantha'), V('Anna', 'de-DE'), V('Microsoft Zira - English (United States)'), V('Daniel', 'en-GB'), V('Google US English', 'en-US', false), V('Alex')];
-    expect(pickBestVoice(voices).name).toBe('Alex');
-    expect(pickBestVoice([V('Samantha'), V('Zira'), V('Daniel', 'en-GB')]).name).toBe('Daniel');
-    expect(pickBestVoice([V('Anna', 'de-DE')])).toBe(null);
-    expect(pickBestVoice([])).toBe(null);
-    expect(pickBestVoice(undefined)).toBe(null);
-  });
-
-  it('every call is a few short phrases spoken low, a strike slow and a ball quick', () => {
-    const S = CONFIG.audio.umpire.speech;
-    for (const kind of ['strike', 'strikeSwing', 'strike3', 'strike3Swing', 'ball', 'ball4', 'foul', 'safe', 'out']) {
-      for (let i = 0; i < 20; i++) {
-        const plan = speechPlan(kind, createRng(i + 1));
-        expect(plan.length).toBeGreaterThan(0);
-        for (const p of plan) {
-          expect(p.text.length).toBeGreaterThan(2);
-          expect(p.pitch).toBeGreaterThanOrEqual(S.pitch[0] * 0.9); expect(p.pitch).toBeLessThanOrEqual(S.pitch[1]);
-          expect(p.volume).toBeLessThanOrEqual(1);
-        }
-      }
-    }
-    const strike = speechPlan('strike', createRng(2))[0], ball = speechPlan('ball', createRng(2))[0];
-    expect(strike.rate).toBeLessThan(ball.rate);
-    expect(strike.rate).toBeLessThan(0.9);
-    expect(speechPlan('strike3', createRng(2)).map((p) => p.text.replace(/[^a-z]/gi, '').toLowerCase().slice(0, 5))).toEqual(['strik', 'three', expect.stringMatching(/^(youre|yerou)/)]);
-    expect(() => speechPlan('nonsense', createRng(1))).toThrow();
   });
 });

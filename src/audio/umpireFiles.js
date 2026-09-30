@@ -1,6 +1,5 @@
-// Your own umpire recordings. Drop files into  public/sounds/umpire/  (names in umpireNames.js) and they are played instead of the
-// built-in voice. The build looks in that folder and hands the game the list (`__UMPIRE_FILES__`), so the game only downloads
-// files that exist. Any call without a recording is spoken by the built-in voice, so a folder with only strike.mp3 is fine.
+// The umpire's recordings. Files in  public/sounds/umpire/  (names in umpireNames.js) are his voice. The build looks in that folder and hands the game the list (`__UMPIRE_FILES__`), so the game only downloads
+// files that exist. Any call without a recording is silent (the umpire still signals it).
 // The files are fetched once, after the first click/key press (the browser will not play sound before that). A file that cannot
 // be read is simply skipped - nothing here can stop the game.
 import { CONFIG } from '../config.js';
@@ -67,12 +66,21 @@ export class UmpireFiles {
   /** Is there a recording for this call? */
   has(kind) { return (FILES_FOR[kind] || []).some((n) => this.takes.has(n)); }
 
-  /** One recording of this call (a random take when there are several), or null. */
+  /**
+   * One recording of this call, or null. The takes of every file that fits are pooled and one is picked at random, so a first
+   * strike is sometimes "Strike one!", sometimes "Strike!", sometimes a drawn-out "Strrrike!". ball4 is the exception: its own
+   * file wins when it exists (it says something the plain call does not).
+   */
   pick(kind, rng) {
-    for (const n of FILES_FOR[kind] || []) {
+    const names = FILES_FOR[kind] || [];
+    const pool = [];
+    for (const n of names) {
       const list = this.takes.get(n);
-      if (list && list.length) return list[Math.floor((rng ? rng.next() : Math.random()) * list.length) % list.length];
+      if (!list || !list.length) continue;
+      if (kind === 'ball4' && n === 'ball4') { pool.push(...list); break; }
+      pool.push(...list);
     }
-    return null;
+    if (!pool.length) return null;
+    return pool[Math.floor((rng ? rng.next() : Math.random()) * pool.length) % pool.length];
   }
 }

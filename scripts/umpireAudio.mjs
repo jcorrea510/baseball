@@ -12,7 +12,10 @@ export const TRIM = { thresholdDb: -50, keepStart: 0.03, keepEnd: 0.08 }; // sil
 export const FORMATS = { mp3: ['-c:a', 'libmp3lame', '-q:a', '2'], ogg: ['-c:a', 'libvorbis', '-q:a', '5'], wav: ['-c:a', 'pcm_s16le'] };
 
 const ALIASES = {
-  strike: ['strike', 'strikes', 'called strike', 'swinging strike', 'strike one', 'strike two'],
+  strike: ['strike', 'strikes', 'called strike', 'swinging strike'],
+  strike1: ['strike1', 'strike one', 'strike 1', 'strike-one', 'strike_one'],
+  strike2: ['strike2', 'strike two', 'strike 2', 'strike-two', 'strike_two'],
+  playball: ['playball', 'play ball', 'play-ball', 'play_ball'],
   strike3: ['strike3', 'strike three', 'strike-three', 'strike_three', 'strikethree', 'strikeout', 'strike out', 'k', 'strike 3', 'you\'re out strike three'],
   ball: ['ball', 'balls', 'ball one', 'ball two', 'ball three'],
   ball4: ['ball4', 'ball four', 'ball-four', 'ball_four', 'ball 4', 'walk'],

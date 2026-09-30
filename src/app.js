@@ -7,7 +7,6 @@ import { createEffects } from './render/effects.js';
 import { Actors } from './render/actors.js';
 import { CameraRig } from './render/cameraRig.js';
 import { AudioEngine } from './audio/audio.js';
-import { stopBrowserVoice } from './audio/umpireVoice.js';
 import { UI } from './ui/ui.js';
 import { Engine } from './game/engine.js';
 import { Progress } from './game/progression.js';
@@ -41,7 +40,7 @@ export class App {
     try { if (this.prog.fresh && matchMedia('(prefers-reduced-motion: reduce)').matches) this.prog.updateSettings({ flashes: false, shake: false }); } catch (e) { /* ignore */ }
     this.audio = new AudioEngine();
     this.audio.muted = !this.prog.settings.sound;
-    this.audio.umpireMode = this.prog.settings.umpire || 'synth';
+    this.audio.umpireMode = this.prog.settings.umpire === 'off' ? 'off' : 'on';
     this.audio.volume = this.prog.settings.volume;
     for (const [ch, key] of [['sfx', 'sfxVolume'], ['umpire', 'umpireVolume'], ['crowd', 'crowdVolume']]) this.audio.setLevel(ch, this.prog.settings[key]);
 
@@ -246,7 +245,7 @@ export class App {
     if (key === 'tod') this.S.env.set(value, false);
     if (key === 'sound') { this.audio.setMuted(!value); this.ui.setMuteIcon(!value); }
     if (key === 'zone') { this.zone.visible = !!value && !!this.engine; if (!value) this.pitchMarker.visible = false; }
-    if (key === 'umpire') { this.audio.umpireMode = value; if (value !== 'speech') stopBrowserVoice(); }
+    if (key === 'umpire') this.audio.umpireMode = value === 'off' ? 'off' : 'on';
     if (key === 'volume') this.audio.setVolume(value);
     if (key === 'sfxVolume') this.audio.setLevel('sfx', value);
     if (key === 'umpireVolume') this.audio.setLevel('umpire', value);
@@ -260,7 +259,7 @@ export class App {
   previewSound(key) {
     const a = this.audio;
     if (key === 'volume' || key === 'sfxVolume') a.glovePop(0.9);
-    if (key === 'umpireVolume') { if (a.umpireMode === 'off') a.strikeCue(); else a.callUmpire('strike'); }
+    if (key === 'umpireVolume') a.callUmpire('strike');
     if (key === 'crowdVolume') { a.crowdSwell(0.6, 1.6); a.applause(1.2, 0.6); }
   }
 
@@ -331,6 +330,7 @@ export class App {
     if (this.params.get('bot')) this.bot = createBot(eng, { errSd: +(this.params.get('sd') || 20), seed: 5 });
     else this.bot = null;
     eng.start();
+    if (mode === 'quick') this.audio.callUmpire('playball', { delay: 0.6 }); // the plate umpire opens the game
     if (!this.prog.data.tipShown) {
       this.ui.hint(this.touch ? 'Tap to swing' : 'Space to swing', 4200);
       this.prog.data.tipShown = 1; this.prog.save();
@@ -434,7 +434,7 @@ export class App {
   }
 
   // What the plate umpire says and does for a pitch: a strike, a ball, strike three, ball four.
-  onPitchCall({ call, result }) {
+  onPitchCall({ call, result, strikes }) {
     const e = this.engine, audio = this.audio;
     const struckOut = !!result && /^strikeout/.test(result);
     let kind = null;
@@ -444,8 +444,9 @@ export class App {
     if (!kind) return;
     this.actors.strikeCall(e.time, kind); // (he always signals, even with the voice off)
     if (e.mode === 'derby') return; // batting practice: no calls
-    if (audio.umpireMode === 'off') { if (kind === 'ball' || kind === 'ball4') audio.ballCue(); else audio.strikeCue(); }
-    else audio.callUmpire(kind);
+    // "Strike one!" / "Strike two!" when there is a count (the recordings for them are pooled with the plain "Strike!")
+    if ((kind === 'strike' || kind === 'strikeSwing') && (strikes === 1 || strikes === 2)) kind = strikes === 1 ? 'strike1' : 'strike2';
+    audio.callUmpire(kind);
   }
 
   // A call at a base or a foul ball. Only a play at the plate is signalled by the umpire you can see; bases are voice only,
@@ -518,7 +519,7 @@ export class App {
       case 'throw': audio.throwWhoosh(); break;
       case 'glovePop': audio.glovePop(0.9); break;
       case 'outCall':
-        if (audio.umpireMode === 'off' || this.engine.mode === 'derby') audio.outCue();
+        if (this.engine.mode === 'derby') audio.outCue();
         else this.umpireCall('out', ev.base);
         // the out light comes on when the out is made, not when the whole play is over
         if (e.game) { this.playOuts = (this.playOuts || 0) + 1; ui.setCount(e.game.balls, e.game.strikes, Math.min(3, e.game.outs + this.playOuts)); }

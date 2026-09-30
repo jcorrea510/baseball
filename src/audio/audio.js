@@ -1,9 +1,8 @@
-import { planCall, speak, placeVoice, makeUmpireCharacter, speakWithBrowserVoice, stopBrowserVoice, warmBrowserVoices } from './umpireVoice.js';
 import { UmpireFiles } from './umpireFiles.js';
 import { createRng } from '../util/rng.js';
 import { CONFIG } from '../config.js';
 
-// All sound is synthesized live with the Web Audio API - no audio files. The audio context is only created
+// Game sounds are synthesized live with the Web Audio API; the umpire's calls are recordings (public/sounds/umpire). The context is only created
 // after the first click / key press (browsers require that), so nothing plays before then.
 export class AudioEngine {
   constructor() {
@@ -17,38 +16,31 @@ export class AudioEngine {
     this.noiseBuf = null;
     this.reverbBuf = null;
     this.lastCrack = 0;
-    this.umpireMode = CONFIG.audio.umpire.voice; // 'synth' | 'speech' | 'off'
-    this.umpire = null; // this game's umpire (his own voice)
+    this.umpireMode = 'on'; // 'on' | 'off'
     this.callRng = createRng(1);
-    this.files = new UmpireFiles(); // your own recordings from public/sounds/umpire (loaded after the first click)
+    this.files = new UmpireFiles(); // the umpire's recordings from public/sounds/umpire (loaded after the first click)
   }
 
-  // A new game gets a new umpire (a deep, gruff voice of his own).
+  // A new game: the takes of each call are picked from a fresh sequence.
   setUmpire(seed) {
-    this.umpire = makeUmpireCharacter(seed);
     this.callRng = createRng((seed * 2654435761) >>> 0);
   }
 
-  // The plate umpire calls a pitch / play. kind: strike | strikeSwing | strike3 | strike3Swing | ball | ball4 | foul | safe | out.
-  // Silent when muted or when the umpire voice is off. Every call varies a little. With the Voice setting, a recording of the call
-  // (public/sounds/umpire) is played when there is one, otherwise the built-in voice speaks; the Browser setting uses the device's voice.
+  // The plate umpire calls a pitch / play. kind: strike | strike1 | strike2 | strikeSwing | strike3 | strike3Swing | ball | ball4 | foul |
+  // safe | out | playball. A random take among the recordings for that call; a call with no recording is silent. Never throws.
   callUmpire(kind, { pan = 0, delay = 0.04 } = {}) {
-    if (this.muted || this.umpireMode === 'off') return false;
+    if (this.muted || this.umpireMode === 'off' || !this.ok || this.levels.umpire <= 0.001) return false;
     try {
-      const U = CONFIG.audio.umpire;
-      if (this.umpireMode === 'speech') return this.hidden ? false : speakWithBrowserVoice(kind, this.callRng, this.volume * this.levels.umpire);
-      if (!this.ok || this.levels.umpire <= 0.001) return false;
       const take = this.files.pick(kind, this.callRng);
-      if (take) { this.playFile(take, { pan, delay }); return true; }
-      if (!this.umpire) this.setUmpire(1);
-      speak(this, planCall(kind, this.umpire, this.callRng), { delay, level: U.level * this.levels.umpire, pan });
+      if (!take) return false;
+      this.playFile(take, { pan, delay });
       return true;
     } catch (err) {
       return false; // a sound problem must never interrupt the game
     }
   }
 
-  // One of your own recordings, placed in the ballpark like the built-in voice (a little reverb and echo).
+  // One recording, placed in the ballpark (a little stadium reverb and a slap-back echo off the far stands).
   playFile(buffer, { pan = 0, delay = 0.04 } = {}) {
     const c = this.ctx, F = CONFIG.audio.umpire.files;
     const src = c.createBufferSource(); src.buffer = buffer;
@@ -69,7 +61,6 @@ export class AudioEngine {
       this.build(new AC());
       if (this.ctx.state === 'suspended' && !this.hidden) this.ctx.resume();
       this.startAmbience();
-      warmBrowserVoices();
       try { this.files.load(this.ctx); } catch (e) { /* recordings are optional */ } // look for your own umpire recordings
     } catch (e) { this.unlocked = false; }
   }
@@ -104,7 +95,6 @@ export class AudioEngine {
   // Tab hidden (switched away, phone locked): everything goes quiet, and comes back when the game is visible again.
   setHidden(h) {
     this.hidden = !!h;
-    if (h) stopBrowserVoice();
     if (!this.ctx) return;
     try { if (h) this.ctx.suspend(); else if (this.ctx.state !== 'running') this.ctx.resume(); } catch (e) { /* ignore */ }
   }
@@ -122,7 +112,6 @@ export class AudioEngine {
 
   setMuted(m) {
     this.muted = m;
-    if (m) stopBrowserVoice();
     if (this.master) this.master.gain.setTargetAtTime(m ? 0 : this.volume, this.ctx.currentTime, 0.03);
   }
   setVolume(v) {
@@ -223,17 +212,6 @@ export class AudioEngine {
     if (!this.ok) return;
     const t = this.ctx.currentTime;
     this.noise(t, 0.25, { type: 'bandpass', freq: 900, freqEnd: 500, q: 0.7, gain: 0.12, attack: 0.05 });
-  }
-  strikeCue() {
-    if (!this.ok) return;
-    const t = this.ctx.currentTime;
-    this.tone(t, 0.09, { type: 'square', freq: 740, gain: 0.07, attack: 0.002 });
-    this.tone(t + 0.09, 0.13, { type: 'square', freq: 990, gain: 0.07, attack: 0.002 });
-  }
-  ballCue() {
-    if (!this.ok) return;
-    const t = this.ctx.currentTime;
-    this.tone(t, 0.11, { type: 'sine', freq: 420, freqEnd: 360, gain: 0.14, attack: 0.003 });
   }
   outCue() {
     if (!this.ok) return;
@@ -407,5 +385,28 @@ export class AudioEngine {
       o.connect(og); og.connect(g);
       o.start(t0); o.stop(t0 + dur + 0.05);
     }
+  }
+}
+
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+
+/**
+ * Put a voice into the ballpark: pan it, and send some of it to the reverb and to a couple of slap-back echoes off the far stands.
+ * `out` is any node carrying the dry voice. (The echoes are plain delay taps, not a feedback loop, so the nodes free themselves.)
+ */
+export function placeVoice(audio, out, { pan = 0, reverb = 0.3, echo = 1 } = {}) {
+  const c = audio.ctx, U = CONFIG.audio.umpire;
+  const bus = audio.master || audio.sfx; // the umpire has his own volume (applied per call), so he skips the effects channel
+  const panner = c.createStereoPanner ? c.createStereoPanner() : null;
+  if (panner) { panner.pan.value = clamp(pan, -1, 1); out.connect(panner); panner.connect(bus); } else out.connect(bus);
+  if (reverb > 0 && audio.reverb) { const send = c.createGain(); send.gain.value = reverb; out.connect(send); send.connect(audio.reverb); }
+  if (echo > 0 && c.createDelay) {
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = U.echo.lowpassHz; // far-away sound is muffled
+    lp.connect(bus);
+    U.echo.taps.forEach((t, i) => {
+      const d = c.createDelay(1.5); d.delayTime.value = t;
+      const g = c.createGain(); g.gain.value = U.echo.levels[i] * echo;
+      out.connect(d); d.connect(g); g.connect(lp);
+    });
   }
 }
