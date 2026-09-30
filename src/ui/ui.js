@@ -42,7 +42,7 @@ const ICONS = {
   shake: '<path d="M3 9l2 3-2 3M21 9l-2 3 2 3M8 7v10M12 4v16M16 7v10"/>',
   mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4"/>',
   star: '<path class="f" d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',
-  gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M21.2 12h-2.4M5.2 12H2.8M18.5 5.5l-1.7 1.7M7.2 16.8l-1.7 1.7M18.5 18.5l-1.7-1.7M7.2 7.2L5.5 5.5"/><circle cx="12" cy="12" r="6.3"/>',
+  gear: '<path d="M19.15 10.55L21.23 10.89L21.23 13.11L19.15 13.45L18.08 16.03L19.32 17.74L17.74 19.32L16.03 18.08L13.45 19.15L13.11 21.23L10.89 21.23L10.55 19.15L7.97 18.08L6.26 19.32L4.68 17.74L5.92 16.03L4.85 13.45L2.77 13.11L2.77 10.89L4.85 10.55L5.92 7.97L4.68 6.26L6.26 4.68L7.97 5.92L10.55 4.85L10.89 2.77L13.11 2.77L13.45 4.85L16.03 5.92L17.74 4.68L19.32 6.26L18.08 7.97Z"/><circle cx="12" cy="12" r="3"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/>',
   flash: '<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/><circle cx="12" cy="12" r="3.2"/>',
   timing: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9.5 2.5h5"/>',
@@ -261,9 +261,6 @@ export class UI {
         <div class="grp"><span class="label">Level</span>${seg('difficulty', DIFFICULTIES.map((d) => [d, CONFIG.difficulty[d].label]), st.difficulty)}</div>
         <div class="grp"><span class="label">Time</span>${seg('tod', [['day', 'Day'], ['dusk', 'Dusk'], ['night', 'Night']], st.tod)}</div>
         <div class="grp"><span class="label">Bats</span>${seg('hand', [['auto', 'Mixed'], ['R', 'Right'], ['L', 'Left']], st.hand)}</div>
-        <div class="grp"><span class="label">Zone</span><button class="switch ${st.zone ? 'on' : ''}" data-set="zone" data-bool="1" aria-label="Strike zone"></button></div>
-        <div class="grp"><span class="label">Guide</span><button class="switch ${st.pitchGuide ? 'on' : ''}" data-set="pitchGuide" data-bool="1" aria-label="Pitch guide"></button></div>
-        <div class="grp"><span class="label">Ring</span><button class="switch ${st.landingRing ? 'on' : ''}" data-set="landingRing" data-bool="1" aria-label="Landing ring"></button></div>
       </div>`;
     s.appendChild(wrap);
     if (prev) wrap.scrollTop = prev.scrollTop;
@@ -439,9 +436,9 @@ export class UI {
       head = `<div class="label">${p.game.walkOff ? 'Walk-off' : 'Final'}</div><div class="result ${win ? 'win' : 'loss'}">${win ? 'YOU WIN' : 'YOU LOSE'}</div>`;
       const n = Math.max(g.line.top.length, 3);
       let hdr = '<tr><th></th>' + Array.from({ length: n }, (_, i) => `<th>${i + 1}</th>`).join('') + '<th>R</th><th>H</th></tr>';
-      const row = (name, arr, R, H) => `<tr><td class="tn">${name}</td>` + Array.from({ length: n }, (_, i) => `<td>${arr[i] === undefined ? '' : arr[i]}</td>`).join('') + `<td class="r">${R}</td><td>${H}</td></tr>`;
-      table = `<table class="linescore">${hdr}${row(teamNames.away, g.line.top, g.score.top, g.hits.top)}${row(teamNames.home, g.line.bottom, g.score.bottom, g.hits.bottom)}</table>`;
-      grid = [[avgText(st.hits, st.ab), 'AVG'], [`${st.hits}/${st.ab}`, 'Hits'], [st.hr, 'HR'], [st.rbi, 'RBI'], [st.perfect, 'Perfect'], [st.longestHR ? st.longestHR + ' ft' : '--', 'Longest'], [st.maxEV ? Math.round(st.maxEV) + ' mph' : '--', 'Exit velo'], [`${st.strikeouts}K ${st.walks}BB`, 'K / BB']];
+      const row = (name, ab, arr, R, H) => `<tr><td class="tn"><span class="full">${name}</span><span class="ab">${ab}</span></td>` + Array.from({ length: n }, (_, i) => `<td>${arr[i] === undefined ? '' : arr[i]}</td>`).join('') + `<td class="r">${R}</td><td>${H}</td></tr>`;
+      table = `<table class="linescore">${hdr}${row(teamNames.away, teamNames.awayAbbr, g.line.top, g.score.top, g.hits.top)}${row(teamNames.home, teamNames.homeAbbr, g.line.bottom, g.score.bottom, g.hits.bottom)}</table>`;
+      grid = [[avgText(st.hits, st.ab), 'AVG'], [`${st.hits}/${st.ab}`, 'Hits'], [st.hr, 'HR'], [st.rbi, 'RBI'], [st.perfect, 'Perfect'], [st.longestHR ? st.longestHR + ' ft' : '--', 'Longest'], [st.maxEV ? Math.round(st.maxEV) + ' mph' : '--', 'Exit velo'], [`${st.strikeouts} / ${st.walks}`, 'K / BB']];
     } else if (p.mode === 'derby') {
       const d2 = p.derby;
       head = `<div class="label">Derby</div><div class="result win">${d2.hr} HOME RUN${d2.hr === 1 ? '' : 'S'}</div>`;

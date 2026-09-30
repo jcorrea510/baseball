@@ -311,6 +311,8 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
 .linescore th { color: var(--ink-3); font-size: 11px; letter-spacing: .12em; font-weight: 800; }
 .linescore td.tn { text-align: left; font-weight: 800; letter-spacing: .05em; }
 .linescore td.r { color: var(--amber-hi); font-weight: 900; }
+.linescore .ab { display: none; }
+@media (max-width: 560px) { .linescore .full { display: none; } .linescore .ab { display: inline; } }
 .statgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sp-2); margin: var(--sp-3) 0; }
 .stat { padding: 10px 6px; border-radius: var(--r-md); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
 .stat .v { font-size: 24px; font-weight: 900; color: var(--amber-hi); line-height: 1.1; font-variant-numeric: tabular-nums; }
@@ -431,7 +433,8 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
   .dialog.pause .btn { min-height: 38px; } .dialog.pause .setrow { min-height: 34px; } .dialog.pause .setrow.stack { padding-top: 2px; padding-bottom: 2px; }
   .banner { top: 41%; }
 }
-@media (max-width: 480px) {
+@media (max-width: 520px) {
+  .title-stack .row { display: grid; grid-template-columns: 1fr 1fr; width: min(300px, 86vw); }
   .title-stack .btn.small { padding: 0 10px; font-size: 11px; gap: 6px; }
 }
 @media (max-width: 520px) {

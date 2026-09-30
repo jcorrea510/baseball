@@ -599,10 +599,10 @@ export class App {
     const g = p.game;
     if (g) g.line = lineScore(e.game);
     this.ui.buildTitle(this.prog);
-    const names = { away: PLAYER_TEAM.name.toUpperCase().slice(0, 16), home: e.opponent.name.toUpperCase().slice(0, 18) };
+    const names = { away: PLAYER_TEAM.name.toUpperCase(), home: e.opponent.name.toUpperCase(), awayAbbr: PLAYER_TEAM.abbr, homeAbbr: e.opponent.abbr };
     this.later(() => {
-      this.ui.showGameOver(p, records, unlocked, names);
-      if (unlocked.length) { this.audio.unlockChime(); this.ui.toast('Unlocked: ' + unlocked.map((u) => u.name).join(', '), 4200, 'unlock'); }
+      this.ui.showGameOver(p, records, unlocked, names); // (new unlocks are listed on it as badges)
+      if (unlocked.length) this.audio.unlockChime();
     }, 900);
     this.screen = 'over';
   }
