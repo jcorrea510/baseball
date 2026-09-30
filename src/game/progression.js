@@ -67,9 +67,10 @@ export class Progress {
     this.data = this.load();
   }
   load() {
+    this.fresh = true; // nothing saved yet: a first visit
     try {
       const raw = this.store.get(CONFIG.storageKey);
-      if (raw) return merge(DEFAULT_SAVE(), JSON.parse(raw));
+      if (raw) { const d = merge(DEFAULT_SAVE(), JSON.parse(raw)); this.fresh = false; return d; }
     } catch { /* fall through */ }
     return DEFAULT_SAVE();
   }

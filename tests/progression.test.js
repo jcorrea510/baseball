@@ -138,3 +138,12 @@ describe('reset stats', () => {
     expect(p.settings.inputDelayMs).toBe(0);
   });
 });
+
+describe('first visit', () => {
+  it('knows whether anything was saved before', () => {
+    const store = memStore();
+    expect(new Progress(store).fresh).toBe(true);
+    new Progress(store).save();
+    expect(new Progress(store).fresh).toBe(false);
+  });
+});

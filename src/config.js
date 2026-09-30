@@ -26,7 +26,6 @@ export const CONFIG = {
     baseDistance: 90,
     moundDistance: 60.5, // from the back tip of the plate to the rubber
     moundHeight: 0.85,
-    plateWidth: 17 / 12,
     // Fence distance (ft) at a few spray angles; the game smooths between them.
     // Make the numbers smaller to make home runs easier.
     fencePoints: [
@@ -40,7 +39,7 @@ export const CONFIG = {
     warningTrack: 18, // dirt strip in front of the wall
     foulPoleHeight: 48,
     // Grandstand behind the fence (drives both the drawing and where a home run lands)
-    stands: { slope: 0.62, depth: 70, topHeight: 52 },
+    stands: { slope: 0.62, depth: 70 },
   },
 
   // --------------------------------------------------------------------------
@@ -165,7 +164,6 @@ export const CONFIG = {
   difficulty: {
     rookie: {
       label: 'Rookie',
-      blurb: 'Slow pitches, big timing windows, pitch names shown, and the strike zone flashes when to swing.',
       swingCue: true, // the strike-zone box pulses at the perfect moment to press the button
       windowScale: 1.5,
       fastball: [62, 72],
@@ -181,14 +179,12 @@ export const CONFIG = {
       tellStrength: 1.0,
       announcePitch: true,
       windup: 1.05,
-      zoneDefault: true,
       derbyFoulIsOut: false,
       // Odds for each plate appearance when the computer bats (its half-innings are simulated).
       ai: { k: 0.26, bb: 0.06, groundout: 0.21, flyout: 0.18, single: 0.15, double: 0.04, triple: 0.005, hr: 0.02 },
     },
     pro: {
       label: 'Pro',
-      blurb: 'Real speeds and a mix of pitches. The sweet spot.',
       windowScale: 1.0,
       fastball: [80, 90],
       mix: { fastball: 0.46, changeup: 0.18, curveball: 0.18, slider: 0.18, heater: 0 },
@@ -199,14 +195,12 @@ export const CONFIG = {
       tellStrength: 0.6,
       announcePitch: false,
       windup: 0.92,
-      zoneDefault: true,
       derbyFoulIsOut: true,
       swingCue: false,
       ai: { k: 0.22, bb: 0.08, groundout: 0.19, flyout: 0.16, single: 0.19, double: 0.06, triple: 0.008, hr: 0.035 },
     },
     allstar: {
       label: 'All-Star',
-      blurb: 'Fast, tricky, tiny windows. Watch for the pitcher\'s tells.',
       windowScale: 0.7,
       fastball: [88, 98],
       mix: { fastball: 0.36, changeup: 0.18, curveball: 0.17, slider: 0.19, heater: 0.1 },
@@ -217,7 +211,6 @@ export const CONFIG = {
       tellStrength: 0.28,
       announcePitch: false,
       windup: 0.85,
-      zoneDefault: false,
       derbyFoulIsOut: true,
       swingCue: false,
       ai: { k: 0.19, bb: 0.09, groundout: 0.17, flyout: 0.15, single: 0.21, double: 0.075, triple: 0.01, hr: 0.05 },
@@ -234,9 +227,7 @@ export const CONFIG = {
     playEndPause: 0.5, // pause after a play finishes
     pitcherSet: 0.4, // s the pitcher (and catcher) need to be set once they are back in place: no pitch before it
     fastForward: 4.5, // speed multiplier when you tap to skip a play
-    inningBreak: 1.1,
     aiSummaryLine: 0.55, // seconds per line of the computer's half-inning highlights
-    homerunFreeze: 0.0,
   },
 
   // --------------------------------------------------------------------------
@@ -326,9 +317,6 @@ export const CONFIG = {
     closePlay: 0.45, // a runner who beats the throw by less than this many seconds gets a 'Safe!' call
     outMargin: 0.02, // a throw must beat the runner by this many seconds
     runnerMargin: 0.1, // a runner must beat the throw by this to take an extra base
-    // Fun-factor tweak: fielders are a little less sure-handed on the hardest line drives
-    // (0 = perfect defense). Kept at 0 so results are fully deterministic.
-    errorRate: 0,
   },
   runner: {
     speed: 30.2, // ft/s top running speed
@@ -346,7 +334,6 @@ export const CONFIG = {
     batterStart: 0.34, // s after contact the batter leaves the box
     startDelay: 0.04, // runners on base leave almost as soon as the ball is hit (they are already leading off)
     trotSpeed: 21, // ft/s on a home-run trot
-    trotSpeedup: 2.2, // home-run trots are sped up this much for pacing
     jogSpeed: 20, // ft/s: the walk to first after ball four
     slide: 0.6, // s: a play is 'close' (he slides) when the throw arrives within this of him (either side)
     easeUp: 0.4, // s: once the third out is made, runners still going ease up and coast to a stop (how quickly their speed dies away)
@@ -368,9 +355,7 @@ export const CONFIG = {
       goodLaunch: { center: 24, spread: 7 },
       pullBonus: 6, // extra mph on a fully pulled ball (pulling is where a hitter is strongest)
       pullSpan: 30, // degrees toward the pull side that count as "fully pulled"
-      strikeChance: 1,
       locationSigma: 0.24,
-      hrStreakBonus: 0, // (no bonus in scoring - just tracked)
     },
     practice: { speedMin: 45, speedMax: 105, speedDefault: 85 },
   },
@@ -397,9 +382,6 @@ export const CONFIG = {
 
   camera: {
     batter: { pos: [0.0, 13.5, 24.0], pitch: -14.5, fov: 36 }, // camera behind the plate; pitch in degrees
-    fovMin: 24,
-    followLag: 5.5, // higher = camera follows the ball more tightly
-    snapBackTime: 0.7,
     minHorizontalFov: 38, // narrow (portrait) screens widen the view to keep this
   },
   // --------------------------------------------------------------------------

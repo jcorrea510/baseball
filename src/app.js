@@ -37,6 +37,8 @@ export class App {
     const params = this.params, canvas = this.canvas;
     const step = async (f, label) => { report(f, label); await breathe(); };
     this.prog = new Progress();
+    // A first visit from a device set to "reduce motion": no white flashes or camera shake (both can be turned on in Settings)
+    try { if (this.prog.fresh && matchMedia('(prefers-reduced-motion: reduce)').matches) this.prog.updateSettings({ flashes: false, shake: false }); } catch (e) { /* ignore */ }
     this.audio = new AudioEngine();
     this.audio.muted = !this.prog.settings.sound;
     this.audio.umpireMode = this.prog.settings.umpire || 'synth';
