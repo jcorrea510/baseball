@@ -52,6 +52,18 @@ const ICONS = {
 };
 const icon = (name, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`;
 
+// A selector that finds "the same" control again after its screen is rebuilt.
+function focusSelector(el) {
+  const d = el.dataset || {};
+  if (d.v !== undefined && el.parentNode && el.parentNode.dataset && el.parentNode.dataset.set) return `[data-set="${el.parentNode.dataset.set}"] [data-v="${d.v}"]`;
+  if (d.set) return `[data-set="${d.set}"]`;
+  if (d.mode) return `[data-mode="${d.mode}"]`;
+  if (d.kind && d.key) return `[data-kind="${d.kind}"][data-key="${d.key}"]`;
+  if (d.slide) return `[data-slide="${d.slide}"]`;
+  if (d.a) return `[data-a="${d.a}"]`;
+  return null;
+}
+
 const PITCH_LABEL = { fastball: 'Fastball', changeup: 'Changeup', curveball: 'Curveball', slider: 'Slider', heater: 'Heater', mixed: 'Mixed' };
 const avgText = (hits, ab) => (ab > 0 ? (hits / ab).toFixed(3).replace(/^0/, '') : '.000');
 // Small screens fold the practice chooser away so it never covers the play.
@@ -169,6 +181,9 @@ export class UI {
     window.addEventListener('resize', this.checkRotate);
     window.addEventListener('orientationchange', () => setTimeout(this.checkRotate, 150));
     this.checkRotate();
+    // who is driving the menus: the keyboard (focus follows the screens) or a mouse / finger (no focus rings)
+    window.addEventListener('keydown', (e) => { if (['Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Escape'].includes(e.key)) this.keyboard = true; }, true);
+    window.addEventListener('pointerdown', () => { this.keyboard = false; }, true);
   }
 
   // ---------------------------------------------------------------- screens
@@ -183,8 +198,17 @@ export class UI {
   fresh(name, dim = true) {
     const s = this.screens[name] || this.makeScreen(name, dim);
     s.classList.toggle('still', s.classList.contains('show'));
+    // remember which control had keyboard focus, so the rebuilt screen can give it back (refocus)
+    const a = document.activeElement;
+    this.focusSel = a && s.contains(a) ? focusSelector(a) : null;
     s.innerHTML = '';
     return s;
+  }
+  refocus(s) {
+    if (!this.focusSel) return;
+    const el = s.querySelector(this.focusSel);
+    this.focusSel = null;
+    if (el) el.focus({ preventScroll: true });
   }
   show(name) {
     for (const [k, s] of Object.entries(this.screens)) {
@@ -192,10 +216,22 @@ export class UI {
       if (k !== name) s.classList.remove('still');
     }
     this.current = name;
+    this.moveFocus(this.screens[name]);
   }
   hideAll() {
     for (const s of Object.values(this.screens)) { s.classList.remove('show'); s.classList.remove('still'); }
     this.current = null;
+    this.moveFocus(null);
+  }
+  // Focus never stays on a button of a screen that has gone (Enter would press it). Someone using the keyboard gets the
+  // first button of the new screen focused, so they can carry on without the mouse.
+  moveFocus(screen) {
+    const a = typeof document !== 'undefined' ? document.activeElement : null;
+    if (a && a !== document.body && a.closest && a.closest('.screen') && a.closest('.screen') !== screen) a.blur();
+    if (screen && this.keyboard) {
+      const first = screen.querySelector('button:not([disabled]), input, [tabindex="0"]');
+      if (first && !(document.activeElement && screen.contains(document.activeElement))) first.focus({ preventScroll: true });
+    }
   }
   overlay(name, on) { const s = this.screens[name]; if (s) s.classList.toggle('show', on); }
 
@@ -264,6 +300,7 @@ export class UI {
       </div>`;
     s.appendChild(wrap);
     if (prev) wrap.scrollTop = prev.scrollTop;
+    this.refocus(s);
     s.onclick = (e) => {
       if (this.settingClick(e, true)) return;
       const b = e.target.closest('[data-a]');
@@ -367,6 +404,7 @@ export class UI {
       </div>
       <div class="row foot"><button class="btn small ghost warn" data-a="resetStats" data-confirm="Erase stats?">${icon('trash')}Reset stats</button></div>`;
     s.appendChild(d);
+    this.refocus(s);
     for (const r of d.querySelectorAll('input[data-slide]')) {
       const out = r.parentNode.querySelector('.val');
       const unit = r.dataset.unit;
@@ -466,6 +504,7 @@ export class UI {
     d.innerHTML = `${this.backHead('Locker')}<div class="label">Bats</div><div class="grid">${Object.entries(BATS).map(([k, v]) => mk('bats', k, v.label, batSw[k])).join('')}</div>
       <div class="label">Uniforms</div><div class="grid">${Object.entries(UNIFORMS).map(([k, v]) => mk('uniforms', k, v.label, `linear-gradient(90deg, ${v.primary} 55%, ${v.secondary} 55%, ${v.secondary} 75%, ${v.trim} 75%)`)).join('')}</div>`;
     s.appendChild(d);
+    this.refocus(s);
     s.onclick = (e) => {
       const it = e.target.closest('.item');
       if (it) { if (!it.classList.contains('locked')) this.act('equip', { kind: it.dataset.kind, id: it.dataset.key }); return; }
@@ -480,6 +519,7 @@ export class UI {
     const cells = [[avgText(c.hits, c.ab), 'AVG'], [c.hits, 'Hits'], [c.hr, 'HR'], [c.longestHR ? c.longestHR + ' ft' : '--', 'Longest HR'], [c.maxEV ? Math.round(c.maxEV) + ' mph' : '--', 'Exit velo'], [c.perfects, 'Perfect'], [`${c.wins}/${c.games}`, 'Wins'], [c.derbyBestHR, 'Derby best'], [c.derbyBestStreak, 'HR streak'], [c.rbi, 'RBI'], [c.strikeouts, 'Strikeouts'], [c.practiceSwings, 'Practice']];
     d.innerHTML = `${this.backHead('Career', `<button class="btn small ghost warn" data-a="resetStats" data-confirm="Erase stats?">${icon('trash')}Reset</button>`)}<div class="statgrid">${cells.map(([v, l]) => `<div class="stat"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('')}</div>`;
     s.appendChild(d);
+    this.refocus(s);
     s.onclick = (e) => {
       const b = e.target.closest('[data-a]'); if (!b) return;
       if (b.dataset.confirm && !this.confirmed(b)) return;

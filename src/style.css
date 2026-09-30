@@ -151,8 +151,8 @@ svg.i .f { fill: currentColor; stroke: none; }
 kbd { display: inline-block; min-width: 26px; padding: 4px 7px; text-align: center; border-radius: 7px; background: rgba(255, 255, 255, .14); box-shadow: 0 2px 0 rgba(0, 0, 0, .35), inset 0 0 0 1px var(--line); font-family: inherit; font-weight: 800; color: var(--ink); font-size: 12px; line-height: 1; }
 
 /* ------------------------------------------------------------------ HUD (in game) */
-.hud { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .3s; }
-.hud.show { opacity: 1; }
+.hud { position: absolute; inset: 0; pointer-events: none; opacity: 0; visibility: hidden; transition: opacity .3s, visibility 0s linear .3s; }
+.hud.show { opacity: 1; visibility: visible; transition: opacity .3s, visibility 0s; } /* (hidden, not just see-through: its buttons are out of the Tab order outside a game) */
 .vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at center, transparent 58%, rgba(0, 0, 0, .34) 100%); }
 .flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
 .hudbtns { position: absolute; top: calc(var(--safe-t) + 10px); left: calc(var(--safe-l) + 12px); display: flex; gap: var(--sp-2); pointer-events: auto; }
