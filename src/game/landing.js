@@ -17,7 +17,7 @@ export function landingSpot(sim, plan, cfg = CONFIG) {
   if (sim.wallHit && sim.wallHit.t < fb.t) return null; // it hits the wall first: it never lands on the grass
   if (sim.standsLanding && sim.standsLanding.t < fb.t) return null;
   if (sim.apex.y < L.minApex || fb.t < L.minFlight) return null;
-  const caught = !!(plan && plan.caught && plan.catchPos && plan.catchT <= fb.t);
+  const caught = !!(plan && (plan.caught || plan.dropped) && plan.catchPos && plan.catchT <= fb.t);
   // The ring marks where the ball's flight really ends: the grass where it lands, or - when a fielder catches it - the spot under the
   // catch (a running catch is often several feet short of where it would have landed, and the ring must agree with the picture).
   const x = caught ? plan.catchPos.x : fb.x, z = caught ? plan.catchPos.z : fb.z;

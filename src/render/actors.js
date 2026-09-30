@@ -240,7 +240,7 @@ export class Actors {
       const x = st.cx + st.fx, z = st.cz + st.fz;
       let y = pos === 'P' ? moundY(x, z) : 0;
       // a ball above his standing reach is taken with a leap: he is in the air at the catch and comes down after it
-      if (plan && plan.leap && plan.fielder === pos && plan.caught && playT >= 0) y += leapHeight(plan.leap.height, playT - plan.catchT, E.cfg.physics.gravity);
+      if (plan && plan.leap && plan.fielder === pos && (plan.caught || plan.dropped) && playT >= 0) y += leapHeight(plan.leap.height, playT - plan.catchT, E.cfg.physics.gravity);
       const moving = speed > 0.5;
 
       // ---- facing
@@ -262,7 +262,7 @@ export class Actors {
       else if (moving && speed > 2) {
         want = Math.atan2(vx, vz);
         // on a fly ball he turns to face it for the last half second before the catch (keeps his eyes and glove on it)
-        if (plan && plan.caught && catchT !== undefined && playT > catchT - 0.7 && ballD > 5) want = Math.atan2(bx - x, bz - z);
+        if (plan && (plan.caught || plan.dropped) && catchT !== undefined && playT > catchT - 0.7 && ballD > 5) want = Math.atan2(bx - x, bz - z);
       } else if (plan && playT > 0.2 && ballD > 8) want = Math.atan2(bx - x, bz - z);
       else if (!plan || playT <= 0.2) want = Math.atan2(-x, -z); // watching the batter
       st.yaw = turnToward(st.yaw, want, rate, 12, dt);
@@ -368,7 +368,12 @@ export class Actors {
     if (plan) for (const th of plan.throws) if (th.from === pos) { if (playT >= th.t0 - 0.32 && playT <= th.t0 + 0.32) throwing = th; }
     // catch / field moments
     let catchT = null;
-    if (plan && move && plan.fielder === pos) catchT = plan.caught ? plan.catchT : (plan.pickupT !== undefined ? plan.pickupT : null);
+    if (plan && move && plan.fielder === pos) {
+      catchT = plan.caught ? plan.catchT : (plan.pickupT !== undefined ? plan.pickupT : null);
+      // after an error he picks the loose ball up again: the fielding pose plays a second time
+      const lo = plan.looses && plan.looses[0];
+      if (lo && playT > lo.t0 + 0.25) catchT = lo.t1;
+    }
     if (dive) {
       // the glove reaches for the ball until it is caught, then stays where the catch happened and comes down with it
       if (dive.phase === 'air' && dive.u < dive.catchU) {
@@ -835,7 +840,7 @@ export class Actors {
       const q = sampleBall(sim, t);
       out.set(q.x, q.y, q.z);
       // the last instant before a catch: the ball settles into his glove (the glove may be a little short of where the ball is)
-      if (plan.caught && plan.fielder && t > plan.catchT - CATCH_SETTLE && t <= plan.catchT) {
+      if ((plan.caught || plan.dropped) && plan.fielder && t > plan.catchT - CATCH_SETTLE && t <= plan.catchT) {
         const catcher = this.fielders[plan.fielder];
         catcher.root.updateMatrixWorld(true);
         catcher.gloveWorld(this.tmpV);
@@ -860,6 +865,15 @@ export class Actors {
       person.gloveWorld(out);
       out.y = Math.max(out.y, person.animState === 'dive' ? 0.3 : 1.2);
       return { kind: 'carry', trail: 0 };
+    }
+    if (seg.kind === 'loose') {
+      // the ball pops out of the glove, drops and rolls a few feet, then lies there until he picks it up
+      const lo = seg.lo;
+      const u = clamp((t - lo.t0) / Math.max(0.1, Math.min(0.6, lo.t1 - lo.t0)), 0, 1);
+      const h = smoothstep(0, 1, u);
+      const y = 0.12 + (lo.ay - 0.12) * (1 - u) * (1 - u) + 1.1 * Math.sin(Math.PI * Math.min(1, u * 1.6)) * (1 - u);
+      out.set(lerp(lo.ax, lo.bx, h), Math.max(0.12, y), lerp(lo.az, lo.bz, h));
+      return { kind: 'loose', trail: 0, spin: u < 1 ? 9 : 0 };
     }
     if (seg.kind === 'throw') {
       const th = seg.th;
@@ -904,6 +918,7 @@ export function buildBallSegments(plan, sim) {
   const items = [];
   for (const c of plan.carries) items.push({ kind: 'carry', pos: c.pos, t0: c.t0, t1: c.t1 });
   for (const th of plan.throws) items.push({ kind: 'throw', th, t0: th.t0, t1: th.t1 });
+  for (const lo of plan.looses || []) items.push({ kind: 'loose', lo, t0: lo.t0, t1: lo.t1 });
   items.sort((a, b) => a.t0 - b.t0 || (a.kind === 'throw' ? 1 : -1));
   // A carry that starts at the same time as a later throw ends when the throw begins.
   for (const it of items) segs.push(it);

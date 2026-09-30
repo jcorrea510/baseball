@@ -14,6 +14,7 @@ export function createGame(o = {}) {
     score: { top: 0, bottom: 0 },
     runsByInning: { top: [], bottom: [] },
     hits: { top: 0, bottom: 0 },
+    errors: { top: 0, bottom: 0 }, // errors made BY each team (charged while it is in the field)
     lineupIdx: { top: 0, bottom: 0 },
     over: false,
     winner: null, // 'top' | 'bottom'
@@ -108,7 +109,7 @@ export function pitchFoul(g) {
  * @param {object} g
  * @param {object} play
  * @param {string} play.result   'single'|'double'|'triple'|'homer'|'insideParkHomer'|'groundout'|'flyout'|'lineout'|'popout'|
- *                               'foulOut'|'sacFly'|'doublePlay'|'fieldersChoice'
+ *                               'foulOut'|'sacFly'|'doublePlay'|'fieldersChoice'|'sacBunt'|'error' (reached on an error: an at-bat, not a hit)
  * @param {number} play.batterDest  0 = batter is out, 1..3 = safe on that base, 4 = scored
  * @param {Array}  play.moves    runners only: { from: 1..3, to: 1..4, out?: boolean }  (to is ignored when out)
  * @param {number} play.outsMade total outs recorded on the play
@@ -146,6 +147,7 @@ export function applyPlay(g, play, batter) {
   // No runs score if the third out ends the inning on a force / batter out (all our out plays qualify).
   if (g.outs >= 3) runs = 0;
   if (isHitResult(play.result)) g.hits[g.half]++;
+  if (play.result === 'error' && g.errors) g.errors[g.half === 'top' ? 'bottom' : 'top']++; // reached on an error: the fielding team is charged
   addRuns(g, runs);
   endPlateAppearance(g);
   return { result: play.result, paEnded: true, runs, outs: outsMade, scoredRunners, halfOver: halfIsOver(g), walkOff: g.walkOff };
@@ -214,6 +216,6 @@ export function inningLabel(g) {
 export const RESULT_TEXT = {
   single: 'SINGLE', double: 'DOUBLE', triple: 'TRIPLE', homer: 'HOME RUN', insideParkHomer: 'INSIDE-THE-PARK HR',
   groundout: 'GROUNDOUT', flyout: 'FLYOUT', lineout: 'LINEOUT', popout: 'POP OUT', foulOut: 'FOUL OUT', sacFly: 'SAC FLY', sacBunt: 'SAC BUNT',
-  doublePlay: 'DOUBLE PLAY', fieldersChoice: "FIELDER'S CHOICE", walk: 'WALK', strikeoutSwinging: 'STRIKEOUT', strikeoutLooking: 'STRIKEOUT',
+  doublePlay: 'DOUBLE PLAY', error: 'ERROR', fieldersChoice: "FIELDER'S CHOICE", walk: 'WALK', strikeoutSwinging: 'STRIKEOUT', strikeoutLooking: 'STRIKEOUT',
   foul: 'FOUL', ball: 'BALL', calledStrike: 'STRIKE', swingingStrike: 'STRIKE',
 };

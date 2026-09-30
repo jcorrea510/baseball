@@ -16,6 +16,7 @@ function describe(kind, name, rng, extra = {}) {
     case 'doublePlay': return `${name} grounds into a double play.`;
     case 'flyout': return `${name} flies out ${dir.replace('down the', 'near the').replace('into the gap', 'to deep center')}.`;
     case 'sacFly': return `${name} hits a sacrifice fly.`;
+    case 'error': return `${name} reaches on an error.`;
     case 'walk': return `${name} works a walk.`;
     case 'strikeout': return `${name} strikes out.`;
     default: return `${name} is out.`;
@@ -115,6 +116,11 @@ function buildPlay(g, kind, rng) {
         return { result: 'sacFly', batterDest: 0, moves, outsMade: 1 };
       }
       return { result: 'flyout', batterDest: 0, moves, outsMade: 1 };
+    }
+    case 'error': {
+      // a misplayed ball: the batter is safe at first and every runner moves up a base
+      for (const f of [3, 2, 1]) if (b[f - 1]) push(f, f + 1);
+      return { result: 'error', batterDest: 1, moves, outsMade: 0 };
     }
     default:
       return { result: 'groundout', batterDest: 0, moves, outsMade: 1 };

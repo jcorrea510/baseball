@@ -350,7 +350,9 @@ export class Engine {
     };
     const sim = simulateBattedBall(params, this.cfg);
     const simple = this.mode !== 'quick';
-    const plan = planPlay({ sim, contact: c, bases: this.bases, outs: this.outs, defense: this.defense, simple }, this.cfg);
+    // fielding errors: one roll per ball in play (only in real games)
+    const errorRoll = simple ? undefined : this.errorRollOverride ?? this.rng.next(); // (errorRollOverride: QA hook, 0 = always an error)
+    const plan = planPlay({ sim, contact: c, bases: this.bases, outs: this.outs, defense: this.defense, simple, errorRoll, errorScale: this.d.errorScale }, this.cfg);
     const proj = projectDistance(params, this.cfg);
     const fb = sim.firstBounce;
     const distance = plan.homer ? proj.distance : fb ? Math.hypot(fb.x, fb.z) : proj.distance;
@@ -555,7 +557,7 @@ export class Engine {
     const payload = {
       mode: this.mode, difficulty: this.difficulty, stats: { ...this.stats },
       derby: this.mode === 'derby' ? { ...this.derby } : null,
-      game: g ? { score: { ...g.score }, winner: g.winner, innings: g.inning, line: rules.lineScore(g), hits: { ...g.hits }, walkOff: g.walkOff } : null,
+      game: g ? { score: { ...g.score }, winner: g.winner, innings: g.inning, line: rules.lineScore(g), hits: { ...g.hits }, errors: { ...(g.errors || { top: 0, bottom: 0 }) }, walkOff: g.walkOff } : null,
       won: g ? g.winner === 'top' : null,
       opponent: this.opponent,
     };
@@ -604,7 +606,9 @@ function buildEventList(sim, plan) {
   if (sim.wallHit) ev.push({ t: sim.wallHit.t, type: 'wall', x: sim.wallHit.x, y: sim.wallHit.y, z: sim.wallHit.z });
   if (sim.homerun) ev.push({ t: sim.homerun.t, type: 'fence', x: sim.homerun.x, y: sim.homerun.y, z: sim.homerun.z });
   if (sim.standsLanding) ev.push({ t: sim.standsLanding.t, type: 'stands', x: sim.standsLanding.x, y: sim.standsLanding.y, z: sim.standsLanding.z });
-  if (sim.firstBounce && !sim.homerun) ev.push({ t: sim.firstBounce.t, type: 'landed', x: sim.firstBounce.x, z: sim.firstBounce.z });
+  // (not when a fielder has the ball - or it has hit his glove - before it would have come down)
+  const gloved = (plan.caught || plan.dropped) ? plan.catchT : plan.pickupT;
+  if (sim.firstBounce && !sim.homerun && !(gloved !== undefined && gloved < sim.firstBounce.t)) ev.push({ t: sim.firstBounce.t, type: 'landed', x: sim.firstBounce.x, z: sim.firstBounce.z });
   for (const e of plan.events) ev.push({ ...e });
   for (const th of plan.throws) {
     ev.push({ t: th.t0, type: 'throw', from: th.from, to: th.to });

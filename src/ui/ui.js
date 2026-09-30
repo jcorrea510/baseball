@@ -480,9 +480,9 @@ export class UI {
       const win = p.won;
       head = `<div class="label">${p.game.walkOff ? 'Walk-off' : 'Final'}</div><div class="result ${win ? 'win' : 'loss'}">${headline(win ? 'YOU WIN' : 'YOU LOSE', win ? 'gold' : 'red')}</div>`;
       const n = Math.max(g.line.top.length, 3);
-      let hdr = '<tr><th></th>' + Array.from({ length: n }, (_, i) => `<th>${i + 1}</th>`).join('') + '<th>R</th><th>H</th></tr>';
-      const row = (name, ab, arr, R, H) => `<tr><td class="tn"><span class="full">${name}</span><span class="ab">${ab}</span></td>` + Array.from({ length: n }, (_, i) => `<td>${arr[i] === undefined ? '' : arr[i]}</td>`).join('') + `<td class="r">${R}</td><td>${H}</td></tr>`;
-      table = `<table class="linescore">${hdr}${row(teamNames.away, teamNames.awayAbbr, g.line.top, g.score.top, g.hits.top)}${row(teamNames.home, teamNames.homeAbbr, g.line.bottom, g.score.bottom, g.hits.bottom)}</table>`;
+      let hdr = '<tr><th></th>' + Array.from({ length: n }, (_, i) => `<th>${i + 1}</th>`).join('') + '<th>R</th><th>H</th><th>E</th></tr>';
+      const row = (name, ab, arr, R, H, E) => `<tr><td class="tn"><span class="full">${name}</span><span class="ab">${ab}</span></td>` + Array.from({ length: n }, (_, i) => `<td>${arr[i] === undefined ? '' : arr[i]}</td>`).join('') + `<td class="r">${R}</td><td>${H}</td><td>${E}</td></tr>`;
+      table = `<table class="linescore">${hdr}${row(teamNames.away, teamNames.awayAbbr, g.line.top, g.score.top, g.hits.top, (g.errors || {}).top || 0)}${row(teamNames.home, teamNames.homeAbbr, g.line.bottom, g.score.bottom, g.hits.bottom, (g.errors || {}).bottom || 0)}</table>`;
       grid = [[avgText(st.hits, st.ab), 'AVG'], [`${st.hits}/${st.ab}`, 'Hits'], [st.hr, 'HR'], [st.rbi, 'RBI'], [st.perfect, 'Perfect'], [st.longestHR ? st.longestHR + ' ft' : '--', 'Longest'], [st.maxEV ? Math.round(st.maxEV) + ' mph' : '--', 'Exit velo'], [`${st.strikeouts} / ${st.walks}`, 'K / BB']];
     } else if (p.mode === 'derby') {
       const d2 = p.derby;

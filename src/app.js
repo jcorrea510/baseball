@@ -21,6 +21,8 @@ import { pitchGuide } from './game/pitchGuide.js';
 import { LandingRing } from './render/landingRing.js';
 import { landingSpot, landingRing } from './game/landing.js';
 
+// scorekeeping numbers for the error banner (E6 = an error by the shortstop)
+const POSITION_NUMBER = { P: 1, C: 2, '1B': 3, '2B': 4, '3B': 5, SS: 6, LF: 7, CF: 8, RF: 9 };
 const LABEL = { fastball: 'Fastball', changeup: 'Changeup', curveball: 'Curveball', slider: 'Slider', heater: 'Heater' };
 
 export class App {
@@ -538,6 +540,11 @@ export class App {
         if (e.game) { this.playOuts = (this.playOuts || 0) + 1; ui.setCount(e.game.balls, e.game.strikes, Math.min(3, e.game.outs + this.playOuts)); }
         break;
       case 'safe': this.umpireCall('safe', ev.base); break;
+      case 'error':
+        // a misplay: the crowd reacts, the ball is loose (the result banner names it when the play is over)
+        audio.glovePop(ev.drop ? 0.7 : 0.4);
+        audio.crowdSwell(0.6, 1.8);
+        break;
       default: break;
     }
     void e;
@@ -593,6 +600,7 @@ export class App {
     let big = r.text, sub = '', cls = 'neutral';
     if (res === 'homer' || res === 'insideParkHomer') { cls = 'hr'; sub = `${Math.round(r.distanceFt || r.distance || 0)} ft${runsText}`; if (r.walkOff) sub = 'WALK-OFF!'; }
     else if (['single', 'double', 'triple'].includes(res)) { cls = 'good'; sub = `${Math.round(r.exitVelocity)} mph${runsText}`; audio.crowdSwell(res === 'single' ? 0.4 : 0.65, 2.2); audio.applause(1.2, 0.5); }
+    else if (res === 'error') { cls = 'good'; sub = `E${POSITION_NUMBER[r.plan && r.plan.error ? r.plan.error.pos : ''] || ''}${runsText}`.replace(/^E · /, ''); audio.applause(1, 0.4); }
     else if (res === 'walk') { cls = 'neutral'; sub = runsText.replace(' · ', ''); audio.crowdSwell(0.2, 1.2); }
     else if (res === 'strikeoutSwinging' || res === 'strikeoutLooking') { cls = 'bad'; sub = res === 'strikeoutLooking' ? 'Looking' : 'Swinging'; audio.crowdGroan(0.7); }
     else if (res === 'out') { cls = 'bad'; sub = r.detail ? r.detail : ''; audio.crowdGroan(0.4); }
@@ -638,7 +646,7 @@ export class App {
       const ls = lineScore(g);
       sb.set({
         mode: 'quick', title: 'SANDLOT PARK', innings: Math.max(g.innings, g.inning), inning: g.inning, half: g.half,
-        teams: [{ abbr: PLAYER_TEAM.abbr, color: PLAYER_TEAM.color, runs: ls.top, R: g.score.top, H: g.hits.top, E: 0 }, { abbr: e.opponent.abbr, color: e.opponent.color, runs: ls.bottom, R: g.score.bottom, H: g.hits.bottom, E: 0 }],
+        teams: [{ abbr: PLAYER_TEAM.abbr, color: PLAYER_TEAM.color, runs: ls.top, R: g.score.top, H: g.hits.top, E: (g.errors || {}).top || 0 }, { abbr: e.opponent.abbr, color: e.opponent.color, runs: ls.bottom, R: g.score.bottom, H: g.hits.bottom, E: (g.errors || {}).bottom || 0 }],
         count: { b: g.balls, s: g.strikes, o: g.outs },
       });
     } else if (e.mode === 'derby') {

@@ -342,7 +342,7 @@ function planPlayCore(i, cfg) {
   const plan = {
     fair, type,
     result: null, batterDest: 0, moves: [], outsMade: 0,
-    fielderMoves: [], paths: {}, throws: [], carries: [], events: [],
+    fielderMoves: [], paths: {}, throws: [], carries: [], looses: [], events: [],
     ballHitEnd: sim.duration, endTime: 0, homer: false, ctx: null,
     fielder: null, notes: [],
     ballLandDistance: 0,
@@ -389,6 +389,10 @@ function planPlayCore(i, cfg) {
     plan.leap = !air.dive && air.ball.y - F.standReach > 0.3 ? { height: air.ball.y - F.standReach } : null;
     addMove(plan, f, air.ball.x, air.ball.z, air.t, { dive: air.dive, avail: air.avail, role: 'catch' }, cfg);
     plan.ctx = { kind: 'air', x: air.ball.x, z: air.ball.z, t: air.t };
+    // a dropped fly ball (rare): it hits the glove and pops out; he picks it up and the runners take what they can
+    if (fair && !i.simple && errorHappens(i, F.errors.fly * (air.dive || plan.leap ? F.errors.hardFactor : 1))) {
+      return dropFly(plan, i, f, air, bases, outs, defense, cfg);
+    }
     plan.ballHitEnd = air.t;
     plan.carries.push({ pos: f.pos, t0: air.t, t1: air.t + 99 });
     plan.events.push({ t: air.t, type: 'catch', pos: f.pos, dive: !!plan.fielderMoves[0].dive });
@@ -484,6 +488,10 @@ function planPlayCore(i, cfg) {
   // --- Try to record an out on an infield play ---
   const bunt = !!contact.bunt;
   plan.bunt = bunt;
+  // a bobbled grounder (rare): the out is gone; he picks it up again and throws to where the lead runner is going
+  if (isInfieldPlay && groundBall && errorHappens(i, F.errors.ground * (contact.exitVelocity > 95 || plan.fielderMoves[0].dive ? F.errors.hardFactor : 1))) {
+    return bobble(plan, i, f, tF, pf, bases, forced, outs, defense, cfg);
+  }
   if (isInfieldPlay && groundBall) {
     const attempt = tryInfieldOut({ f, tF, tReady, pf, bases, forced, outs, defense, cfg, plan, bunt });
     if (attempt) return finishInfieldOut(plan, attempt, { f, tF, tReady, pf, bases, forced, outs, defense, cfg, bunt });
@@ -512,6 +520,59 @@ function endInningStop(plan, outs, cfg) {
   let end = tOut + 0.8;
   for (const th of plan.throws) end = Math.max(end, th.t1 + 0.3);
   plan.endTime = Math.min(plan.endTime, Math.max(end, stopAt + cfg.runner.easeUp * 3));
+}
+
+// ---------------------------------------------------------------------------
+// Errors. `i.errorRoll` (0..1, from the engine's seeded random numbers) decides; no roll = no errors (tests, the Derby, practice).
+function errorHappens(i, p) {
+  return i.errorRoll !== undefined && !i.simple && i.errorRoll < p * (i.errorScale ?? 1);
+}
+// Where the ball squirts to (a direction fixed by the roll, so a replay is identical), kept inside the ballpark.
+function looseSpot(i, x, z, cfg) {
+  const a = ((i.errorRoll * 7919) % 1) * Math.PI * 2;
+  return clampToField(x + Math.cos(a) * cfg.fielding.errors.looseDist, z + Math.sin(a) * cfg.fielding.errors.looseDist, cfg.fielding.wallMargin);
+}
+// The fielder goes after the loose ball; he has it again when the ball has stopped rolling AND he is there.
+function chaseLoose(plan, f, loose, tEarliest, cfg) {
+  const move = addMove(plan, f, loose.bx, loose.bz, tEarliest - 0.05, { role: 'field', minEffort: 0.95 }, cfg);
+  const tPick = Math.max(tEarliest, move.run.tReach + 0.05);
+  loose.t1 = tPick;
+  plan.looses.push(loose);
+  return tPick;
+}
+function bobble(plan, i, f, tF, pf, bases, forced, outs, defense, cfg) {
+  const F = cfg.fielding;
+  const [lx, lz] = looseSpot(i, pf.x, pf.z, cfg);
+  const tOut = tF + 0.08;
+  const carry = plan.carries.find((c) => c.pos === f.pos);
+  if (carry) carry.t1 = tOut;
+  const tPick = chaseLoose(plan, f, { t0: tOut, ax: pf.x, ay: 1.6, az: pf.z, bx: lx, bz: lz }, tF + F.errors.bobbleTime, cfg);
+  const tReady = tPick + F.transfer[f.type];
+  plan.carries.push({ pos: f.pos, t0: tPick, t1: tReady });
+  plan.error = { pos: f.pos, kind: 'bobble', t: tF + 0.05 };
+  plan.events.push({ t: tF + 0.05, type: 'error', pos: f.pos });
+  finishHit(plan, { f, tF: tPick, tReady, pf: { x: lx, z: lz }, bases, forced, outs, defense, cfg });
+  plan.result = 'error';
+  plan.infieldHit = false;
+  return plan;
+}
+function dropFly(plan, i, f, air, bases, outs, defense, cfg) {
+  const F = cfg.fielding;
+  const [lx, lz] = looseSpot(i, air.ball.x, air.ball.z, cfg);
+  plan.caught = false; plan.dropped = true;
+  plan.pickupT = air.t; // the ball's flight ends at his glove
+  plan.ballHitEnd = air.t;
+  plan.events.push({ t: air.t, type: 'error', pos: f.pos, drop: true });
+  const tPick = chaseLoose(plan, f, { t0: air.t, ax: air.ball.x, ay: air.ball.y, az: air.ball.z, bx: lx, bz: lz }, air.t + F.errors.dropTime, cfg);
+  const tReady = tPick + F.transfer[f.type];
+  plan.carries.push({ pos: f.pos, t0: tPick, t1: tReady });
+  plan.error = { pos: f.pos, kind: 'drop', t: air.t };
+  const forced = new Set();
+  if (bases[0]) { forced.add(1); if (bases[1]) { forced.add(2); if (bases[2]) forced.add(3); } }
+  plan.outsMade = 0; plan.batterDest = 0;
+  finishHit(plan, { f, tF: tPick, tReady, pf: { x: lx, z: lz }, bases, forced, outs, defense, cfg });
+  plan.result = 'error';
+  return plan;
 }
 
 // ---------------------------------------------------------------------------

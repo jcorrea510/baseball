@@ -197,14 +197,15 @@ export const CONFIG = {
       // reveal = where it starts / finishes showing the pitch's break; error = feet the guess is typically off.
       guide: { fadeIn: [0.03, 0.18], reveal: [0.02, 0.3], error: 0.12 },
       commandSigma: 0.12, // ft of pitcher inaccuracy
+      errorScale: 1.5, // how often the defense makes errors (x fielding.errors)
       movementScale: 0.6,
       tellStrength: 1.0,
       announcePitch: true, // the pitch type is shown as he winds up
       typeAtRelease: true, // ...and when it leaves his hand
       windup: 1.05,
       derbyFoulIsOut: false,
-      // Odds for each plate appearance when the computer bats (its half-innings are simulated).
-      ai: { k: 0.26, bb: 0.06, groundout: 0.21, flyout: 0.18, single: 0.15, double: 0.04, triple: 0.005, hr: 0.02 },
+      // Odds for each plate appearance when the computer bats (its half-innings are simulated). error = safe on a misplay by your fielders.
+      ai: { k: 0.26, bb: 0.06, groundout: 0.198, flyout: 0.18, error: 0.012, single: 0.15, double: 0.04, triple: 0.005, hr: 0.02 },
     },
     pro: {
       label: 'Pro',
@@ -214,6 +215,7 @@ export const CONFIG = {
       locations: { heart: 0.52, edge: 0.08, chase: 0.21, waste: 0.19 },
       guide: { fadeIn: [0.05, 0.22], reveal: [0.05, 0.45], error: 0.27 },
       commandSigma: 0.28,
+      errorScale: 1.0,
       movementScale: 1.0,
       tellStrength: 0.6,
       announcePitch: false,
@@ -221,7 +223,7 @@ export const CONFIG = {
       windup: 0.92,
       derbyFoulIsOut: true,
       swingCue: false,
-      ai: { k: 0.22, bb: 0.08, groundout: 0.19, flyout: 0.16, single: 0.19, double: 0.06, triple: 0.008, hr: 0.035 },
+      ai: { k: 0.22, bb: 0.08, groundout: 0.178, flyout: 0.16, error: 0.012, single: 0.19, double: 0.06, triple: 0.008, hr: 0.035 },
     },
     allstar: {
       label: 'All-Star',
@@ -231,6 +233,7 @@ export const CONFIG = {
       locations: { heart: 0.32, edge: 0.15, chase: 0.29, waste: 0.24 },
       guide: { fadeIn: [0.06, 0.22], reveal: [0.04, 0.42], error: 0.33 },
       commandSigma: 0.42,
+      errorScale: 0.7,
       movementScale: 1.25,
       tellStrength: 0.28,
       announcePitch: false,
@@ -238,7 +241,7 @@ export const CONFIG = {
       windup: 0.85,
       derbyFoulIsOut: true,
       swingCue: false,
-      ai: { k: 0.19, bb: 0.09, groundout: 0.17, flyout: 0.15, single: 0.21, double: 0.075, triple: 0.01, hr: 0.05 },
+      ai: { k: 0.19, bb: 0.09, groundout: 0.158, flyout: 0.15, error: 0.012, single: 0.21, double: 0.075, triple: 0.01, hr: 0.05 },
     },
   },
 
@@ -343,6 +346,10 @@ export const CONFIG = {
     closePlay: 0.45, // a runner who beats the throw by less than this many seconds gets a 'Safe!' call
     outMargin: 0.02, // a throw must beat the runner by this many seconds
     runnerMargin: 0.1, // a runner must beat the throw by this to take an extra base
+    // Errors (rare): a grounder bobbled, a fly ball dropped. Chance per chance, x difficulty.<level>.errorScale; hard chances (a smash,
+    // a dive, a leap) are `hardFactor` times as likely. The ball pops loose `looseDist` ft and he needs `bobbleTime` / `dropTime` to
+    // pick it up again - the batter and runners take whatever that delay gives them.
+    errors: { ground: 0.04, fly: 0.018, hardFactor: 2, bobbleTime: 0.95, dropTime: 0.85, looseDist: 5 },
   },
   runner: {
     speed: 30.2, // ft/s top running speed
