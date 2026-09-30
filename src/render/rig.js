@@ -343,6 +343,9 @@ export class Person {
     this.torsoMesh = torso;
     this._merged(this.spine, [
       { geo: torus(0.2, 0.05, Math.PI * 2, 6, 18), color: trimHex, y: 1.7, rx: Math.PI / 2, sx: 1.08, sy: 1, sz: 0.85 },
+      // the slope of the trapezius from the neck out to each shoulder (so the shoulders are not balls stuck on a vase)
+      { geo: sphere(0.3, 12, 8), color: u.primary, x: 0.33, y: 1.56, z: -0.04, sx: 1.25, sy: 0.5, sz: 0.85 },
+      { geo: sphere(0.3, 12, 8), color: u.primary, x: -0.33, y: 1.56, z: -0.04, sx: 1.25, sy: 0.5, sz: 0.85 },
     ]);
     if (isCatcher || isUmpire) {
       const chest = this._mesh(capsule(0.66, 0.4, 6, 18), getMat(u.gear || '#20242b', 0.7), this.spine, 0, 0.98, 0.04);
@@ -408,6 +411,7 @@ export class Person {
       this._merged(upper, [
         { geo: sphere(0.235, 12, 10), color: u.primary, sy: 0.95 }, // shoulder
         { geo: capsule(0.152, DIM.upperArm - 0.3, 4, 10), color: armHex, y: -DIM.upperArm / 2, ao: 0.1 },
+        { geo: sphere(0.16, 10, 8), color: armHex, y: -DIM.upperArm * 0.62, z: 0.035, sx: 1.0, sy: 1.7, sz: 1.08 }, // biceps / triceps
         { geo: capsule(0.2, 0.42, 4, 12), color: u.primary, y: -0.33 }, // short sleeve
         { geo: cyl(0.205, 0.205, 0.05, 12), color: trimHex, y: -0.7 }, // sleeve piping
       ]);
@@ -416,6 +420,7 @@ export class Person {
       const foreParts = [
         { geo: sphere(0.15, 10, 8), color: armHex }, // elbow
         { geo: cyl(0.138, 0.1, DIM.foreArm - 0.24, 10), color: armHex, y: -DIM.foreArm / 2 - 0.02, ao: 0.08 }, // tapered forearm
+        { geo: sphere(0.145, 10, 8), color: armHex, y: -0.3, z: 0.01, sx: 1.02, sy: 1.8, sz: 0.95 }, // forearm muscle (thick by the elbow)
       ];
       const isGloveHand = side === 1 && (o.glove || isCatcher);
       if (isGloveHand) {
@@ -436,9 +441,15 @@ export class Person {
         const hand = this.role === 'batter' ? (u.gloves || '#f0f0f0') : skinHex;
         const gy = -DIM.foreArm;
         foreParts.push(
-          { geo: sphere(0.13, 10, 8), color: hand, y: gy - 0.08, sx: 1.05, sy: 1.15, sz: 0.85 }, // hand
-          { geo: sphere(0.06, 8, 6), color: hand, x: -0.1 * side, y: gy - 0.05, z: 0.09 }, // thumb
+          { geo: sphere(0.12, 10, 8), color: hand, y: gy - 0.07, sx: 1.0, sy: 1.05, sz: 0.72 }, // palm
+          { geo: capsule(0.04, 0.1, 3, 6), color: hand, x: -0.095 * side, y: gy - 0.06, z: 0.085, rx: 0.5, rz: 0.5 * side }, // thumb
         );
+        // four fingers, curled a little (a loose fist that closes round a bat or a ball)
+        for (let f = 0; f < 4; f++) {
+          const fx = (-0.075 + f * 0.05) * side;
+          foreParts.push({ geo: capsule(0.029, 0.1 - Math.abs(f - 1.5) * 0.012, 3, 6), color: hand, x: fx, y: gy - 0.2, z: 0.05, rx: 0.65 });
+          foreParts.push({ geo: sphere(0.03, 6, 5), color: hand, x: fx, y: gy - 0.26, z: 0.12 }); // curled fingertip
+        }
         if (this.role === 'batter') {
           foreParts.push(
             { geo: cyl(0.122, 0.122, 0.07, 10), color: '#22252b', y: gy + 0.02 }, // glove cuff
@@ -459,13 +470,15 @@ export class Person {
       this.pelvisG.add(hip);
       const thigh = new THREE.Group(); hip.add(thigh);
       this._merged(thigh, [
-        { geo: capsule(0.27, DIM.thigh - 0.45, 4, 12), color: pantsHex, y: -DIM.thigh / 2 + 0.03, ao: 0.06 },
-        { geo: sphere(0.245, 10, 8), color: pantsHex, y: -DIM.thigh },
+        { geo: sphere(0.3, 12, 8), color: pantsHex, y: -0.12, sy: 1.1, ao: 0.06 }, // top of the thigh (a baggy pant leg)
+        { geo: cyl(0.3, 0.225, DIM.thigh - 0.3, 14), color: pantsHex, y: -DIM.thigh / 2 - 0.02 }, // thigh, tapering to the knee
+        { geo: sphere(0.235, 10, 8), color: pantsHex, y: -DIM.thigh, sz: 1.04 }, // knee
         { geo: box(0.045, DIM.thigh - 0.34, 0.16), color: trimHex, x: side * 0.262, y: -DIM.thigh / 2 - 0.02 }, // side stripe
       ]);
       const knee = new THREE.Group(); knee.position.set(0, -DIM.thigh, 0); thigh.add(knee);
       const shinParts = [
-        { geo: capsule(0.172, DIM.shin - 0.4, 4, 10), color: socksHex, y: -DIM.shin / 2 + 0.03, ao: 0.1 },
+        { geo: capsule(0.16, DIM.shin - 0.4, 4, 10), color: socksHex, y: -DIM.shin / 2 + 0.03, ao: 0.1 },
+        { geo: sphere(0.17, 10, 8), color: socksHex, y: -0.52, z: -0.05, sx: 1.02, sy: 2.1, sz: 1.1 }, // calf
         { geo: cyl(0.268, 0.236, 0.19, 14), color: pantsHex, y: -0.1 }, // pant cuff below the knee (a touch wider than the knee so the two never z-fight)
         { geo: cyl(0.176, 0.176, 0.07, 10), color: trimHex, y: -0.62 }, // sock bands
         { geo: cyl(0.176, 0.176, 0.05, 10), color: u.secondary || '#ffffff', y: -0.74 },
