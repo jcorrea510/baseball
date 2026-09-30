@@ -679,7 +679,11 @@ export class App {
     });
     window.addEventListener('pagehide', () => this.audio.setHidden(true));
     window.addEventListener('pageshow', () => this.audio.setHidden(document.hidden));
-    window.addEventListener('blur', () => { this.aimKeys.left = this.aimKeys.right = false; });
+    // switching to another window (the tab stays visible, e.g. alt-tab) pauses too, so no pitch is thrown while you are away
+    window.addEventListener('blur', () => {
+      this.aimKeys.left = this.aimKeys.right = false;
+      if (this.screen === 'game' && !this.paused && this.engine && !this.engine.over && !this.params.get('bot')) this.setPaused(true);
+    });
   }
 
   // Esc: back out of whatever is showing (a menu goes back, the pause menu resumes, a game pauses).
