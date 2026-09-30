@@ -151,7 +151,11 @@ export const CONFIG = {
     spray: {
       timingMax: 56, // degrees at the edge of the weak window
       timingCurve: 1.15,
-      aimMax: 13, // degrees you can steer with A/D or arrows
+      // Aiming (hold A/D, arrows or the touch buttons): the ball is steered toward `aimTarget` degrees (toward that gap); how much the
+      // aim takes over from timing depends on the contact - a squared-up ball goes where you aim, a weak one mostly does not.
+      aimTarget: 30,
+      aimControl: { perfect: 0.8, good: 0.65, weak: 0.35 },
+      aimPower: { pull: 0.03, oppo: -0.05 }, // exit velocity change for a fully aimed pull / opposite-field swing (a pull is strongest)
       noise: { perfect: 6, good: 8, weak: 10 },
     },
     backspin: { base: 900, perLaunchDeg: 55, max: 3400 }, // rpm

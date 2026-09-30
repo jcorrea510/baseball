@@ -72,8 +72,14 @@ export function computeContact(i, cfg = CONFIG) {
   const earliness = -tf; // + = early = pulled
   const pullSign = (i.batterHand || 'R') === 'R' ? -1 : 1; // right-handed hitters pull toward left field (-x)
   const timingSpray = pullSign * Math.sign(earliness) * c.spray.timingMax * Math.pow(Math.abs(earliness), c.spray.timingCurve);
-  const aimSpray = clamp(i.aim ?? 0, -1, 1) * c.spray.aimMax;
-  const sprayAngle = clamp(timingSpray + aimSpray + rng.gauss(0, c.spray.noise[tier]), -80, 80);
+  // aiming: steer toward the gap you hold; the better the contact, the more the aim wins over timing (and the less the scatter)
+  const aim = clamp(i.aim ?? 0, -1, 1);
+  const ctrl = Math.abs(aim) * c.spray.aimControl[tier];
+  const sprayAngle = clamp(lerp(timingSpray, aim * c.spray.aimTarget, ctrl) + rng.gauss(0, c.spray.noise[tier] * (1 - 0.35 * ctrl)), -80, 80);
+  if (ctrl > 0) {
+    const pulling = Math.sign(aim) === Math.sign(pullSign);
+    exitVelocity = clamp(exitVelocity * (1 + ctrl * (pulling ? c.spray.aimPower.pull : c.spray.aimPower.oppo)), c.exitVelocityFloor, c.maxExitVelocity + 4);
+  }
 
   if (i.pullBonus) {
     // hitters are strongest out in front of the plate: a ball hit toward the pull side jumps off the bat a bit harder

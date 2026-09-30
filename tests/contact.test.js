@@ -53,12 +53,31 @@ describe('contact model', () => {
     expect(avg(run({ errorMs: -40, batterHand: 'L' }), (r) => r.sprayAngle)).toBeGreaterThan(8);
   });
 
-  it('aim steers the ball but not more than the config allows', () => {
+  it('aim steers a squared-up ball into the gap you hold, even against a mistimed swing', () => {
+    const S = CONFIG.contact.spray;
     const left = avg(run({ errorMs: 0, aim: -1 }), (r) => r.sprayAngle);
     const right = avg(run({ errorMs: 0, aim: 1 }), (r) => r.sprayAngle);
-    expect(left).toBeLessThan(-8);
-    expect(right).toBeGreaterThan(8);
-    expect(right - left).toBeLessThan(CONFIG.contact.spray.aimMax * 2 + 3);
+    expect(left).toBeLessThan(-0.7 * S.aimTarget);
+    expect(right).toBeGreaterThan(0.7 * S.aimTarget);
+    expect(right - left).toBeLessThan(2 * S.aimTarget + 3);
+    // a slightly early swing (which pulls) aimed the other way still goes mostly the way you aimed
+    expect(avg(run({ errorMs: -18, batterHand: 'R', aim: 1 }), (r) => r.sprayAngle)).toBeGreaterThan(10);
+  });
+
+  it('aim matters less on weak contact, and pulling hits a little harder than going the other way', () => {
+    const S = CONFIG.contact.spray;
+    const weak = avg(run({ errorMs: -60, batterHand: 'R', aim: 1 }), (r) => r.sprayAngle); // early (pulls left) and weak
+    const none = avg(run({ errorMs: -60, batterHand: 'R', aim: 0 }), (r) => r.sprayAngle);
+    expect(weak - none).toBeGreaterThan(5); // it still helps a little
+    expect(weak).toBeLessThan(S.aimTarget * 0.6); // ...but a weak swing mostly goes where the timing sends it
+    const pull = avg(run({ errorMs: 0, batterHand: 'R', aim: -1 }), (r) => r.exitVelocity);
+    const oppo = avg(run({ errorMs: 0, batterHand: 'R', aim: 1 }), (r) => r.exitVelocity);
+    expect(pull).toBeGreaterThan(oppo + 3);
+  });
+
+  it('with no aim held, hitting is exactly as it was (aim 0 changes nothing)', () => {
+    const a = run({ errorMs: 12 }), b = run({ errorMs: 12, aim: 0 });
+    expect(a.map((r) => r.sprayAngle)).toEqual(b.map((r) => r.sprayAngle));
   });
 
   it('big timing errors often produce foul-line or foul angles', () => {
