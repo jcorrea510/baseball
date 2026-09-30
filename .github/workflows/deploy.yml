@@ -1,6 +1,8 @@
-name: Deploy to GitHub Pages
+name: Check the game
 
-# Builds the game and publishes it every time something is pushed to main.
+# The live site is on Vercel, which rebuilds on every push to main but runs no checks of its own.
+# This workflow is the safety net: on every push to main (and on demand) it runs the tests, builds the game and opens the
+# finished site in a real browser (the smoke test). A red run means that push should not be trusted.
 on:
   push:
     branches: [main]
@@ -8,15 +10,13 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages
+  group: check-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build:
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,45 +31,9 @@ jobs:
         run: npm run build
         env:
           BASE_PATH: /${{ github.event.repository.name }}/
-      # Opens the finished site in a real browser (the runner's preinstalled Chrome) the way GitHub Pages will serve it.
-      # It must reach the title screen, and startup failures must show a readable message instead of hanging.
+      # Opens the finished site in the runner's Chrome, served under a sub-folder (the strictest case), clicks through the
+      # menus and checks that every startup failure shows a readable message instead of hanging.
       - name: Smoke test the built game
         run: npm run smoke
         env:
           BASE_PATH: /${{ github.event.repository.name }}/
-      - id: pages
-        uses: actions/configure-pages@v5
-      # configure-pages only checks that Pages exists, not HOW it publishes. With "Deploy from a branch" GitHub also runs its
-      # own publisher on every push (it copies the raw source files), which races with this workflow's deploy.
-      - name: Check the Pages source setting
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          type=$(gh api "repos/${{ github.repository }}/pages" --jq '.build_type' 2>/dev/null || echo unknown)
-          echo "GitHub Pages build type: $type (it should be: workflow)"
-          if [ "$type" = "legacy" ]; then
-            echo "::warning title=Set GitHub Pages to GitHub Actions::Settings > Pages > Source is 'Deploy from a branch'. GitHub is also publishing the raw un-built source code on every push, which races with this deploy and can leave the game on an error screen. Change Source to 'GitHub Actions' (Settings > Pages > Build and deployment)."
-            {
-              echo "### Action needed: switch GitHub Pages to GitHub Actions"
-              echo "Pages is set to **Deploy from a branch**, so GitHub also publishes the raw source code on every push and it can overwrite this build."
-              echo "Open **Settings, Pages, Build and deployment, Source** and choose **GitHub Actions**."
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
-      - name: Explain a Pages settings problem
-        if: failure() && steps.pages.outcome == 'failure'
-        run: |
-          echo "::error title=GitHub Pages is not set to GitHub Actions::Open the repository on GitHub, go to Settings > Pages, set Source to GitHub Actions, then run this workflow again (Actions tab > Deploy to GitHub Pages > Run workflow). Until then GitHub publishes the raw un-built source code and the game shows an error screen."
-          exit 1
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
