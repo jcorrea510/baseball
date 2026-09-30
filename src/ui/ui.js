@@ -48,6 +48,7 @@ const ICONS = {
   timing: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9.5 2.5h5"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>',
   bat: '<path d="M4 20l2-2M6.5 17.5l10.8-10.8a2.6 2.6 0 0 1 3.7 3.7L10.2 21.2"/>',
+  crowd: '<circle cx="7" cy="9" r="2.4"/><circle cx="17" cy="9" r="2.4"/><circle cx="12" cy="7.5" r="2.8"/><path d="M2.5 19c.4-3 2.2-4.8 4.5-4.8M21.5 19c-.4-3-2.2-4.8-4.5-4.8M6.5 20c.5-3.8 2.8-6 5.5-6s5 2.2 5.5 6"/>',
   trash: '<path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13"/>',
 };
 const icon = (name, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`;
@@ -388,7 +389,7 @@ export class UI {
         ${slider('volume', 'soundOn', 'Master', st.volume)}
         ${slider('sfxVolume', 'bat', 'Effects', st.sfxVolume)}
         ${slider('umpireVolume', 'mic', 'Umpire', st.umpireVolume)}
-        ${slider('crowdVolume', 'chart', 'Crowd', st.crowdVolume)}
+        ${slider('crowdVolume', 'crowd', 'Crowd', st.crowdVolume)}
         ${seg('umpire', 'mic', 'Umpire voice', [['synth', 'Voice'], ['speech', 'Browser'], ['off', 'Off']], st.umpire).replace('setrow stack', 'setrow wide')}
       </div>
       <div class="label">Game</div>
