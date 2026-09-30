@@ -4,6 +4,7 @@ import { DIM, makePose, mixPose, copyPose } from './rig.js';
 import { clamp, lerp, smoothstep } from '../util/math.js';
 
 const ANK = DIM.ankle;
+const TAU = Math.PI * 2;
 const STAND = DIM.hipStand;
 
 // ---------------------------------------------------------------- keyframe sampling (Hermite / Catmull-Rom)
@@ -104,9 +105,10 @@ export function batterPose(P, time, swing) {
       hip = lerp(2.88, 3.05, e);
       footLx = 1.55; footLy = ANK;
       footRTilt = lerp(-0.9, -1.1, e);
-      knob = [lerp(cKnob[0], 0.55, e), lerp(cKnob[1], 4.6, e), lerp(cKnob[2], 0.15, e)];
-      batYaw = lerp(dirYaw, 2.35, e);
-      batPitch = lerp(cPitch, 0.75, e);
+      // The follow-through, in steps: the arms extend out toward the pitcher, the bat climbs past the lead shoulder and finishes
+      // high behind the head - always round the body, never through it (the bat is steered by its knob, its yaw and its pitch).
+      const k = followKey(e, [cKnob, dirYaw, cPitch]);
+      knob = k[0]; batYaw = k[1]; batPitch = k[2];
       headYawAbs = 1.5; headPitch = 0.24;
       poleL = [1.0, -0.4, -0.4]; poleR = [-0.6, 0.2, -0.8];
     }
@@ -123,6 +125,25 @@ export function batterPose(P, time, swing) {
   P.batYaw = batYaw; P.batPitch = batPitch; P.batVis = 1;
   P.poleL = poleL.slice(); P.poleR = poleR.slice();
   return P;
+}
+
+// Follow-through keys after contact (e: 0 = contact .. 1 = finish): [knob position, bat yaw, bat pitch]
+export const FOLLOW = [
+  [0.3, [1.15, 3.5, 0.53], 1.67, 0.29], // arms extended toward the pitcher
+  [0.59, [1.04, 4.8, -0.25], 2.5, 0.84], // the bat climbs past the lead shoulder
+  [1, [0.25, 4.93, -0.58], 4.02, 0.99], // finish: hands high by the lead shoulder, bat up behind the head
+];
+function followKey(e, start) {
+  let prev = [0, start[0], start[1], start[2]];
+  for (const key of FOLLOW) {
+    if (e <= key[0]) {
+      const u = smoothstep(prev[0], key[0], e);
+      return [[lerp(prev[1][0], key[1][0], u), lerp(prev[1][1], key[1][1], u), lerp(prev[1][2], key[1][2], u)], lerp(prev[2], key[2], u), lerp(prev[3], key[3], u)];
+    }
+    prev = key;
+  }
+  const last = FOLLOW[FOLLOW.length - 1];
+  return [last[1].slice(), last[2], last[3]];
 }
 
 // ---------------------------------------------------------------- bunt
@@ -188,23 +209,26 @@ export function pitcherPose(P, u, post, release, tell = { slot: 0, lag: 0 }) {
   ], u);
   P.footRTilt = -0.9 * smoothstep(0.85, 1.0, u);
 
-  // glove hand
+  // glove hand: the glove arm stays bent and leads toward the plate (elbow first), then tucks in as he throws
   setVec(P, 'handL', [
-    [0, 0.12, 4.0, 0.55], [0.4, 0.2, 4.35, 0.75], [0.62, 0.95, 4.95, 1.9], [0.85, 1.05, 4.6, 3.5], [1.0, 0.8, 4.4, 4.2],
+    [0, 0.12, 4.0, 0.55], [0.4, 0.2, 4.35, 0.75], [0.6, 0.75, 4.55, 1.35], [0.78, 0.95, 4.55, 2.6], [0.9, 0.95, 4.35, 3.6], [1.0, 0.7, 4.1, 4.1],
   ], u);
-  // throwing hand: down and back, cock, whip through the release point
+  // throwing hand: the hands break, the arm swings down past the hip, back and up into a cocked "L" (elbow at the shoulder,
+  // forearm up) as the front foot lands, then whips forward over the top through the release point
   const sh = slot * 0.9;
   setVec(P, 'handR', [
     [0, -0.12, 4.0, 0.55],
     [0.4, -0.2, 4.35, 0.75],
-    [0.62, -0.95, 3.7, -0.5],
-    [0.8, -1.55, 5.3 + sh * 0.6, -1.4],
-    [0.92, -1.3 - slot * 0.3, 6.15 + sh * 0.5, 1.5 + release[2] * 0.1],
+    [0.55, -0.55, 3.75, 0.2],
+    [0.64, -0.95, 3.45, -0.6],
+    [0.72, -1.2, 3.65, -1.05],
+    [0.8, -1.35, 5.7 + sh * 0.5, -0.85],
+    [0.92, -1.2 - slot * 0.3, 6.15 + sh * 0.5, 1.5 + release[2] * 0.1],
     [1.0, release[0], release[1], release[2]],
   ], ua);
   if (post > 0) {
-    // follow through: hand sweeps across the body toward the opposite hip
-    const x = lerp(release[0], 0.6, fe), y = lerp(release[1], 3.0, fe), z = lerp(release[2], release[2] - 0.5, fe);
+    // follow through: the arm keeps going, across the body and down to the glove-side knee
+    const x = lerp(release[0], 0.75, fe), y = lerp(release[1], 2.35, fe), z = lerp(release[2], release[2] - 0.2, fe);
     set3(P.handR, x, y, z);
     P.torsoPitch = lerp(0.62, 0.95, fe);
     P.pelvisPitch = lerp(-0.32, -0.42, fe);
@@ -214,8 +238,11 @@ export function pitcherPose(P, u, post, release, tell = { slot: 0, lag: 0 }) {
     P.footRTilt = lerp(-0.9, -0.2, fe);
     P.hipY = lerp(2.46, 2.75, fe);
   }
-  // elbows
-  P.poleR = [-1.0, 0.6 + slot * 0.4, -0.3]; P.poleL = [0.8, -0.4, 0.3];
+  // elbows: the throwing elbow points back as the arm swings down, out to the side (at shoulder height) when it is cocked;
+  // the glove elbow points at the plate
+  const cock = smoothstep(0.66, 0.8, ua) * (1 - smoothstep(0.92, 1, ua));
+  P.poleR = [-1.0, lerp(0.1, -0.35, cock) + slot * 0.4, lerp(-0.8, -0.2, cock)];
+  P.poleL = [0.6, -0.5, lerp(0.3, 0.9, smoothstep(0.5, 0.8, u))];
   set3(P.kneeL, 0.15, 0.1, 1); set3(P.kneeR, -0.15, 0.1, 1);
   return P;
 }
@@ -296,26 +323,50 @@ export function runPose(P, phase, speed, look = 0, o = null) {
   const acc = o ? clamp(o.accel / 70, -1, 1) : 0;
   const drive = Math.max(0, acc), sit = Math.max(0, -acc);
   const bank = o ? clamp(o.side / 55, -1, 1) : 0;
-  const A = 0.25 + sp * 0.078; // forward/back reach of the foot
-  const H = 0.22 + sp * 0.03;  // knee lift
-  const sL = Math.sin(phase), cL = Math.cos(phase);
-  const sR = Math.sin(phase + Math.PI), cR = Math.cos(phase + Math.PI);
-  set3(P.footL, 0.28, ANK + H * Math.max(0, cL), 0.15 + A * sL);
-  set3(P.footR, -0.28, ANK + H * Math.max(0, cR), 0.15 + A * sR);
-  P.footLTilt = -0.35 * Math.max(0, cL) + 0.25 * Math.max(0, -cL) * (sL > 0 ? 1 : 0);
-  P.footRTilt = -0.35 * Math.max(0, cR) + 0.25 * Math.max(0, -cR) * (sR > 0 ? 1 : 0);
-  const bob = (0.05 + 0.14 * k) * (0.5 + 0.5 * k); // vertical travel of the hips (about a third of a foot at a sprint)
-  P.hipY = STAND - 0.3 - 0.33 * k - 0.32 * sit - bob * Math.pow(Math.abs(Math.cos(phase)), 0.85) + 0.05 * drive;
+  // Each foot: a short ground contact (a sprinter is on the ground about a third of the time, a jogger about half), during which
+  // it moves back at exactly the running speed (no sliding), then the swing: toe-off, the heel kicks up behind, the knee comes
+  // through and the foot reaches forward to land just ahead of the hips.
+  const cad = runCadence(sp);
+  const duty = lerp(0.5, 0.33, clamp(k, 0, 1));
+  const L = sp > 0.3 ? (sp * duty) / cad : 0; // stride on the ground (ft)
+  const zf = 0.32 * L + 0.15, zb = 0.68 * L - 0.15; // (he lands nearly under his hips and pushes off well behind)
+  const heel = 0.25 + 1.25 * clamp(k, 0, 1.1); // how high the heel kicks up behind
+  const foot = (c, out, x) => {
+    let y, z, tilt;
+    if (c < duty) { // on the ground, moving back under him
+      const u = c / duty;
+      z = lerp(zf, -zb, u); y = ANK; tilt = -0.45 * smoothstep(0.7, 1, u); // rolls onto the toes to push off
+    } else {
+      const u = (c - duty) / (1 - duty);
+      const e = u * u * (3 - 2 * u);
+      z = lerp(-zb, zf, e); // the foot comes up behind, then swings through
+      y = ANK + heel * Math.sin(Math.PI * Math.pow(u, 0.72)) * (0.35 + 0.65 * (1 - u)) + 0.08 * k * Math.sin(Math.PI * u);
+      tilt = lerp(-0.7, 0.05, smoothstep(0.1, 0.85, u));
+    }
+    set3(out, x, y, z + 0.1);
+    return tilt;
+  };
+  const cL = ((phase / TAU) % 1 + 1) % 1, cR = (cL + 0.5) % 1;
+  P.footLTilt = foot(cL, P.footL, 0.28);
+  P.footRTilt = foot(cR, P.footR, -0.28);
+  // the hips are lowest as a foot takes his weight, highest in the air between steps
+  const inStance = (c) => (c < duty ? Math.sin(Math.PI * (c / duty)) : 0);
+  const dip = Math.max(inStance(cL), inStance(cR));
+  const bob = (0.05 + 0.14 * k) * (0.5 + 0.5 * k);
+  P.hipY = STAND - 0.22 - 0.2 * k - 0.32 * sit - bob * dip + 0.05 * drive;
   P.pelvisPitch = 0.05 + 0.13 * k + 0.16 * drive - 0.14 * sit;
   P.torsoPitch = 0.1 + 0.16 * k + 0.4 * drive - 0.3 * sit;
-  P.pelvisYaw = -0.18 * k * sL; P.torsoYaw = 0.3 * k * sL;
-  P.pelvisRoll = 0.07 * k * sL + bank * 0.14; P.torsoRoll = -0.05 * k * sL + bank * 0.24;
+  // hips turn with the leg that is forward, shoulders the other way (-1..1: left foot back .. left foot forward)
+  const sL = clamp((P.footL[2] - P.footR[2]) / Math.max(0.5, zf + zb), -1, 1);
+  P.pelvisYaw = -0.16 * k * sL; P.torsoYaw = 0.26 * k * sL;
+  P.pelvisRoll = 0.06 * k * sL + bank * 0.14; P.torsoRoll = -0.04 * k * sL + bank * 0.24;
   P.headYaw = -(P.pelvisYaw + P.torsoYaw) * 0.9; P.headPitch = -0.05 - 0.2 * drive;
-  const swing = 0.5 + 0.55 * k + 0.3 * drive;
-  const fwdL = -sL, fwdR = -sR; // the hand on the opposite side of the front foot is the one going forward
-  set3(P.handL, 0.68, 3.0 + (0.4 + 0.3 * drive) * (0.5 + 0.5 * fwdL) * (0.5 + k), 0.3 + swing * fwdL);
-  set3(P.handR, -0.68, 3.0 + (0.4 + 0.3 * drive) * (0.5 + 0.5 * fwdR) * (0.5 + k), 0.3 + swing * fwdR);
-  P.poleL = [1.0, -0.2, -0.8]; P.poleR = [-1.0, -0.2, -0.8];
+  // arms: bent at the elbow, pumping opposite to the legs - the hand comes up toward the chin in front and back past the hip
+  const pump = (0.45 + 0.5 * clamp(k, 0, 1.1) + 0.25 * drive);
+  const arm = (fwd, x, out) => set3(out, x, 3.35 + (0.5 + 0.35 * drive) * k * Math.max(0, fwd) - 0.15 * Math.max(0, -fwd), 0.3 + pump * fwd);
+  arm(-sL, 0.62, P.handL); // (each arm swings opposite to its own leg)
+  arm(sL, -0.62, P.handR);
+  P.poleL = [0.9, -0.6, -0.9]; P.poleR = [-0.9, -0.6, -0.9];
   set3(P.kneeL, 0.1, 0.05, 1); set3(P.kneeR, -0.1, 0.05, 1);
   // eyes on the ball: a running fielder keeps his body pointed where he is going but turns his head (and a little torso)
   if (look) { P.headYaw = clamp(P.headYaw + look * 0.85, -1.25, 1.25); P.torsoYaw += clamp(look, -1, 1) * 0.22; }
