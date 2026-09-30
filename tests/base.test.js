@@ -29,3 +29,13 @@ describe('resolveBase', () => {
     expect(resolveBase({})).toBe('./');
   });
 });
+
+describe('the site address for link previews', () => {
+  it('uses SITE_URL, else Vercel\'s production domain, else GitHub Pages, else nothing', async () => {
+    const { resolveSiteUrl } = await import('../scripts/resolveBase.mjs');
+    expect(resolveSiteUrl({ SITE_URL: 'https://sandlot.example.com' })).toBe('https://sandlot.example.com/');
+    expect(resolveSiteUrl({ VERCEL: '1', VERCEL_PROJECT_PRODUCTION_URL: 'baseball-abc.vercel.app' })).toBe('https://baseball-abc.vercel.app/');
+    expect(resolveSiteUrl({ GITHUB_ACTIONS: 'true', GITHUB_REPOSITORY: 'JCorrea510/baseball' })).toBe('https://jcorrea510.github.io/baseball/');
+    expect(resolveSiteUrl({})).toBe('');
+  });
+});

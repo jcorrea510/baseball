@@ -1,0 +1,25 @@
+{
+  "name": "Sandlot - Baseball Batting Game",
+  "short_name": "Sandlot",
+  "description": "Time your swing, aim your hits and crush home runs.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#05080c",
+  "theme_color": "#0b1a12",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -10,17 +10,20 @@ const ui = document.getElementById('ui');
 const boot = window.__sandlotBoot;
 
 let started = false;
+const report = (f, label) => { if (boot && boot.progress) boot.progress(f, label); };
 function start() {
   if (started) return;
   started = true;
+  const fail = (err) => { console.error(err); if (boot) boot.fail('start', err); };
   try {
     const app = new App(canvas, ui, params);
     window.__app = app; // handy for debugging / automated checks
+    app.init(report).catch(fail);
   } catch (err) {
-    console.error(err);
-    if (boot) boot.fail('start', err);
+    fail(err);
   }
 }
+report(0.38, 'Getting the field ready');
 
 // Let the browser paint the splash first, then build the (fairly heavy) ballpark. Animation frames never fire in a hidden
 // tab, so a plain timer is the backstop: startup must not depend on the tab being visible.

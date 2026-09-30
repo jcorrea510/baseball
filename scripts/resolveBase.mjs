@@ -20,3 +20,17 @@ export function resolveBase(env = {}, command = 'build') {
   }
   return './';
 }
+
+// The site's full public address (for link previews: social sites need an absolute URL for the preview image), or '' when the
+// build cannot know it. SITE_URL wins; Vercel tells the build its production domain; GitHub Pages is <owner>.github.io/<repo>/.
+export function resolveSiteUrl(env = {}) {
+  const explicit = (env.SITE_URL || '').trim();
+  if (explicit) return explicit.replace(/\/?$/, '/');
+  const vercel = (env.VERCEL_PROJECT_PRODUCTION_URL || '').trim();
+  if (env.VERCEL && vercel) return `https://${vercel.replace(/^https?:\/\//, '').replace(/\/+$/, '')}/`;
+  if (env.GITHUB_ACTIONS === 'true' && env.GITHUB_REPOSITORY) {
+    const [owner, repo] = String(env.GITHUB_REPOSITORY).split('/');
+    if (owner && repo) return `https://${owner.toLowerCase()}.github.io/${repo}/`;
+  }
+  return '';
+}

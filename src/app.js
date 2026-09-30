@@ -25,9 +25,17 @@ import { landingSpot, landingRing } from './game/landing.js';
 const LABEL = { fastball: 'Fastball', changeup: 'Changeup', curveball: 'Curveball', slider: 'Slider', heater: 'Heater' };
 
 export class App {
+  // The constructor only remembers where to draw; init() builds everything, in stages, reporting progress to the loading splash
+  // (and letting the browser repaint the bar between stages).
   constructor(canvas, uiRoot, params = new URLSearchParams()) {
     this.params = params;
     this.canvas = canvas;
+    this.uiRoot = uiRoot;
+  }
+
+  async init(report = () => {}) {
+    const params = this.params, canvas = this.canvas;
+    const step = async (f, label) => { report(f, label); await breathe(); };
     this.prog = new Progress();
     this.audio = new AudioEngine();
     this.audio.muted = !this.prog.settings.sound;
@@ -39,7 +47,9 @@ export class App {
     if (touch) document.body.classList.add('touch');
     this.touch = touch;
 
+    await step(0.42, 'Building the ballpark');
     this.S = createScene(canvas, { preserveDrawingBuffer: params.has('shot') });
+    await step(0.66, 'Warming up the players');
     this.ball = createBall(this.S.scene);
     this.fx = createEffects(this.S.scene);
     this.actors = new Actors(this.S.scene, this.ball, this.fx);
@@ -48,7 +58,7 @@ export class App {
     this.cam.title = true;
     this.makeZoneOverlay();
 
-    this.ui = new UI(uiRoot, (a, d) => this.onAction(a, d));
+    this.ui = new UI(this.uiRoot, (a, d) => this.onAction(a, d));
     this.ui.noFlashes = !this.prog.settings.flashes;
     this.nav = []; // menu screens to go back to (Back / Esc)
     this.gameToken = 0; // bumps with every new game / quit, so delayed effects from an old game never fire into a new one
@@ -66,30 +76,38 @@ export class App {
     this.lastFrameStamp = performance.now();
     this.time = 0;
     this.rawDtMs = 16.7;
-    this.pitchesThisGame = 0;
-    this.callTimer = 0;
 
     // A quiet "demo" engine so the title screen shows a living ballpark
     this.demo = new Engine({ mode: 'practice', difficulty: 'pro', seed: 7 });
     this.actors.configure({ engine: this.demo, playerUniformKey: this.prog.data.equipped.uniform, batStyle: this.prog.data.equipped.bat });
 
-    this.S.env.set(this.prog.settings.tod);
-    this.applyStadiumMood();
-    this.ui.buildTitle(this.prog);
-    this.ui.show('title');
-    this.ui.setMuteIcon(this.audio.muted);
-
-    this.bindInput();
-    this.loop = this.loop.bind(this);
-    requestAnimationFrame((t) => { this.lastFrameStamp = t; this.last = t; requestAnimationFrame(this.loop); });
-
-    // Test / QA shortcuts:  ?mode=quick&diff=pro&tod=night&bot=1&skiphow=1
-    const qm = params.get('mode');
-    if (params.get('tod')) { this.prog.settings.tod = params.get('tod'); this.S.env.set(params.get('tod')); }
+    // Test / QA shortcuts:  ?mode=quick&diff=pro&tod=night&bot=1
+    if (params.get('tod')) this.prog.settings.tod = params.get('tod');
     if (params.get('diff')) this.prog.settings.difficulty = params.get('diff');
     if (params.get('zone')) this.prog.settings.zone = params.get('zone') === '1';
     if (params.get('guide')) this.prog.settings.pitchGuide = params.get('guide') === '1';
     if (params.get('ring')) this.prog.settings.landingRing = params.get('ring') === '1';
+
+    this.S.env.set(this.prog.settings.tod);
+    await step(0.84, 'Switching on the lights');
+    // Prepare every shader now (in the background where the browser can), so the first frames do not stutter.
+    this.actors.update(this.demo, 0, 0);
+    this.cam.update(0, null, this.actors, this.S.size.aspect);
+    try {
+      const r = this.S.renderer;
+      if (r.extensions.has('KHR_parallel_shader_compile')) await Promise.race([r.compileAsync(this.S.scene, this.S.camera), wait(5000)]);
+      else r.compile(this.S.scene, this.S.camera);
+    } catch (e) { /* the first frame will compile them */ }
+    report(0.96, 'Play ball!');
+
+    this.ui.buildTitle(this.prog);
+    this.ui.show('title');
+    this.ui.setMuteIcon(this.audio.muted);
+    this.bindInput();
+    this.loop = this.loop.bind(this);
+    requestAnimationFrame((t) => { this.lastFrameStamp = t; this.last = t; requestAnimationFrame(this.loop); });
+
+    const qm = params.get('mode');
     if (qm) { this.prog.settings.howtoSeen = true; setTimeout(() => this.startGame(qm), 50); }
   }
 
@@ -136,10 +154,6 @@ export class App {
     this.guide = new PitchGuide(this.S.scene); // the soft circle that guesses where the pitch will cross the plate
     this.landing = null; // where the ball in the air will come down (see onContact)
     this.landRing = new LandingRing(this.S.scene); // ...and the ring on the grass that shows it
-  }
-
-  applyStadiumMood() {
-    // scoreboard gets the mode text / crowd reacts later
   }
 
   get settings() { return this.prog.settings; }
@@ -820,4 +834,15 @@ export class App {
 }
 
 function F_HR() { return CONFIG.feel.shakeHomer; }
+// Give the browser a moment to paint (the loading bar) between startup stages. Animation frames never fire in a hidden tab,
+// so a short timer is the backstop.
+function breathe() {
+  return new Promise((resolve) => {
+    let done = false;
+    const go = () => { if (!done) { done = true; resolve(); } };
+    requestAnimationFrame(() => setTimeout(go, 0));
+    setTimeout(go, 60);
+  });
+}
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 function blurFocus() { try { const a = document.activeElement; if (a && a !== document.body && a.blur) a.blur(); } catch (e) { /* ignore */ } }

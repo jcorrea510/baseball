@@ -112,12 +112,22 @@ const scenarios = [
     },
   },
   {
-    name: 'menus work with real clicks (play, settings, pause, resume)',
+    name: 'menus work with real clicks (settings, credits, play, pause, confirm, resume)',
     dir: path.join(ROOT, 'dist'),
     async run({ page, problems }) {
       const click = (sel) => page.click(sel, { timeout: 20000 });
       const visible = (sel) => page.evaluate((q) => { const e = document.querySelector(q); return !!e && e.offsetParent !== null && getComputedStyle(e).visibility !== 'hidden'; }, sel);
       await waitFor(page, () => document.documentElement.getAttribute('data-boot') === 'ready', 90000, 'the game to start');
+      // Settings from the title: a volume slider, then Credits, then back (Esc) twice to the title
+      await click('#ui .screen.show button[data-a="settings"]');
+      await page.locator('#ui .screen.show input[data-slide="crowdVolume"]').fill('35');
+      if (await page.evaluate(() => window.__app.settings.crowdVolume) !== 0.35) throw new Error('the crowd volume slider did not change the setting');
+      await click('#ui .screen.show button[data-a="credits"]');
+      await waitFor(page, () => /three\.js/.test(document.querySelector('#ui .screen.show')?.textContent || ''), 5000, 'the credits (three.js licence)');
+      await page.keyboard.press('Escape');
+      await waitFor(page, () => window.__app.ui.current === 'settings', 5000, 'Esc to go back to Settings');
+      await page.keyboard.press('Escape');
+      await waitFor(page, () => window.__app.ui.current === 'title', 5000, 'Esc to go back to the title');
       await click('#ui .screen.show button[data-a="play"]');
       // first time only: the short how-to screen
       if (await page.waitForSelector('#ui .screen.show button[data-a="howtoDone"]', { timeout: 5000 }).catch(() => null)) await click('#ui .screen.show button[data-a="howtoDone"]');
@@ -141,6 +151,9 @@ const scenarios = [
       await click('#ui .screen.show .switch[data-set="landingRing"]');
       if (await page.evaluate(() => window.__app.settings.landingRing)) throw new Error('the landing ring switch did not turn it off');
       await click('#ui .screen.show .switch[data-set="landingRing"]');
+      // Quit takes two taps: one tap only arms it
+      await click('#ui .screen.show button[data-a="quit"]');
+      if (!(await page.evaluate(() => !!window.__app.engine && window.__app.ui.current === 'pause'))) throw new Error('one tap on Quit ended the game');
       await click('#ui .screen.show button[data-a="resume"]');
       await waitFor(page, () => !document.querySelector('#ui .screen.show'), 5000, 'the pause menu to close');
       if (problems.length) throw new Error('console/network problems:\n    ' + problems.join('\n    '));

@@ -6,11 +6,27 @@
     <meta name="theme-color" content="#0b1a12" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="description" content="Sandlot - a browser baseball batting game. Time your swing, crush home runs." />
+    <meta name="description" content="Sandlot is a free baseball batting game for your browser. Time your swing, aim your hits and crush home runs - quick games, a Home Run Derby and practice, on phone or computer." />
+    <meta name="application-name" content="Sandlot" />
+    <meta name="apple-mobile-web-app-title" content="Sandlot" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Sandlot" />
+    <meta property="og:title" content="Sandlot - Baseball Batting Game" />
+    <meta property="og:description" content="Time your swing, aim your hits and crush home runs. Free in your browser, on phone or computer." />
+    <meta property="og:image" content="og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="The Sandlot logo over a sunny ballpark" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Sandlot - Baseball Batting Game" />
+    <meta name="twitter:description" content="Time your swing, aim your hits and crush home runs. Free in your browser." />
+    <meta name="twitter:image" content="og-image.jpg" />
     <!--
       Boot guard. This is plain inline JavaScript on purpose: it has to work even when the game's own files
       never load (wrong publish setting, blocked script, old browser). It owns the "Warming up the ballpark"
       splash and turns ANY startup problem into a readable message instead of a spinner that never ends.
+        __sandlotBoot.progress(f, label) startup got this far (0..1): move the bar, say what is happening
         __sandlotBoot.done()          the game drew its first frame: fade the splash away
         __sandlotBoot.fail(kind, err) show the error screen (kind: load | start | frame | timeout)
       The current state is mirrored in <html data-boot="loading | ready | failed:<kind>"> for automated checks.
@@ -76,12 +92,34 @@
           box.hidden = false;
         }
 
+        // The progress bar. While the game files download there is nothing to measure, so it creeps toward 35%; after that the
+        // game reports its real startup stages. It never goes backwards.
+        var shown = 0, reported = false;
+        function bar(f) {
+          shown = Math.max(shown, Math.min(1, f));
+          var b = $('boot-fill'); if (b) b.style.transform = 'scaleX(' + shown.toFixed(3) + ')';
+          var r = $('boot-bar'); if (r && r.setAttribute) r.setAttribute('aria-valuenow', String(Math.round(shown * 100)));
+        }
+        function creep() {
+          if (state !== 'loading' || reported) return;
+          bar(shown + (0.35 - shown) * 0.05);
+          timers.push(setTimeout(creep, 120));
+        }
+        timers.push(setTimeout(creep, 120));
+
         var api = (window.__sandlotBoot = {
           get state() { return state; },
+          progress: function (f, label) {
+            if (state !== 'loading') return;
+            reported = true;
+            bar(f);
+            var m = $('boot-msg'); if (m && label) m.textContent = label;
+          },
           done: function () {
             if (state === 'ready' || (state.indexOf('failed') === 0 && failKind !== 'timeout')) return;
             for (var i = 0; i < timers.length; i++) clearTimeout(timers[i]);
             setState('ready');
+            bar(1);
             var box = $('boot-error'); if (box) box.hidden = true;
             var boot = $('boot');
             if (boot) { boot.style.opacity = '0'; setTimeout(function () { if (boot.parentNode) boot.parentNode.removeChild(boot); }, 600); }
@@ -119,6 +157,9 @@
       })();
     </script>
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32.png" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <link rel="manifest" href="./site.webmanifest" />
     <title>Sandlot - Baseball Batting Game</title>
     <style>
       html, body { margin: 0; height: 100%; background: #05080c; }
@@ -126,11 +167,11 @@
       #boot { z-index: 50; transition: opacity .5s ease; }
       #boot b { font-size: clamp(44px, 12vw, 120px); letter-spacing: .02em; text-shadow: 0 5px 0 rgba(140, 60, 10, .85); }
       #boot span { font: 600 13px system-ui, sans-serif; letter-spacing: .3em; text-transform: uppercase; color: #a9b6d3; text-align: center; padding: 0 16px; }
-      #boot i { display: block; width: 46px; height: 46px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff, #d8d2c4); position: relative; animation: bootspin 1s linear infinite; }
-      #boot i::before, #boot i::after { content: ''; position: absolute; top: 6px; bottom: 6px; width: 10px; border: 2px solid #c62828; border-radius: 50%; }
-      #boot i::before { left: 4px; border-right-color: transparent; border-top-color: transparent; border-bottom-color: transparent; }
-      #boot i::after { right: 4px; border-left-color: transparent; border-top-color: transparent; border-bottom-color: transparent; }
-      @keyframes bootspin { to { transform: rotate(360deg); } }
+      #boot-logo { width: min(560px, 80vw); line-height: 0; filter: drop-shadow(0 16px 26px rgba(0, 0, 0, .55)); }
+      #boot-logo svg { display: block; width: 100%; height: auto; }
+      #boot-bar { position: relative; width: min(320px, 64vw); height: 8px; border-radius: 4px; overflow: hidden; background: rgba(255, 255, 255, .12); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); }
+      #boot-fill { position: absolute; inset: 0; transform-origin: 0 50%; transform: scaleX(0); background: linear-gradient(90deg, #ffd36b, #ffb52e); border-radius: 4px; transition: transform .35s ease-out; }
+      @media (max-height: 420px) { #boot { gap: 10px; } #boot-logo { width: min(380px, 60vw); } }
       #boot-error { z-index: 60; padding: 24px; box-sizing: border-box; text-align: center; }
       #boot-error[hidden] { display: none; }
       #boot-error h1 { margin: 0; font-size: clamp(24px, 5vw, 40px); }
@@ -142,7 +183,7 @@
     </style>
   </head>
   <body>
-    <div id="boot"><b>SANDLOT</b><i></i><span id="boot-msg">Warming up the ballpark</span><noscript><span>Sandlot needs JavaScript. Please turn it on and reload.</span></noscript></div>
+    <div id="boot"><div id="boot-logo"><b>SANDLOT</b></div><div id="boot-bar" role="progressbar" aria-label="Loading" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="boot-fill"></div></div><span id="boot-msg">Loading the game</span><noscript><span>Sandlot needs JavaScript. Please turn it on and reload.</span></noscript></div>
     <div id="boot-error" role="alert" hidden>
       <h1 id="boot-error-title"></h1>
       <p id="boot-error-body"></p>

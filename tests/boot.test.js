@@ -13,7 +13,9 @@ const inline = html.match(/<script>([\s\S]*?)<\/script>/);
 function makePage(hostname = 'example.vercel.app') {
   const els = {};
   const el = (id) => (els[id] = els[id] || { id, textContent: '', hidden: true, style: {}, parentNode: { removeChild(n) { n.removed = true; } } });
-  ['boot', 'boot-msg', 'boot-error', 'boot-error-title', 'boot-error-body', 'boot-error-detail'].forEach(el);
+  ['boot', 'boot-msg', 'boot-error', 'boot-error-title', 'boot-error-body', 'boot-error-detail', 'boot-fill'].forEach(el);
+  const barAttrs = {};
+  els['boot-bar'] = { id: 'boot-bar', setAttribute: (k, v) => { barAttrs[k] = v; }, attrs: barAttrs };
   els['boot'].hidden = false;
   const attrs = {};
   const listeners = {};
@@ -57,6 +59,28 @@ describe('index.html boot guard', () => {
     expect(html.indexOf(inline[0])).toBeLessThan(html.indexOf('type="module"'));
     expect(html).toContain('id="boot"');
     expect(html).toContain('id="boot-error"');
+  });
+
+  it('has a progress bar that creeps while the game downloads, follows the startup stages and never goes backwards', () => {
+    const p = makePage();
+    const pct = () => +p.els['boot-bar'].attrs['aria-valuenow'];
+    for (let i = 0; i < 20; i++) p.advance(120);
+    expect(pct()).toBeGreaterThan(5);
+    expect(pct()).toBeLessThan(36); // (the download is not measurable, so it only creeps toward a third)
+    p.boot.progress(0.42, 'Building the ballpark');
+    expect(pct()).toBe(42);
+    expect(p.els['boot-msg'].textContent).toBe('Building the ballpark');
+    p.boot.progress(0.3, 'Older news');
+    expect(pct()).toBe(42);
+    p.boot.done();
+    expect(pct()).toBe(100);
+    expect(p.els['boot-fill'].style.transform).toBe('scaleX(1.000)');
+  });
+
+  it('the page itself shows the bar and the logo slot', () => {
+    expect(html).toContain('id="boot-bar"');
+    expect(html).toContain('role="progressbar"');
+    expect(html).toContain('id="boot-logo"');
   });
 
   it('starts out loading', () => {
