@@ -1,19 +1,27 @@
 # ⚾ Sandlot
 
-**A baseball batting game that runs in your web browser.** Watch the pitcher, time your swing, and try to send the ball over the fence. It looks like a real ballpark (grass with mowing stripes, a dirt infield, a packed crowd, day and night lighting) and plays fast: about two seconds between pitches.
+**A baseball batting game that runs in your web browser, on a computer or a phone.** Watch the pitcher, time your swing, aim it, and send the ball over the fence. It looks like a real ballpark - striped grass, a dirt infield, dugouts, a packed crowd, day, dusk and night lighting - and it plays fast: about two seconds between pitches.
 
-Everything in the game is original and made by code: the players, teams, sounds, crowd and stadium. Nothing is downloaded and nothing is copied from anywhere.
+Everything in the game is original and made by code: the logo, players, teams, stadium, crowd and every sound. Nothing is downloaded from anywhere else and nothing is copied (the only outside code is the three.js 3D engine, MIT licence - see Credits in the game).
+
+## Play it
+
+* **Vercel:** **https://baseball-jtc11.vercel.app** (every push to `main` updates it).
+* **GitHub Pages:** **https://jcorrea510.github.io/baseball/** (also updated on every push to `main`).
+
+On a phone, turn it sideways for the best view. You can also add it to your home screen: it then opens full screen like an app.
 
 ## How to play
 
 | Do this | To get this |
 | --- | --- |
-| **Spacebar**, **click**, or **tap** | Swing |
-| **A / D** or **← / →** (phones: the two round arrow buttons) | Aim the ball toward left or right field |
-| **Z** | Show / hide the strike zone |
-| **Esc** or **P** | Pause |
-| **M** | Mute |
+| **Spacebar**, **click** or **tap** | Swing |
+| **A / D** or **← / →** (phones: the two round arrow buttons) | Aim toward left or right field |
 | Tap / click during a play | Fast-forward the play |
+| **Esc** or **P** | Pause (and back out of any menu) |
+| **M** | Mute |
+| **Z** | Show / hide the strike zone |
+| **Enter** / **Space** on a menu button, **Tab** to move between them | Use the menus without a mouse |
 
 **The one skill:** swing so the bat reaches home plate at the same moment the ball does.
 
@@ -24,23 +32,28 @@ Everything in the game is original and made by code: the players, teams, sounds,
 
 After every swing a small meter shows exactly how many milliseconds early or late you were.
 
-Pitches that are far outside the strike zone are hard to hit well, and some (way off the plate, in the dirt, high heat) cannot be hit at all. Let them go and make the pitcher throw strikes! The harder the level, the more of them he throws, and the nastier: curveballs that start at the belt and drop out, sliders that start over the plate and break away.
+Pitches far outside the strike zone are hard to hit well, and some (way off the plate, in the dirt, high heat) cannot be hit at all. Let them go and make the pitcher throw strikes! The harder the level, the more of them he throws, and the nastier they are.
+
+Two helpers can be switched on and off: the **pitch guide** (a soft circle that guesses where the pitch will cross the plate - on harder levels it shows up later and is less sure) and the **landing ring** (where a ball hit in the air will come down).
 
 ## What's in the game
 
-* **Quick Game** - 3 innings against the computer. Full count (balls, strikes), outs, runners on base, runs and a real scoreboard. The computer's half-innings are played out instantly as a short highlights list. Tied after 3? Extra innings, starting with a runner on second base.
-* **Home Run Derby** - 10 outs. Anything that is not a home run costs you an out (on Rookie, fouls and misses are free). Taking a pitch is free. Tracks your longest home run and best streak.
-* **Practice** - pick the pitch type (fastball, changeup, curveball, slider, the rare 100+ mph *heater*), pick the speed, and see your timing after every swing.
-* **3 difficulty levels** - *Rookie* (slow pitches, big timing windows, pitch names shown), *Pro* (real speeds, mix of pitches), *All-Star* (fast, tricky, tiny windows - watch the pitcher's arm for tells).
-* **Day, dusk and night** ballparks, with fireworks after home runs.
-* **Unlockable bats and uniforms** for reaching milestones (hits, home runs, wins, long bombs). They live in the *Locker*.
-* **Career stats and records** saved on your device.
+* **Quick Game** - 3 innings against the computer, with balls and strikes, outs, runners, runs and a real scoreboard. The computer's half-innings are played out instantly as a short highlights list. Tied after 3? Extra innings, starting with a runner on second base, and walk-off wins.
+* **Home Run Derby** - 10 outs. Anything that is not a home run costs an out (on Rookie, fouls and misses are free). Taking a pitch is free.
+* **Practice** - pick the pitch type (fastball, changeup, curveball, slider, the rare 100+ mph *heater*), the speed and the location, and see your timing and exit speed after every swing.
+* **3 levels** - *Rookie* (slow pitches, big timing windows, pitch names shown, a "swing now" cue), *Pro* (real speeds, a mix of pitches), *All-Star* (fast, tricky, tiny windows - watch the pitcher's arm for tells).
+* **Unlockable bats and uniforms** for milestones (hits, home runs, wins, long bombs) in the *Locker*, and **career stats and records** saved on your device.
 
-## Play it
+### Settings
 
-The published game lives at **https://jcorrea510.github.io/baseball/** (it goes live after the one-time GitHub setting described below).
+From the title screen, the Play screen or the pause menu:
 
-### Play it on your own computer
+* **Sound:** master, effects, umpire and crowd volume (letting go of a slider plays a sample), and the umpire's voice (see below).
+* **Game:** level, which side the batters hit from, time of day, strike zone, pitch guide, landing ring.
+* **Controls & screen:** *Swing delay* (if your screen or TV lags, slide it up until your perfect swings read PERFECT - it takes that many milliseconds off every press), camera shake, screen flashes.
+* **Reset stats** (clears career stats and records; your settings and unlocked items stay). Restart, Quit and Reset all take two taps, so a mis-tap never loses anything.
+
+## Play it on your own computer
 
 You need [Node.js](https://nodejs.org) (version 20 or newer). Then, in a terminal inside this folder:
 
@@ -52,30 +65,18 @@ npm run dev     # starts the game - open the address it prints (usually http://l
 Other handy commands:
 
 ```bash
-npm test        # runs the automated checks on the game rules and physics
+npm test        # the automated checks on the game rules, physics, sound and startup
 npm run build   # makes the finished website in the "dist" folder
-npm run smoke   # after a build: opens the finished site in a real browser, checks it reaches the title screen and clicks through the menus
+npm run smoke   # after a build: opens the finished site in a real browser, clicks through the menus and checks every startup error screen
 npm run sim     # plays hundreds of computer-controlled games and prints statistics
 ```
 
-## Publishing (GitHub Pages)
+## Publishing
 
-Every time something is pushed to the **`main`** branch, GitHub automatically tests, builds and publishes the game (see `.github/workflows/deploy.yml`).
+Every push to the **`main`** branch publishes the game in two places at once:
 
-**One-time setup on the GitHub website:**
-
-1. Open the repository page → **Settings** (top row of tabs).
-2. In the left sidebar click **Pages**.
-3. Under **Build and deployment**, open the **Source** drop-down and choose **GitHub Actions**. **Do not** pick "Deploy from a branch": that publishes the raw source code instead of the finished game, and the page shows an error screen ("The game files didn't load").
-4. Go to the **Actions** tab, click **Deploy to GitHub Pages** in the left list, then **Run workflow** → **Run workflow**. Wait for the green check mark (about two minutes) - the game is then live.
-
-**How to tell it worked:** the run named "Deploy to GitHub Pages" is green and has no yellow warning. If you still see a second run named "pages build and deployment" (with a "Build with Jekyll" step) after each push, or a yellow "Set GitHub Pages to GitHub Actions" warning on the run, Pages is still on "Deploy from a branch" - go back to step 3.
-
-If the game ever shows an error screen instead of the title screen, read the message on it: it says whether the game files didn't load or the browser couldn't start 3D graphics (turn on hardware acceleration or try another browser). Under **Technical details** on that screen there is a short note for whoever runs the site (on GitHub Pages it points at the Pages setting above).
-
-## Publishing on Vercel (optional second home)
-
-The same code also runs on Vercel. The build works out the right web address layout by itself: on GitHub Pages the game lives under `/baseball/`, on Vercel it lives at the site root `/`. The repository's `vercel.json` already holds the settings, so importing the repo is normally all it takes:
+* **GitHub Pages** - `.github/workflows/deploy.yml` runs the tests, builds the game, opens it in a real browser (the smoke test) and only then publishes it. If anything fails, the old version stays up. One-time setting (already done): repository **Settings → Pages → Source: GitHub Actions**. Never pick "Deploy from a branch": that publishes the raw source code and the page shows "The game files didn't load".
+* **Vercel** - rebuilds on its own from `main`. It does **not** run the tests, so the GitHub run (Actions tab, "Deploy to GitHub Pages", green check) is the one that tells you a push is healthy. Vercel settings (also in `vercel.json`):
 
 | Vercel setting | Value |
 | --- | --- |
@@ -84,14 +85,20 @@ The same code also runs on Vercel. The build works out the right web address lay
 | Output Directory | `dist` |
 | Install Command | `npm ci` |
 | Root Directory | (leave empty) |
-| Environment Variables | **none** - do not add `BASE_PATH`. (If one was added earlier, delete it; only the value `/` would be safe.) |
-| Production Branch | `main` |
+| Environment Variables | **none** - never add `BASE_PATH` |
+| Production Branch | `main` (check this: GitHub's *default* branch is an old `claude/...` branch, and Vercel may have picked that) |
 
-Every push to `main` then updates both GitHub Pages and Vercel. If the Vercel site ever shows "The game files didn't load", open **Technical details** on that screen: it names the file that was not found. That happens when a build made for another address is deployed, so check that no `BASE_PATH` variable is set and redeploy (Deployments, the three dots, Redeploy, untick "Use existing Build Cache").
+The build works out the web address layout by itself (GitHub Pages serves the game under `/baseball/`, Vercel at `/`), and gives link previews (the picture and text shown when someone shares the link) the right full address on each host.
+
+If the game ever shows an error screen instead of the title, read it: it says whether the game files didn't load or the browser couldn't start 3D graphics (turn on hardware acceleration or try another browser). **Technical details** on that screen has a short note for whoever runs the site. On Vercel, "The game files didn't load" means a build made for another address was deployed: check that no `BASE_PATH` variable is set, then redeploy without the build cache.
+
+### The logo, icons and share picture
+
+The logo is drawn by code (`src/ui/logo.js`). After changing it, run `npm run dev` and, in another window, `node scripts/brand.mjs` - it remakes the favicon, the home-screen icons and the share picture in `public/` from the logo and the real ballpark. Commit the new files.
 
 ## The umpire's voice
 
-The umpire is heard in three ways. Pick one in **Settings -> Umpire**:
+The umpire is heard in three ways. Pick one in **Settings → Umpire voice** (also in the pause menu's Settings):
 
 | Setting | What you hear |
 | --- | --- |
@@ -118,7 +125,7 @@ The umpire is heard in three ways. Pick one in **Settings -> Umpire**:
 - Optional: `ball4.mp3` for "Ball four!", and extra versions of any call named with an underscore and one letter - `strike_b.mp3`, `strike_c.mp3` ... - so it does not sound the same every time (one is picked at random). To go back to the built-in voice for a call, delete its file(s).
 - `.wav` and `.ogg` files work too. Calls without a file keep the built-in voice, so you can start with just `strike.mp3` and `ball.mp3`.
 - Trim the silence at the start yourself, or the call will land late - or let the tool below do it.
-- Then push to `main` (or, on your own computer, stop and restart `npm run dev`). The game plays your files with **Settings -> Umpire -> Voice**. It adds a light stadium echo, and the mute button silences them like every other sound.
+- Then push to `main` (or, on your own computer, stop and restart `npm run dev`). The game plays your files with **Settings → Umpire voice → Voice**. It adds a light stadium echo, and the mute button silences them like every other sound.
 
 **The tool** (needs [ffmpeg](https://ffmpeg.org) installed once: `brew install ffmpeg` on a Mac, `winget install ffmpeg` on Windows, `sudo apt install ffmpeg` on Linux):
 
@@ -146,9 +153,11 @@ If something feels too hard, too easy, too slow or too fast, open **`src/config.
 | Too much waiting between pitches | `pace.*` and `difficulty.<level>.windup` |
 | Computer scores too much / too little | `difficulty.<level>.ai` |
 | Derby too hard | `modes.derby.evBonus`, `modes.derby.pitchSpeed` |
-| Umpire too quiet / too polite / too echoey | `audio.umpire.level`, `audio.umpire.rasp`, `audio.umpire.echo`, `audio.umpire.reverb` |
+| One sound too loud / too quiet for everyone | `audio.mix` (effects, crowd, applause, glove pop, swing, menu clicks), `audio.umpire.level` (built-in voice), `audio.umpire.files.level` (your recordings). Players can also adjust master / effects / umpire / crowd in Settings. |
+| Umpire too polite / too echoey | `audio.umpire.rasp`, `audio.umpire.echo`, `audio.umpire.reverb` |
+| Pitch too small to see on phones | `pitch.minScreenPx`, `pitch.minScreenFrac` (picture only - timing is unchanged) |
 | Derby home runs too rare / too common | perfect swings: `modes.derby.evBonus`, `contact.launch.perfect`; good swings: `modes.derby.goodQuality`, `modes.derby.goodLaunch`; pulled balls: `modes.derby.pullBonus` (run `node scripts/hrrate.mjs` to see the percentages) |
 
 ## For developers
 
-See **[CLAUDE.md](CLAUDE.md)** for how the code is organised.
+See **[CLAUDE.md](CLAUDE.md)** for how the code is organised, the checks to run and the known rough edges.

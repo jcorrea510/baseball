@@ -1,0 +1,49 @@
+// HUD overlap check in the real game: every pop-up (pitch pill, exit-speed readout, timing meter, banner, score bug, aim
+// controls, practice drawer) forced on at once, in each mode, at each screen size; prints any two that overlap or leave the screen.
+//   npm run dev  then  node scripts/hudqa.mjs [sizes e.g. 568x320,844x390] [url]      (screenshots in qa-output/)
+import fs from 'node:fs';
+import { chromium } from 'playwright-core';
+const BROWSER = process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : fs.existsSync('/opt/pw-browsers/chromium') ? { executablePath: '/opt/pw-browsers/chromium' } : {};
+fs.mkdirSync('qa-output', { recursive: true });
+const browser = await chromium.launch({ ...BROWSER, args: ['--no-sandbox', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const sizes = (process.argv[2] || '568x320,844x390,1280x720,390x844').split(',');
+const report = [];
+for (const sz of sizes) {
+  const [w, h] = sz.split('x').map(Number);
+  const touch = w < 900;
+  for (const mode of ['quick', 'derby', 'practice']) {
+    const ctx = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: touch, isMobile: touch });
+    const page = await ctx.newPage();
+    await page.goto(`${process.argv[3] || 'http://localhost:5173/'}?mode=${mode}&seed=4`, { waitUntil: 'load' });
+    await page.waitForFunction(() => document.documentElement.getAttribute('data-boot') === 'ready', null, { timeout: 90000 });
+    await page.addStyleTag({ content: '*,*::before,*::after{transition:none!important;animation:none!important}' });
+    const r = await page.evaluate(() => {
+      const a = window.__app, ui = a.ui;
+      if (ui.rotateEl) ui.rotateEl.style.display = 'none';
+      for (let i = 0; i < 60; i++) a.tick(1 / 30, false);
+      ui.showPitchInfo('Curveball', 84, false, 99999);
+      ui.callout([{ v: 104, u: 'mph', l: 'Exit velo' }, { v: 412, u: 'ft', l: 'Distance' }, { v: 28, u: '°', l: 'Launch' }], 99999);
+      ui.timing(-12, 'good', { perfect: 20, good: 42 }, 'GOOD · 12 ms early');
+      ui.banner('DOUBLE', '98 mph · 2 runs', 'good');
+      ui.q.banner.style.opacity = '1';
+      a.tick(0.001, true);
+      // overlap check between visible HUD boxes
+      const sel = ['.pitchinfo', '.callout', '.meter', '.banner', '.bugwrap', '.derbybox', '.practice', '.hudbtns', '.aimgauge', '.touchaim.l', '.touchaim.r'];
+      const boxes = [];
+      for (const s of sel) { const e = document.querySelector('.hud ' + s); if (!e) continue; const cs = getComputedStyle(e); if (cs.display === 'none' || +cs.opacity === 0) continue; const b = e.getBoundingClientRect(); if (b.width && b.height) boxes.push({ s, b }); }
+      const hits = [];
+      for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+        const A = boxes[i].b, B = boxes[j].b;
+        const ox = Math.min(A.right, B.right) - Math.max(A.left, B.left), oy = Math.min(A.bottom, B.bottom) - Math.max(A.top, B.top);
+        if (ox > 2 && oy > 2) hits.push(`${boxes[i].s} x ${boxes[j].s} (${Math.round(ox)}x${Math.round(oy)})`);
+      }
+      const off = boxes.filter(({ b }) => b.left < -1 || b.top < -1 || b.right > innerWidth + 1 || b.bottom > innerHeight + 1).map(({ s }) => s + ' off-screen');
+      return hits.concat(off);
+    });
+    report.push(`${sz} ${mode}: ${r.length ? r.join('; ') : 'no overlaps'}`);
+    await page.screenshot({ path: `qa-output/hud-${sz}-${mode}.png` });
+    await ctx.close();
+  }
+}
+console.log(report.join('\n'));
+await browser.close();
