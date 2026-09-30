@@ -43,13 +43,20 @@ describe('when there is a ring', () => {
 });
 
 describe('where the ring is', () => {
-  it('is exactly where the ball first touches the grass', () => {
+  it('is exactly where the flight ends: where the ball first touches the grass, or under the catch when a fielder takes it', () => {
     const rng = createRng(12);
-    let checked = 0;
+    let landed = 0, caught = 0;
     for (let i = 0; i < 400; i++) {
-      const { sim, spot } = hit(rng.range(60, 104), rng.range(14, 70), rng.range(-40, 40));
+      const { sim, spot, plan } = hit(rng.range(60, 104), rng.range(14, 70), rng.range(-40, 40));
       if (!spot) continue;
-      checked++;
+      if (spot.caught) {
+        caught++;
+        expect(spot.x).toBe(plan.catchPos.x); expect(spot.z).toBe(plan.catchPos.z);
+        const b = sampleBall(sim, spot.tEnd); // the ball is right above the ring at the catch
+        expect(Math.hypot(b.x - spot.x, b.z - spot.z)).toBeLessThan(0.6);
+        continue;
+      }
+      landed++;
       expect(spot.x).toBe(sim.firstBounce.x); expect(spot.z).toBe(sim.firstBounce.z);
       // walking the flight ball by ball: the last moment it is in the air is right before tLand, and it is at the ring
       const b = sampleBall(sim, spot.tLand);
@@ -58,7 +65,8 @@ describe('where the ring is', () => {
       const before = sampleBall(sim, spot.tLand - 0.2);
       expect(before.y).toBeGreaterThan(0.3);
     }
-    expect(checked).toBeGreaterThan(200);
+    expect(landed).toBeGreaterThan(40);
+    expect(caught).toBeGreaterThan(40);
   });
 });
 

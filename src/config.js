@@ -223,6 +223,7 @@ export const CONFIG = {
   pace: {
     firstPitchDelay: 0.85, // batter walks up to the plate
     nextPitchDelay: 0.22, // gap between the call and the pitcher starting again
+    afterReady: 0.45, // s between pressing Ready for a new batter and the pitcher starting his windup
     callDisplay: 0.55, // how long the ball/strike call is shown
     playEndPause: 0.5, // pause after a play finishes
     pitcherSet: 0.4, // s the pitcher (and catcher) need to be set once they are back in place: no pitch before it
@@ -364,25 +365,25 @@ export const CONFIG = {
   //  Camera and visuals
   // --------------------------------------------------------------------------
   // --------------------------------------------------------------------------
-  //  Landing spot ring: a soft ring on the grass where a ball hit in the air will come down; it shrinks as the ball falls and is at
-  //  its smallest the moment the ball lands. (Hidden once the ball lands or is caught.)
+  //  Landing spot ring: a ring lying on the grass where a ball hit in the air comes down (or under the spot where a fielder will catch
+  //  it); it shrinks as the ball falls and is at its smallest the moment the flight ends. (Hidden once the ball lands or is caught.)
   // --------------------------------------------------------------------------
   landing: {
     minApex: 14, // ft: only balls hit up into the air get a ring (not grounders or low liners)
     minFlight: 1.0, // s: ...and only if they stay up at least this long
     delay: 0.45, // s after contact before the ring appears (the ball has left the bat)
     fadeIn: 0.3, // s the ring takes to fade in
-    radiusStart: 15, // ft: how big the ring starts
-    radiusEnd: 3.0, // ft: how small it is when the ball lands (about a fielder's reach)
-    minScreen: 0.03, // the ring is never smaller than this fraction of its distance from the camera, so it stays visible far away
-    viewTilt: 30, // degrees: the camera looks across the grass at a very low angle, so the ring is tilted toward it until it is seen from at least this steep an angle (it stays centred on the landing spot)
-    alpha: 0.6, // how see-through the ring is at its clearest
+    radiusStart: 18, // ft: how big the ring starts
+    radiusEnd: 4.0, // ft: how small it is when the flight ends (a little more than a fielder's reach)
+    minScreen: 0.02, // the ring is never smaller than this fraction of its distance from the camera, so it stays visible far away
+    alpha: 0.85, // how see-through the ring is at its clearest (it lies flat on the grass like a chalk mark)
     color: 0xf4efc0, // soft warm white
   },
 
   camera: {
     batter: { pos: [0.0, 13.5, 24.0], pitch: -14.5, fov: 36 }, // camera behind the plate; pitch in degrees
     minHorizontalFov: 38, // narrow (portrait) screens widen the view to keep this
+    highHome: { up: 36, back: 40 }, // ft the camera climbs / backs up from its spot behind the plate while it follows a deep ball
   },
   // --------------------------------------------------------------------------
   //  Sound

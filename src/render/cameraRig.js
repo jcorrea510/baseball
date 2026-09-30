@@ -109,8 +109,11 @@ export class CameraRig {
       if (deep) {
         // stay behind the plate and pan; zoom in as the ball recedes, out when it is over
         tPos = this.basePos;
-        const rise = smoothstep(0.4, 2.2, t);
-        tPos = _tmp.copy(this.basePos).add(new THREE.Vector3(0, 6 * rise, 4 * rise));
+        // ...rising to a broadcast "high home" camera, so a ball in the air is seen against the grass it will land on (and the
+        // landing ring, lying flat on that grass, is not a sliver seen edge-on)
+        const rise = smoothstep(0.3, 1.8, t);
+        const H = CONFIG.camera.highHome;
+        tPos = _tmp.copy(this.basePos).add(new THREE.Vector3(0, H.up * rise, H.back * rise));
         tFov = lerp(34, 20, smoothstep(70, 380, dist));
         if (t > plan.ballHitEnd || homerAfter) tFov = homerAfter ? 44 : 34;
         posL = 1.6; lookL = 6.5; fovL = 3;

@@ -17,8 +17,12 @@ export function landingSpot(sim, plan, cfg = CONFIG) {
   if (sim.wallHit && sim.wallHit.t < fb.t) return null; // it hits the wall first: it never lands on the grass
   if (sim.standsLanding && sim.standsLanding.t < fb.t) return null;
   if (sim.apex.y < L.minApex || fb.t < L.minFlight) return null;
-  const caught = !!(plan && plan.caught);
-  return { x: fb.x, z: fb.z, tLand: fb.t, tEnd: caught ? Math.min(plan.catchT, fb.t) : fb.t, caught, tStart: Math.min(L.delay, fb.t * 0.5) };
+  const caught = !!(plan && plan.caught && plan.catchPos && plan.catchT <= fb.t);
+  // The ring marks where the ball's flight really ends: the grass where it lands, or - when a fielder catches it - the spot under the
+  // catch (a running catch is often several feet short of where it would have landed, and the ring must agree with the picture).
+  const x = caught ? plan.catchPos.x : fb.x, z = caught ? plan.catchPos.z : fb.z;
+  const tEnd = caught ? plan.catchT : fb.t;
+  return { x, z, tLand: tEnd, tEnd, caught, tStart: Math.min(L.delay, tEnd * 0.5) };
 }
 
 /**
@@ -28,7 +32,7 @@ export function landingSpot(sim, plan, cfg = CONFIG) {
 export function landingRing(spot, t, cfg = CONFIG) {
   const L = cfg.landing;
   if (!spot || t < spot.tStart || t >= spot.tEnd) return { visible: false, x: 0, z: 0, radius: L.radiusStart, alpha: 0 };
-  // it shrinks all the way to the moment the ball would land (even if a fielder catches it first and the ring goes away early)
+  // it shrinks all the way to the moment the flight ends (the landing, or the catch)
   const remaining = clamp((spot.tLand - t) / Math.max(1e-6, spot.tLand - spot.tStart), 0, 1);
   return {
     visible: true, x: spot.x, z: spot.z,
