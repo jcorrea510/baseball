@@ -384,7 +384,7 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
   .touchaim { bottom: calc(var(--safe-b) + 170px); }
   .bugwrap { left: 50%; transform: translateX(-50%); align-items: center; }
   .derbybox { left: 50%; transform: translateX(-50%); }
-  .practice { top: calc(var(--safe-t) + 62px); }
+  .practice { top: calc(var(--safe-t) + 124px); } /* below the pitch pill and the exit-speed readout */
 }
 @media (max-height: 520px) {
   .logo { width: min(460px, 62vw, 110vh); }
@@ -406,6 +406,19 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
   .pitchinfo { height: 32px; } .hint { height: 30px; top: calc(var(--safe-t) + 52px); } .callout { top: calc(var(--safe-t) + 52px); }
   .touchaim { bottom: calc(var(--safe-b) + 112px); }
   .meter { bottom: calc(var(--safe-b) + 84px); }
+  .banner { top: 38%; }
+}
+@media (min-height: 521px) and (min-width: 761px) and (max-width: 1180px) {
+  .hud[data-mode="quick"] .meter { bottom: calc(var(--safe-b) + 134px); } /* tablets and small laptops: above the score bug */
+}
+@media (max-height: 520px) and (min-width: 761px) {
+  .hud[data-mode="quick"] .meter { bottom: calc(var(--safe-b) + 116px); } /* clear of the score bug and its batter tag */
+}
+/* small screens: the folded practice drawer is just an icon button, so it never covers the pitch pill or the readouts */
+@media (max-width: 900px), (max-height: 520px) {
+  .practice.collapsed { width: 46px; }
+  .practice.collapsed .prhead { width: 46px; padding: 0; justify-content: center; }
+  .practice.collapsed .prhead span, .practice.collapsed .prhead .chev { display: none; }
 }
 /* phones held sideways: the pause switches sit in two columns so everything (Restart, Help, Quit too) fits without scrolling */
 @media (max-height: 520px) and (min-width: 480px) {

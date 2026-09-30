@@ -55,7 +55,7 @@ const icon = (name, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24" aria
 const PITCH_LABEL = { fastball: 'Fastball', changeup: 'Changeup', curveball: 'Curveball', slider: 'Slider', heater: 'Heater', mixed: 'Mixed' };
 const avgText = (hits, ab) => (ab > 0 ? (hits / ab).toFixed(3).replace(/^0/, '') : '.000');
 // Small screens fold the practice chooser away so it never covers the play.
-const smallScreen = () => typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-height: 520px), (max-width: 760px)').matches;
+const smallScreen = () => typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-height: 520px), (max-width: 900px)').matches;
 
 export class UI {
   constructor(root, on) {
