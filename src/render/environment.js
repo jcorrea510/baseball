@@ -30,10 +30,10 @@ const PRESETS = {
     cloud: '#26314f', cloudOpacity: 0.55,
     skyTop: '#02060f', skyHorizon: '#18264a', skyBottom: '#080d16',
     fog: '#0a1226', fogNear: 400, fogFar: 2200,
-    sunColor: '#e4ecff', sunIntensity: 2.6, sunPos: [60, 260, 90],
-    fillIntensity: 0.28, fillColor: '#6f86c8',
-    hemiSky: '#4b5f95', hemiGround: '#1d271c', hemiIntensity: 0.62,
-    exposure: 1.18, stars: 1, sunGlow: 0, lamps: 1, crowd: 0.62, glass: 1,
+    sunColor: '#dfe8ff', sunIntensity: 1.85, sunPos: [60, 260, 90], // the light towers: bright on the field, but clearly not daylight
+    fillIntensity: 0.16, fillColor: '#5d73b0',
+    hemiSky: '#34466f', hemiGround: '#141c14', hemiIntensity: 0.36,
+    exposure: 0.92, stars: 1, sunGlow: 0, lamps: 1, crowd: 0.36, glass: 1,
   },
 };
 

@@ -1,7 +1,7 @@
 // The baseball: mesh with stitching, soft ground shadow and a glowing trail for hard-hit balls.
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
-import { ballTexture, softDotTexture } from './textures.js';
+import { ballTexture } from './textures.js';
 
 const TRAIL_N = 34;
 
@@ -42,13 +42,6 @@ export function createBall(scene) {
   shadow.renderOrder = 3;
   scene.add(shadow);
 
-  // a soft glow so a far-away ball stays easy to follow (especially against a dark sky)
-  const haloMat = new THREE.SpriteMaterial({ map: softDotTexture(64, 0), color: 0xfff4d8, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0, sizeAttenuation: false, fog: false });
-  const halo = new THREE.Sprite(haloMat);
-  halo.scale.setScalar(0.03);
-  halo.renderOrder = 6;
-  scene.add(halo);
-  let haloBoost = 1;
 
   // trail
   const pos = new Float32Array(TRAIL_N * 3);
@@ -73,8 +66,7 @@ export function createBall(scene) {
 
   const api = {
     group, mesh,
-    setHaloBoost(b) { haloBoost = b; },
-    setVisible(v) { visible = v; group.visible = v; shadow.visible = v; halo.visible = v; if (!v) { trailStrength = 0; tg.getAttribute('aAlpha').array.fill(0); tg.getAttribute('aAlpha').needsUpdate = true; } },
+    setVisible(v) { visible = v; group.visible = v; shadow.visible = v; if (!v) { trailStrength = 0; tg.getAttribute('aAlpha').array.fill(0); tg.getAttribute('aAlpha').needsUpdate = true; } },
     get visible() { return visible; },
     setScale(s, minScreenPx = 0) { baseScale = s; minPx = minScreenPx; mesh.scale.setScalar(s); },
     setPosition(x, y, z) {
@@ -117,10 +109,6 @@ export function createBall(scene) {
         const px = (2 * r * baseScale * viewportH) / (2 * Math.max(1, d) * Math.tan((camera.fov * Math.PI) / 360));
         mesh.scale.setScalar(baseScale * (Math.hypot(px, minPx) / Math.max(1e-3, px)));
       }
-      const k = Math.max(0, Math.min(1, (d - 70) / 130));
-      haloMat.opacity = k * 0.85 * haloBoost;
-      halo.position.copy(group.position);
-      halo.scale.setScalar(0.022 + 0.012 * k);
     },
   };
   return api;
