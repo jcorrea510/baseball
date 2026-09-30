@@ -317,7 +317,7 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
 .linescore .ab { display: none; }
 @media (max-width: 560px) { .linescore .full { display: none; } .linescore .ab { display: inline; } }
 .statgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sp-2); margin: var(--sp-3) 0; }
-.stat { padding: 10px 6px; border-radius: var(--r-md); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.stat { text-align: center; padding: 10px 6px; border-radius: var(--r-md); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
 .stat .v { font-size: 24px; font-weight: 900; color: var(--amber-hi); line-height: 1.1; font-variant-numeric: tabular-nums; }
 .stat .l { font-size: 9px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); font-weight: 800; margin-top: 4px; }
 .badges { display: flex; flex-wrap: wrap; gap: var(--sp-2); justify-content: center; margin: var(--sp-2) 0; }
