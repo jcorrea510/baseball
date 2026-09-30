@@ -14,7 +14,8 @@ const PRESETS = {
     fog: '#c9dcea', fogNear: 700, fogFar: 3200,
     sunColor: '#fff3df', sunIntensity: 3.3, sunPos: [-150, 210, 80],
     fillIntensity: 0.55, fillColor: '#b8d0ff',
-    hemiSky: '#bcd6ff', hemiGround: '#5e7a44', hemiIntensity: 1.05,
+    hemiSky: '#bcd6ff', hemiGround: '#5e7a44', hemiIntensity: 0.8,
+    envIntensity: 0.5, // sky light on every surface (see bakeEnv)
     exposure: 1.0, stars: 0, sunGlow: 1, lamps: 0, crowd: 1.0, glass: 0,
   },
   dusk: {
@@ -23,7 +24,8 @@ const PRESETS = {
     fog: '#b8806a', fogNear: 500, fogFar: 2600,
     sunColor: '#ffb27a', sunIntensity: 2.3, sunPos: [-220, 70, 60],
     fillIntensity: 0.45, fillColor: '#8a90d8',
-    hemiSky: '#8f93d6', hemiGround: '#5a4a3c', hemiIntensity: 0.75,
+    hemiSky: '#8f93d6', hemiGround: '#5a4a3c', hemiIntensity: 0.58,
+    envIntensity: 0.38,
     exposure: 1.05, stars: 0.25, sunGlow: 1, lamps: 0.75, crowd: 0.85, glass: 0,
   },
   night: {
@@ -32,7 +34,8 @@ const PRESETS = {
     fog: '#0a1226', fogNear: 400, fogFar: 2200,
     sunColor: '#dfe8ff', sunIntensity: 1.85, sunPos: [60, 260, 90], // the light towers: bright on the field, but clearly not daylight
     fillIntensity: 0.16, fillColor: '#5d73b0',
-    hemiSky: '#34466f', hemiGround: '#141c14', hemiIntensity: 0.36,
+    hemiSky: '#34466f', hemiGround: '#141c14', hemiIntensity: 0.3,
+    envIntensity: 0.14,
     exposure: 0.92, stars: 1, sunGlow: 0, lamps: 1, crowd: 0.36, glass: 1,
   },
 };
@@ -140,12 +143,42 @@ export function createEnvironment(scene, renderer, { shadowSize = 2048 } = {}) {
   scene.fog = new THREE.Fog(0xc9dcea, 700, 3200);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
 
+  // Image-based sky light: a blurred picture of this time of day's sky, horizon, ground and sun lights every surface softly from
+  // all around (skin, cloth and helmets pick up sky above and grass below, and shiny things catch the sun). Made once per preset.
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const envScene = new THREE.Scene();
+  const envGeo = new THREE.SphereGeometry(10, 32, 16);
+  envGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(envGeo.attributes.position.count * 3), 3));
+  envScene.add(new THREE.Mesh(envGeo, new THREE.MeshBasicMaterial({ side: THREE.BackSide, vertexColors: true })));
+  const envSun = new THREE.Mesh(new THREE.SphereGeometry(0.9, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+  envScene.add(envSun);
+  let envRT = null, envKey = '';
+  function bakeEnv(preset) {
+    if (envKey === preset) return;
+    envKey = preset;
+    const top = new THREE.Color(preset.skyTop), hor = new THREE.Color(preset.skyHorizon), gnd = new THREE.Color(preset.hemiGround);
+    const pos = envGeo.attributes.position, col = envGeo.attributes.color, c = new THREE.Color();
+    for (let i = 0; i < pos.count; i++) {
+      const y = pos.getY(i) / 10;
+      if (y >= 0) c.copy(hor).lerp(top, Math.pow(y, 0.6)); else c.copy(hor).lerp(gnd, Math.min(1, -y * 4));
+      col.setXYZ(i, c.r, c.g, c.b);
+    }
+    col.needsUpdate = true;
+    const d = new THREE.Vector3(...preset.sunPos).normalize();
+    envSun.position.copy(d).multiplyScalar(9);
+    envSun.material.color.set(preset.sunColor).multiplyScalar(preset.sunGlow ? 6 : 1.5);
+    const rt = pmrem.fromScene(envScene, 0.02);
+    scene.environment = rt.texture;
+    if (envRT) envRT.dispose();
+    envRT = rt;
+  }
+
   // Current (smoothed) values
   const cur = {
     skyTop: new THREE.Color(), skyHorizon: new THREE.Color(), skyBottom: new THREE.Color(), fog: new THREE.Color(),
     sunColor: new THREE.Color(), fillColor: new THREE.Color(), hemiSky: new THREE.Color(), hemiGround: new THREE.Color(),
     sunPos: new THREE.Vector3(), fogNear: 0, fogFar: 0, sunIntensity: 0, fillIntensity: 0, hemiIntensity: 0,
-    exposure: 1, stars: 0, sunGlow: 1, lamps: 0, crowd: 1, glass: 0, cloudOpacity: 0.9,
+    exposure: 1, stars: 0, sunGlow: 1, lamps: 0, crowd: 1, glass: 0, cloudOpacity: 0.9, envIntensity: 0.5,
     cloud: new THREE.Color(),
   };
   let target = PRESETS.day;
@@ -174,6 +207,7 @@ export function createEnvironment(scene, renderer, { shadowSize = 2048 } = {}) {
     hemi.groundColor.copy(c.hemiGround);
     hemi.intensity = c.hemiIntensity;
     renderer.toneMappingExposure = c.exposure;
+    scene.environmentIntensity = c.envIntensity;
     cloudMat.color.copy(c.cloud);
     cloudMat.opacity = c.cloudOpacity;
   }
@@ -184,7 +218,8 @@ export function createEnvironment(scene, renderer, { shadowSize = 2048 } = {}) {
     c.sunColor.set(preset.sunColor); c.fillColor.set(preset.fillColor); c.hemiSky.set(preset.hemiSky); c.hemiGround.set(preset.hemiGround);
     c.sunPos.set(...preset.sunPos);
     c.cloud.set(preset.cloud); c.cloudOpacity = preset.cloudOpacity;
-    for (const k of ['fogNear', 'fogFar', 'sunIntensity', 'fillIntensity', 'hemiIntensity', 'exposure', 'stars', 'sunGlow', 'lamps', 'crowd', 'glass']) c[k] = preset[k];
+    for (const k of ['fogNear', 'fogFar', 'sunIntensity', 'fillIntensity', 'hemiIntensity', 'exposure', 'stars', 'sunGlow', 'lamps', 'crowd', 'glass', 'envIntensity']) c[k] = preset[k];
+    bakeEnv(preset);
     setNow();
   }
   snapTo(PRESETS.day);
@@ -198,6 +233,7 @@ export function createEnvironment(scene, renderer, { shadowSize = 2048 } = {}) {
     set(nameKey, instant = true) {
       target = PRESETS[nameKey] || PRESETS.day;
       name = PRESETS[nameKey] ? nameKey : 'day';
+      bakeEnv(target); // (the sky light changes at once; the rest fades over)
       if (instant) snapTo(target);
     },
     update(dt, camera) {
@@ -209,7 +245,7 @@ export function createEnvironment(scene, renderer, { shadowSize = 2048 } = {}) {
       lc(c.sunColor, t.sunColor); lc(c.fillColor, t.fillColor); lc(c.hemiSky, t.hemiSky); lc(c.hemiGround, t.hemiGround);
       tmpVec.set(...t.sunPos);
       c.sunPos.lerp(tmpVec, 1 - Math.exp(-k * dt));
-      for (const key of ['fogNear', 'fogFar', 'sunIntensity', 'fillIntensity', 'hemiIntensity', 'exposure', 'stars', 'sunGlow', 'lamps', 'crowd', 'glass']) {
+      for (const key of ['fogNear', 'fogFar', 'sunIntensity', 'fillIntensity', 'hemiIntensity', 'exposure', 'stars', 'sunGlow', 'lamps', 'crowd', 'glass', 'envIntensity']) {
         c[key] = damp(c[key], t[key], k, dt);
       }
       setNow();
