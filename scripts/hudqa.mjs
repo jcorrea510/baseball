@@ -30,7 +30,7 @@ for (const sz of sizes) {
       ui.q.banner.style.opacity = '1';
       a.tick(0.001, true);
       // overlap check between visible HUD boxes
-      const sel = ['.pitchinfo', '.callout', '.meter', '.batterup', '.bugwrap', '.derbybox', '.practice', '.hudbtns', '.acts', '.aimgauge', '.touchaim.l', '.touchaim.r'];
+      const sel = ['.pitchinfo', '.callout', '.meter', '.batterup', '.bugwrap', '.derbybox', '.practbox', '.practice', '.hudbtns', '.acts', '.aimgauge', '.touchaim.l', '.touchaim.r'];
       const boxes = [];
       for (const s of sel) { const e = document.querySelector('.hud ' + s); if (!e) continue; const cs = getComputedStyle(e); if (cs.display === 'none' || +cs.opacity === 0) continue; const b = e.getBoundingClientRect(); if (b.width && b.height) boxes.push({ s, b }); }
       const hits = [];

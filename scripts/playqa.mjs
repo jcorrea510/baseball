@@ -28,6 +28,12 @@ for (const sz of sizes) {
     if (await page.evaluate(() => window.__app.ui.current) === 'howto') { await press('.screen.show [data-a=howtoDone]'); await page.waitForTimeout(400); }
     await press(`.screen.show [data-mode=${mode}]`);
     await page.waitForTimeout(300);
+    // a quick game waits for the Ready button before the first pitch: press it for real
+    if (mode === 'quick') {
+      await page.evaluate(() => { const a = window.__app; for (let i = 0; i < 600 && !a.engine.awaitingBatter; i++) a.tick(1 / 60, false); a.tick(0.001, true); });
+      await page.addStyleTag({ content: '.batterup{transition:none!important}' });
+      await press('.hud .batterup.show [data-a=batterReady]');
+    }
     // one real tap / key press during a pitch must swing
     const swung = await (async () => {
       await page.evaluate(() => { const a = window.__app, e = a.engine; for (let i = 0; i < 2000 && !(e.phase === 'pitch' && e.time > e.pitch.tCross - 0.25); i++) a.tick(1 / 120, false); });

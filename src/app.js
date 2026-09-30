@@ -13,7 +13,7 @@ import { Progress } from './game/progression.js';
 import { PLAYER_TEAM } from './game/teams.js';
 import { createBot } from './game/bot.js';
 import { describeError, classifyTiming } from './game/timing.js';
-import { lineScore } from './game/rules.js';
+import { lineScore, isHitResult } from './game/rules.js';
 import { clamp, lerp, smoothstep } from './util/math.js';
 import { zoneRatio } from './physics/pitch.js';
 import { PitchGuide } from './render/pitchGuide.js';
@@ -331,7 +331,7 @@ export class App {
     this.ui.setMuteIcon(this.audio.muted);
     if (eng.game) this.ui.setGameState(eng.game);
     if (mode === 'derby') this.ui.setDerby({ ...eng.derby });
-    if (mode === 'practice') this.ui.setPracticeButtons(eng.practice);
+    if (mode === 'practice') { this.ui.setPracticeButtons(eng.practice); this.ui.setPracticeState(eng.practiceState()); }
     this.zone.visible = !!st.zone;
     this.pitchMarker.visible = false;
     this.updateScoreboard();
@@ -362,6 +362,7 @@ export class App {
     e.on('count', (c) => { ui.setCount(c.balls, c.strikes, c.outs); this.updateScoreboard(); });
     e.on('batterReady', () => ui.hideBatterUp());
     e.on('buntStance', ({ on }) => ui.setBunt(on));
+    e.on('practice', (st) => { ui.setPracticeState(st); this.updateScoreboard(); });
     e.on('stealArmed', ({ on }) => ui.setSteal(e.canSteal, on));
     e.on('stealGo', () => audio.crowdSwell(0.3, 1.4)); // the crowd sees him go
     e.on('stealPlay', () => { this.landing = null; this.landRing.hide(); this.playOuts = 0; });
@@ -622,7 +623,10 @@ export class App {
       if (!sac) audio.crowdGroan(0.35);
       if (runsText) sub += runsText;
     }
-    if (e.mode === 'practice' && r.kind === 'play') { big = r.text; sub = `${Math.round(r.exitVelocity)} mph · ${Math.round(r.distance)} ft`; cls = res === 'homer' ? 'hr' : 'neutral'; }
+    if (e.mode === 'practice' && r.kind === 'play') {
+      big = r.text; sub = `${Math.round(r.exitVelocity)} mph · ${Math.round(r.distance)} ft${runsText}`;
+      cls = res === 'homer' || res === 'insideParkHomer' ? 'hr' : isHitResult(res) || r.runs > 0 ? 'good' : 'neutral';
+    }
     if (e.mode === 'derby' && r.kind === 'play') {
       if (res === 'homer') { cls = 'hr'; big = 'HOME RUN'; sub = `${r.distanceFt} ft${r.streak > 1 ? ` · streak ${r.streak}` : ''}`; }
       else { cls = 'bad'; big = r.text.includes('FREE') ? r.text : 'OUT'; sub = r.detail || ''; }
@@ -664,7 +668,8 @@ export class App {
     } else if (e.mode === 'derby') {
       sb.set({ mode: 'derby', title: 'SANDLOT PARK', derby: { hr: e.derby.hr, outsLeft: Math.max(0, e.derby.maxOuts - e.derby.outs), longest: e.derby.longest, streak: e.derby.streak } });
     } else {
-      sb.set({ mode: 'practice', title: 'SANDLOT PARK', practice: {} });
+      const ps = e.practiceState();
+      sb.set({ mode: 'practice', title: 'SANDLOT PARK', practice: { runs: ps.runs, hits: ps.hits } });
     }
   }
 

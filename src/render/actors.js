@@ -451,7 +451,7 @@ export class Actors {
     const phase = E.phase;
     const cfg = E.cfg;
     const batter = E.batter;
-    const game = E.game;
+    const game = E.diamond; // (runners on base: the quick game, or practice)
     const inPlay = !!plan;
     const swing = E.swing;
 
@@ -469,8 +469,8 @@ export class Actors {
     const tRunStart = cfg.runner.batterStart;
     const tRun = plan && plan.homer ? 1.0 : tRunStart;
 
-    const quick = E.mode === 'quick';
-    const paDone = quick && phase === 'result' && E.paEnded;
+    const quick = E.mode !== 'derby'; // (practice has base running too)
+    const paDone = E.mode === 'quick' && phase === 'result' && E.paEnded;
     const lastKind = paDone && E.lastPA ? E.lastPA.result : '';
     const isK = /strikeout/.test(lastKind);
     const isWalk = lastKind === 'walk';
@@ -564,7 +564,7 @@ export class Actors {
     }
     // Derby / practice: after a home run the batter flips the bat and celebrates instead of running.
     const pl = E.play;
-    if (E.mode !== 'quick' && pl && pl.plan.homer && (phase === 'play' || phase === 'result')) {
+    if (E.mode === 'derby' && pl && pl.plan.homer && (phase === 'play' || phase === 'result')) {
       const tt = time - pl.t0;
       if (tt > 0.7) {
         if (!this.loose.spent) this.spawnLooseBat(person, (E.batter.hand || 'R'), pl.plan);

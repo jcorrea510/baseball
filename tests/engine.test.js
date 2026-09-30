@@ -277,6 +277,24 @@ describe('whole games', () => {
     expect(e.stats.swings).toBeGreaterThan(5);
   });
 
+  it('practice keeps runners on base and counts the runs - outs never pile up', () => {
+    const e = new Engine({ mode: 'practice', seed: 33 });
+    const bot = createBot(e, { errSd: 25, seed: 5 });
+    const states = [];
+    e.on('practice', (s) => states.push(s));
+    e.start(); drive(e, 400, bot);
+    expect(e.over).toBe(false);
+    expect(states.length).toBeGreaterThan(10);
+    const last = states[states.length - 1];
+    expect(last.runs).toBeGreaterThan(0); // runners came round to score
+    expect(last.runs).toBe(e.pgame.score.top);
+    expect(states.some((s) => s.bases.some(Boolean))).toBe(true);
+    expect(e.pgame.outs).toBe(0);
+    expect(e.stats.hits).toBeGreaterThan(0);
+    // the batters take turns (a runner on base is never the man at the plate)
+    expect(e.bases.every((r) => r !== e.batter)).toBe(true);
+  }, 30000);
+
   it('practice uses the pitch type and speed that were chosen', () => {
     const e = new Engine({ mode: 'practice', seed: 32, practice: { type: 'curveball', speed: 70, location: 'center' } });
     e.start(); untilPhase(e, 'windup');

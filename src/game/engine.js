@@ -75,6 +75,8 @@ export class Engine {
     this.over = false;
 
     this.game = this.mode === 'quick' ? rules.createGame({ innings: cfg.modes.quick.innings, extraRunner: cfg.modes.quick.extraInningRunner }) : null;
+    // Practice keeps runners on base and counts the runs of the session - but nobody is ever out for good (outs reset every play)
+    this.pgame = this.mode === 'practice' ? rules.createGame({ innings: 1e6, extraRunner: false }) : null;
     this.derby = { outs: 0, maxOuts: cfg.modes.derby.outs, hr: 0, streak: 0, bestStreak: 0, longest: 0, results: [] };
     this.stats = newStats();
     this.lines = {}; // each batter's line today: { pa, ab, h, hr, rbi, bb, k } by batter id
@@ -97,7 +99,8 @@ export class Engine {
   // ------------------------------------------------------------------ helpers
   get count() { return this.game ? { balls: this.game.balls, strikes: this.game.strikes } : { balls: 0, strikes: 0 }; }
   get outs() { return this.game ? this.game.outs : this.derby.outs; }
-  get bases() { return this.game ? this.game.bases : [null, null, null]; }
+  get bases() { return this.diamond ? this.diamond.bases : [null, null, null]; }
+  get diamond() { return this.game || this.pgame; } // the game state that has runners on base (quick game, practice)
   get pitchTime() { return this.pitch ? this.time - this.pitch.tRelease : -1; }
   get playTime() { return this.play ? this.time - this.play.t0 : -1; }
   get batterHand() { return this.batter.hand || 'R'; }
@@ -114,8 +117,8 @@ export class Engine {
   }
 
   beginPlateAppearance(first = false) {
-    if (this.game) {
-      this.batterIndex = this.game.lineupIdx[this.game.half] % 9;
+    if (this.diamond) {
+      this.batterIndex = this.diamond.lineupIdx[this.diamond.half] % 9;
       this.batter = this.lineup[this.batterIndex];
     } else {
       this.batter = this.lineup[0];
@@ -224,8 +227,9 @@ export class Engine {
   // Which runners could steal right now: a runner with an empty base ahead of him (or one that is being emptied by the runner
   // ahead also going). Nobody steals home. Quick games only.
   stealBases() {
-    if (this.mode !== 'quick' || !this.game || this.game.outs >= 3) return [];
-    const b = this.game.bases;
+    const g = this.diamond;
+    if (!g || g.outs >= 3) return [];
+    const b = g.bases;
     const out = [];
     if (b[1] && !b[2]) out.push(2);
     if (b[0] && (!b[1] || out.includes(2))) out.push(1);
@@ -326,6 +330,7 @@ export class Engine {
       const call = swung ? 'swingingStrike' : pitch.isStrike ? 'calledStrike' : 'ball';
       this.emit('pitchCall', { ...info, call });
       this.emit('result', { kind: 'pitch', call, text: swung ? 'SWING & MISS' : (pitch.isStrike ? 'STRIKE' : 'BALL'), ...info });
+      if (this.steal) return this.startStealPlay({ paEnded: false, halfOver: false, result: call });
       this.finishPitch(this.cfg.pace.callDisplay);
       return;
     }
@@ -386,11 +391,12 @@ export class Engine {
 
   finishSteal(p) {
     const plan = p.plan;
-    const g = this.game;
+    const g = this.diamond;
     const res = p.steal.res;
     const moves = plan.moves.map((m) => ({ from: m.from, to: m.to, out: !!m.out }));
     const before = g.bases.slice();
     const r = rules.applySteal(g, moves);
+    if (this.pgame) { g.outs = 0; r.halfOver = false; } // (practice: nobody is out for good)
     for (const m of moves) {
       const runner = before[m.from - 1];
       if (m.out) this.stats.cs++;
@@ -413,7 +419,7 @@ export class Engine {
     this.setPhase('result');
     this.resultUntil = this.time + pause;
     // a finished plate appearance brings up the next batter; otherwise the same batter sees another pitch
-    this.pendingNext = halfOver ? 'half' : paEnded && this.game ? 'pa' : 'pitch';
+    this.pendingNext = halfOver ? 'half' : paEnded && this.diamond ? 'pa' : 'pitch';
   }
 
   afterResult() {
@@ -441,7 +447,7 @@ export class Engine {
       backspin: c.backspin, hook: c.hook, start: { x: start.x, y: Math.max(start.y, 1.0), z: start.z },
     };
     const sim = simulateBattedBall(params, this.cfg);
-    const simple = this.mode !== 'quick';
+    const simple = this.mode === 'derby';
     // fielding errors: one roll per ball in play (only in real games)
     const errorRoll = simple ? undefined : this.errorRollOverride ?? this.rng.next(); // (errorRollOverride: QA hook, 0 = always an error)
     const running = this.steal && !simple ? Object.fromEntries(this.steal.bases.map((b) => [b, this.steal.start[b] - s.tHit])) : null; // runners going with the pitch
@@ -501,9 +507,22 @@ export class Engine {
     };
 
     if (this.mode === 'practice') {
-      const text = plan.result === 'foul' || plan.result === 'foulOut' ? 'FOUL BALL' : plan.homer ? 'HOME RUN' : practiceLabel(plan, c);
-      this.emit('result', { kind: 'play', result: plan.homer ? 'homer' : plan.result, text, ...summary });
-      this.finishPitch(this.cfg.pace.playEndPause);
+      const foul = plan.result === 'foul' || plan.result === 'foulOut';
+      const text = foul ? 'FOUL BALL' : plan.homer ? 'HOME RUN' : practiceLabel(plan, c);
+      let runs = 0;
+      if (!foul) {
+        // the runners move just as in a game; the outs are forgotten straight away
+        const g = this.pgame;
+        const res = rules.applyPlay(g, { result: plan.result, batterDest: plan.batterDest, moves: plan.moves.filter((m) => m.from >= 1).map((m) => ({ from: m.from, to: m.to, out: !!m.out })), outsMade: plan.outsMade }, this.batter);
+        runs = res.runs;
+        g.outs = 0; g.balls = 0; g.strikes = 0;
+        this.stats.runs += runs; this.stats.rbi += runs;
+        if (rules.isHitResult(plan.result)) this.stats.hits++;
+        if (plan.homer || plan.result === 'insideParkHomer') { this.stats.hr++; this.stats.longestHR = Math.max(this.stats.longestHR, Math.round(p.distance)); }
+        this.emit('practice', this.practiceState());
+      }
+      this.emit('result', { kind: 'play', result: plan.homer ? 'homer' : plan.result, text, runs, ...summary });
+      this.finishPitch(this.cfg.pace.playEndPause + (runs > 0 ? 0.35 : 0), false, !foul);
       return;
     }
     if (this.mode === 'derby') {
@@ -583,6 +602,12 @@ export class Engine {
   lineOf(b) {
     const id = b && b.id !== undefined ? b.id : 'x';
     return this.lines[id] || (this.lines[id] = { pa: 0, ab: 0, h: 0, hr: 0, rbi: 0, bb: 0, k: 0, sb: 0 });
+  }
+
+  // Practice: the session so far (runs, hits, home runs) and who is on base.
+  practiceState() {
+    const g = this.pgame;
+    return { runs: g ? g.score.top : 0, hits: this.stats.hits, hr: this.stats.hr, bases: g ? g.bases.map((b) => !!b) : [false, false, false] };
   }
 
   // ------------------------------------------------------------------ Home Run Derby
@@ -683,13 +708,13 @@ function newStats() {
 }
 
 function practiceLabel(plan, c) {
-  const map = { single: 'SINGLE', double: 'DOUBLE', triple: 'TRIPLE', flyout: 'FLY OUT', lineout: 'LINE OUT', popout: 'POP OUT', hitSimple: 'IN PLAY' };
+  const map = { flyout: 'FLY OUT', lineout: 'LINE OUT' };
   if (plan.result === 'hitSimple') {
     if (c.launchAngle < 10) return 'GROUND BALL';
     if (c.launchAngle < 25) return 'LINE DRIVE';
     return 'FLY BALL';
   }
-  return map[plan.result] || String(plan.result).toUpperCase();
+  return map[plan.result] || rules.RESULT_TEXT[plan.result] || String(plan.result).toUpperCase();
 }
 function derbyOutText(plan, c) {
   if (plan.result === 'foulOut') return 'foul out';

@@ -184,14 +184,18 @@ kbd { display: inline-block; min-width: 26px; padding: 4px 7px; text-align: cent
 .bug .diamond .base { fill: rgba(255, 255, 255, .16); stroke: rgba(255, 255, 255, .4); stroke-width: 1.5; transition: fill .15s; }
 .bug .diamond .base.on { fill: var(--amber); stroke: #fff; filter: drop-shadow(0 0 6px var(--amber)); }
 
-/* Derby scoreboard sits in the same corner as the bug */
-.derbybox { position: absolute; left: calc(var(--safe-l) + 14px); bottom: calc(var(--safe-b) + 14px); display: none; border-radius: var(--r-md); overflow: hidden; background: var(--glass); border: 1px solid var(--line); box-shadow: 0 10px 34px rgba(0, 0, 0, .5); font-variant-numeric: tabular-nums; }
-.hud[data-mode="derby"] .derbybox { display: flex; }
-.derbybox .cell { padding: 8px 14px 7px; text-align: center; min-width: 74px; }
-.derbybox .cell + .cell { border-left: 1px solid var(--line); }
-.derbybox .v { font-size: 26px; font-weight: 900; line-height: 1; color: var(--amber-hi); }
+/* Derby scoreboard (and the practice tally) sit in the same corner as the bug */
+.derbybox, .practbox { position: absolute; left: calc(var(--safe-l) + 14px); bottom: calc(var(--safe-b) + 14px); display: none; border-radius: var(--r-md); overflow: hidden; background: var(--glass); border: 1px solid var(--line); box-shadow: 0 10px 34px rgba(0, 0, 0, .5); font-variant-numeric: tabular-nums; }
+.hud[data-mode="derby"] .derbybox, .hud[data-mode="practice"] .practbox { display: flex; }
+.derbybox .cell, .practbox .cell { padding: 8px 14px 7px; text-align: center; min-width: 74px; }
+.practbox .cell { min-width: 58px; }
+.derbybox .cell + .cell, .practbox .cell + .cell, .practbox .diamond { border-left: 1px solid var(--line); }
+.derbybox .v, .practbox .v { font-size: 26px; font-weight: 900; line-height: 1; color: var(--amber-hi); }
 .derbybox .v.red { color: var(--red); }
-.derbybox .l { font-size: 9px; letter-spacing: .14em; color: var(--ink-3); text-transform: uppercase; margin-top: 4px; font-weight: 800; white-space: nowrap; }
+.practbox .diamond { width: 44px; height: 44px; padding: 6px 10px; box-sizing: content-box; align-self: center; }
+.practbox .diamond .base { fill: rgba(255, 255, 255, .16); stroke: rgba(255, 255, 255, .4); stroke-width: 1.5; transition: fill .15s; }
+.practbox .diamond .base.on { fill: var(--amber); stroke: #fff; filter: drop-shadow(0 0 6px var(--amber)); }
+.derbybox .l, .practbox .l { font-size: 9px; letter-spacing: .14em; color: var(--ink-3); text-transform: uppercase; margin-top: 4px; font-weight: 800; white-space: nowrap; }
 
 /* top centre: pitch name + speed, then the exit-speed readout */
 .pitchinfo { position: absolute; top: calc(var(--safe-t) + 12px); left: 50%; transform: translate(-50%, -14px); opacity: 0; padding: 0 16px; height: 38px; border-radius: 999px; background: var(--glass); border: 1px solid var(--line); font-weight: 800; letter-spacing: .1em; text-transform: uppercase; display: flex; gap: 12px; align-items: center; white-space: nowrap; transition: opacity .2s, transform .3s var(--ease); }
@@ -412,7 +416,7 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
   .touchaim { bottom: calc(var(--safe-b) + 170px); }
   .bugwrap { left: 50%; transform: translateX(-50%); align-items: center; }
   .aimgauge { right: 50%; transform: translateX(50%); bottom: calc(var(--safe-b) + 96px); } /* (a narrow window without touch) */
-  .derbybox { left: 50%; transform: translateX(-50%); }
+  .derbybox, .practbox { left: 50%; transform: translateX(-50%); }
   .practice { top: calc(var(--safe-t) + 124px); } /* below the pitch pill and the exit-speed readout */
 }
 @media (max-height: 520px) {

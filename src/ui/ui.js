@@ -115,6 +115,12 @@ export class UI {
           <svg class="diamond" viewBox="0 0 60 60"><rect class="base b2" x="21" y="4" width="18" height="18" transform="rotate(45 30 13)"/><rect class="base b3" x="3" y="22" width="18" height="18" transform="rotate(45 12 31)"/><rect class="base b1" x="39" y="22" width="18" height="18" transform="rotate(45 48 31)"/></svg>
         </div>
       </div>
+      <div class="practbox">
+        <div class="cell"><div class="v runs">0</div><div class="l">Runs</div></div>
+        <div class="cell"><div class="v hits">0</div><div class="l">Hits</div></div>
+        <div class="cell"><div class="v hr">0</div><div class="l">HR</div></div>
+        <svg class="diamond" viewBox="0 0 60 60"><rect class="base b2" x="21" y="4" width="18" height="18" transform="rotate(45 30 13)"/><rect class="base b3" x="3" y="22" width="18" height="18" transform="rotate(45 12 31)"/><rect class="base b1" x="39" y="22" width="18" height="18" transform="rotate(45 48 31)"/></svg>
+      </div>
       <div class="derbybox">
         <div class="cell"><div class="v hr">0</div><div class="l">HR</div></div>
         <div class="cell"><div class="v red outs">10</div><div class="l">Outs left</div></div>
@@ -291,7 +297,7 @@ export class UI {
     const modes = [
       { mode: 'quick', ic: 'ball', title: 'Quick Game', chips: ['3 innings', 'vs CPU'], best: q ? `Best ${q.runs}–${q.against}` : '' },
       { mode: 'derby', ic: 'bolt', title: 'Home Run Derby', chips: ['10 outs', 'Homers only'], best: derbyBest ? `Best ${derbyBest} HR` : '' },
-      { mode: 'practice', ic: 'target', title: 'Practice', chips: ['Pick the pitch', 'Timing meter'], best: c.practiceSwings ? `${c.practiceSwings} swings` : '' },
+      { mode: 'practice', ic: 'target', title: 'Practice', chips: ['Pick the pitch', 'Runners, no outs'], best: c.practiceSwings ? `${c.practiceSwings} swings` : '' },
     ];
     const seg = (key, items, cur) => `<div class="seg" data-set="${key}">${items.map(([v, l]) => `<button data-v="${v}" class="${cur === v ? 'on' : ''}">${l}</button>`).join('')}</div>`;
     const prev = s.querySelector('.menu-wrap');
@@ -588,6 +594,14 @@ export class UI {
     b.classList.toggle('can', !!(can || on)); b.classList.toggle('on', !!on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
   }
   setBunt(on) { const b = this.hud.querySelector('.buntbtn'); b.classList.toggle('on', !!on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+  // Practice: runs this session, hits, home runs, and who is on base
+  setPracticeState(st) {
+    const q = this.hud.querySelector('.practbox');
+    q.querySelector('.runs').textContent = st.runs;
+    q.querySelector('.hits').textContent = st.hits;
+    q.querySelector('.hr').textContent = st.hr;
+    ['b1', 'b2', 'b3'].forEach((k, i) => q.querySelector('.' + k).classList.toggle('on', !!st.bases[i]));
+  }
   setDerby(d) {
     const q = this.q.derby;
     q.querySelector('.hr').textContent = d.hr;

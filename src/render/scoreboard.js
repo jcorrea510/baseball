@@ -122,6 +122,7 @@ export function createScoreboard() {
     led(p.speed ? `${p.speed} MPH` : '', 420, 420, 60, WHITE, 'center');
     led(p.timing || 'SWING AWAY', 1040, 350, 66, p.timingColor || WHITE, 'center');
     led(p.result || '', 1040, 435, 44, YELLOW, 'center');
+    led(`RUNS ${p.runs ?? 0}   HITS ${p.hits ?? 0}`, W / 2, 520, 44, AMBER, 'center');
   }
 
   draw();

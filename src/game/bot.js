@@ -19,6 +19,7 @@ export function createBot(engine, o = {}) {
   });
   return {
     update() {
+      if (engine.awaitingBatter) engine.batterReady(); // (a new batter: the bot is always ready)
       if (engine.phase !== 'pitch' || !plan || !plan.swing || engine.swing) return;
       const pitch = engine.pitch;
       const t = pitch.tCross + plan.err / 1000 - engine.cfg.timing.swingDelay;
