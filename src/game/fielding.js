@@ -5,7 +5,7 @@
 import { CONFIG } from '../config.js';
 import { sampleBall, judgeFairFoul, battedBallType } from '../physics/ballistics.js';
 import { BASE_XZ, polar, fenceDistance, sprayOf, clampToField, distanceToWall, isInsideField } from '../physics/field.js';
-import { runnerArrival, runnerFinish, runnerState } from './runnerMotion.js';
+import { runnerArrival, runnerFinish, runnerState, runnerProfile, retreatArrival } from './runnerMotion.js';
 import { planRun, planDiveRun, sampleRun, samplePath, covered, timeToCover, moverReturnTime, TAIL_MAX } from './fielderMotion.js';
 
 export const POSITIONS = ['P', 'C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF'];
@@ -292,16 +292,18 @@ function coverArrival(plan, q, base, tStart, cfg) {
  * @param {{x:number,z:number}} o.from  where he throws from
  * @param {number} [o.tHave]   when he first has the ball (for carrying it himself); omit to rule that out
  * @param {number} [o.runnerT] when the runner gets there (options that are too late are dropped)
+ * @param {number} [o.coverStart] when the covering men break for the bag (default fielding.cover.start)
+ * @param {number} [o.tag]     seconds to put a tag on a runner who is not forced (home always takes fielding.tagTime)
  */
 function coverOptions(o, plan, defense, cfg) {
   const F = cfg.fielding;
   const { base, thrower, tReady, from } = o;
   const [bx, bz] = BASE_XZ[base === 0 ? 4 : base];
-  const tag = base === 4 ? F.tagTime : 0;
+  const tag = base === 4 ? F.tagTime : o.tag || 0; // (a tag play: the receiver needs a moment to put the glove on the runner)
   const out = [];
   const flight = throwTime(dist(from.x, from.z, bx, bz), thrower, cfg);
   coverCandidates(base, thrower, defense).forEach((q, idx) => {
-    const arr = coverArrival(plan, q, base, F.cover.start, cfg);
+    const arr = coverArrival(plan, q, base, o.coverStart ?? F.cover.start, cfg);
     const tOut = Math.max(tReady + flight + tag, arr.t + tag);
     out.push({ recv: q, self: false, tOut, t1: tOut, t0: Math.max(tReady, tOut - tag - flight), tCover: arr.t, coverStart: arr.start, speed: arr.speed, score: tOut - (idx === 0 ? F.cover.traditionBonus : 0) });
   });
@@ -370,7 +372,13 @@ function planPlayCore(i, cfg) {
     addMove(plan, best.f, wx, wz, Math.max(tArr, best.f.react + 0.4), { watch: true, role: 'watch', minEffort: 0.5 }, cfg);
     plan.fielder = best.f.pos;
     // everyone circles the bases (trot)
-    for (let b = 0; b < 3; b++) if (bases[b]) plan.moves.push({ from: b + 1, to: 4, out: false, trot: true });
+    for (let b = 0; b < 3; b++) {
+      if (!bases[b]) continue;
+      const m = { from: b + 1, to: 4, out: false, trot: true };
+      // a runner who was already going with the pitch carries on from where he is, at a trot
+      if (rs(b + 1) !== undefined) m.tStart = -runnerProfile(b + 1, 4, 'trot', cfg).tAtS(runnerProfile(b + 1, b + 2, 'run', cfg).at(-rs(b + 1), {}).s);
+      plan.moves.push(m);
+    }
     plan.moves.push({ from: 0, to: 4, out: false, trot: true });
     plan.endTime = plan.ballHitEnd + 1.6;
     plan.trot = true;
@@ -402,6 +410,7 @@ function planPlayCore(i, cfg) {
       plan.batterDest = 0;
       plan.endTime = air.t + 0.9;
       plan.notes.push('foul ball caught by ' + f.pos);
+      if (!i.simple) runnersGoBack(plan, f, air, type, bases, outs, defense, cfg);
       return plan;
     }
     plan.result = sim.apex.y <= 24 ? 'lineout' : (type === 'pop' || sim.apex.y >= 75) && Math.hypot(air.ball.x, air.ball.z) < 150 ? 'popout' : 'flyout';
@@ -409,14 +418,15 @@ function planPlayCore(i, cfg) {
     plan.batterDest = 0;
     plan.endTime = air.t + 0.9;
     if (i.simple) return plan;
-    // Tag-ups on a caught fly ball (not on line drives)
-    if (type !== 'line' && outs + 1 < 3) {
+    runnersGoBack(plan, f, air, type, bases, outs, defense, cfg);
+    // Tag-ups on a caught fly ball (not on line drives; not by a runner who was going with the pitch and had to get back)
+    if (type !== 'line' && outs + plan.outsMade < 3) {
       const depth = Math.hypot(air.ball.x, air.ball.z);
       const tCatch = air.t;
       const home = BASE_XZ[4];
       const throwHome = tCatch + F.transfer[f.type] + throwTime(dist(air.ball.x, air.ball.z, home[0], home[1]), f, cfg) + F.tagTime;
       // runner on 3rd
-      if (bases[2] && depth > 170) {
+      if (bases[2] && rs(3) === undefined && depth > 170) {
         const arrive = runnerArrival(cfg, 3, 4, tCatch + 0.15);
         if (arrive < throwHome - F.runnerMargin) {
           plan.moves.push({ from: 3, to: 4, out: false, tStart: tCatch + 0.15, tag: true });
@@ -429,7 +439,7 @@ function planPlayCore(i, cfg) {
         }
       }
       // runner on 2nd goes to 3rd on a deep fly
-      if (bases[1] && depth > 250 && !(bases[2] && plan.moves.every((m) => m.from !== 3))) {
+      if (bases[1] && rs(2) === undefined && depth > 250 && !(bases[2] && plan.moves.every((m) => m.from !== 3))) {
         const d3 = dist(air.ball.x, air.ball.z, BASE_XZ[3][0], BASE_XZ[3][1]);
         const throw3 = tCatch + F.transfer[f.type] + throwTime(d3, f, cfg);
         const arrive = runnerArrival(cfg, 2, 3, tCatch + 0.15);
@@ -448,6 +458,8 @@ function planPlayCore(i, cfg) {
     plan.batterDest = 0;
     plan.ballHitEnd = Math.min(sim.contactTime + 0.5, sim.duration);
     plan.endTime = plan.ballHitEnd + 0.35;
+    // runners who were going with the pitch pull up and go back
+    for (let b = 1; b <= 3; b++) if (bases[b - 1] && rs(b) !== undefined) plan.moves.push({ from: b, to: b, back: true, tStart: rs(b), backAt: cfg.steal.readFoul });
     return plan;
   }
 
@@ -523,6 +535,116 @@ function endInningStop(plan, outs, cfg) {
 }
 
 // ---------------------------------------------------------------------------
+// Runners going with the pitch (a steal attempt or a hit-and-run): `i.running` = { base: when he took off, in the play's clock
+// (negative: before contact) }. Every arrival time of such a runner uses his head start. (Module state, set only while
+// planPlay runs.)
+let RUN = null;
+const rs = (b) => (RUN ? RUN[b] : undefined);
+
+// Give every runner move of a going runner his real start; one who ends up staying put has to go back to his base.
+function runningStarts(plan, cfg) {
+  for (const m of plan.moves) {
+    if (!(m.from >= 1) || rs(m.from) === undefined || m.back || m.trot) continue;
+    if (m.tStart === undefined) m.tStart = rs(m.from);
+    if (!m.out && m.to <= m.from) {
+      m.back = true;
+      m.backAt = Math.max(m.tStart + 0.2, plan.pickupT ?? plan.catchT ?? cfg.steal.readFoul);
+      plan.endTime = Math.max(plan.endTime, retreatArrival(cfg, m.from, m.tStart, m.backAt) + 0.25);
+    }
+  }
+  // (a going runner the plan did not mention holds his base: he goes back too)
+  for (const b of [1, 2, 3]) {
+    if (rs(b) === undefined || plan.moves.some((m) => m.from === b) || plan.homer) continue;
+    const backAt = Math.max(rs(b) + 0.2, plan.pickupT ?? plan.catchT ?? cfg.steal.readFoul);
+    plan.moves.push({ from: b, to: b, back: true, tStart: rs(b), backAt });
+  }
+}
+
+// A ball is caught: runners who were going with the pitch turn round and head back. On a line drive they are caught too far off
+// and the fielder may double one up - but only the usual way: somebody on the bag with the ball before the runner gets back.
+function runnersGoBack(plan, f, air, type, bases, outs, defense, cfg) {
+  const F = cfg.fielding;
+  let triedOut = false;
+  for (const b of [3, 2, 1]) {
+    if (!bases[b - 1] || rs(b) === undefined) continue;
+    const backAt = type === 'line' ? Math.max(air.t, rs(b) + 0.2) : Math.max(rs(b) + 0.2, Math.min(air.t, cfg.steal.readFly));
+    const retT = retreatArrival(cfg, b, rs(b), backAt);
+    if (!triedOut && outs + plan.outsMade < 3) {
+      triedOut = true;
+      const tReady = air.t + F.transfer[f.type];
+      const way = coverOptions({ base: b, thrower: f, tReady, from: { x: air.ball.x, z: air.ball.z }, tHave: air.t, runnerT: retT }, plan, defense, cfg)[0];
+      if (way) {
+        planOut(plan, way, b, f, { x: air.ball.x, z: air.ball.z }, tReady, cfg);
+        plan.moves.push({ from: b, to: 0, out: true, outAt: way.tOut, outBase: b, back: true, tStart: rs(b), backAt });
+        plan.outsMade++;
+        plan.result = 'doublePlay';
+        plan.doubledOff = b;
+        plan.endTime = Math.max(plan.endTime, way.tOut + 0.8);
+        continue;
+      }
+    }
+    plan.moves.push({ from: b, to: b, back: true, tStart: rs(b), backAt });
+    plan.endTime = Math.max(plan.endTime, Math.min(retT, air.t + 2.5) + 0.3);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// A stolen-base attempt with no ball in play. The clock starts when the catcher has the pitch (t = 0).
+//   i.bases, i.outs, i.defense; i.running = { base: when that runner took off (negative) }; i.transfer = seconds until the catcher
+//   can throw (his exchange, plus a moment to dig a pitch out of the dirt); i.coverStart = when the infielders broke for the bag
+//   (they go when they see the runner go, so it is negative too).
+// The catcher throws at the lead runner; the out is made only if the man covering the bag has the ball there before the runner
+// arrives (plus the moment it takes to put the tag on). A hopeless throw is not made.
+export function planSteal(i, cfg = CONFIG) {
+  const F = cfg.fielding;
+  const defense = i.defense;
+  const C = defense.C;
+  const plan = {
+    fair: true, type: 'steal', steal: true,
+    result: 'stolenBase', batterDest: 0, moves: [], outsMade: 0,
+    fielderMoves: [], paths: {}, throws: [], carries: [], looses: [], events: [],
+    ballHitEnd: 0, pickupT: 0, endTime: 0, homer: false, ctx: { kind: 'steal' }, fielder: 'C', notes: [], ballLandDistance: 0,
+  };
+  const going = [3, 2, 1].filter((b) => i.bases[b - 1] && i.running[b] !== undefined);
+  if (!going.length) return null;
+  const lead = going[0], target = lead + 1;
+  const tReady = i.transfer;
+  const from = { x: C.x, z: C.z };
+  plan.carries.push({ pos: 'C', t0: 0, t1: tReady });
+  const runnerT = runnerArrival(cfg, lead, target, i.running[lead]);
+  const opts = coverOptions({ base: target, thrower: C, tReady, from, tag: cfg.steal.tagTime, coverStart: i.coverStart }, plan, defense, cfg).filter((o) => !o.self);
+  const way = opts[0];
+  let leadMove = { from: lead, to: target, out: false, tStart: i.running[lead] };
+  if (way && way.tOut + F.outMargin <= runnerT) {
+    planOut(plan, way, target, C, from, tReady, cfg);
+    leadMove = { from: lead, to: 0, out: true, outAt: way.tOut, outBase: target, tStart: i.running[lead] };
+    plan.outsMade = 1;
+    plan.result = 'caughtStealing';
+  } else if (way && way.tOut - runnerT < cfg.steal.noThrow) {
+    // the throw is made, but too late
+    const [bx, bz] = BASE_XZ[target];
+    const recv = way.recv;
+    addMove(plan, recv, bx, bz, Math.max(way.coverStart + 0.05, way.tOut - cfg.steal.tagTime), { role: 'cover', start: way.coverStart, vmax: way.speed, minEffort: 0.8 }, cfg);
+    plan.carries[0].t1 = Math.max(plan.carries[0].t1, way.t0);
+    plan.throws.push({ from: 'C', to: recv.pos, t0: way.t0, t1: way.t1, ax: from.x, az: from.z, bx, bz, toBase: target });
+    plan.carries.push({ pos: recv.pos, t0: way.t1, t1: way.t1 + 99 });
+  } else plan.carries[0].t1 = 99; // no throw: he holds on to it
+  plan.moves.push(leadMove);
+  plan.margin = way ? way.tOut - runnerT : Infinity; // + = the runner beat the tag by this much
+  // a trailing runner on a double steal takes his base (the throw went to the lead runner)
+  for (const b of going.slice(1)) plan.moves.push({ from: b, to: b + 1, out: false, tStart: i.running[b] });
+  if (going.length > 1) plan.doubleSteal = true;
+  let end = 0;
+  for (const m of plan.moves) end = Math.max(end, m.out ? m.outAt : runnerFinish(cfg, m.from, m.to, m.tStart));
+  for (const th of plan.throws) end = Math.max(end, th.t1);
+  plan.endTime = end + 0.6;
+  endInningStop(plan, i.outs || 0, cfg);
+  settleThrows(plan);
+  addCalls(plan, cfg);
+  return plan;
+}
+
+// ---------------------------------------------------------------------------
 // Errors. `i.errorRoll` (0..1, from the engine's seeded random numbers) decides; no roll = no errors (tests, the Derby, practice).
 function errorHappens(i, p) {
   return i.errorRoll !== undefined && !i.simple && i.errorRoll < p * (i.errorScale ?? 1);
@@ -579,7 +701,12 @@ function dropFly(plan, i, f, air, bases, outs, defense, cfg) {
 // Public entry point: the core plan (who fields it, throws, runners) plus everybody else's job.
 // ---------------------------------------------------------------------------
 export function planPlay(i, cfg = CONFIG) {
-  const plan = planPlayCore(i, cfg);
+  RUN = i.running || null;
+  let plan;
+  try {
+    plan = planPlayCore(i, cfg);
+    if (RUN) runningStarts(plan, cfg);
+  } finally { RUN = null; }
   if (!i.simple) endInningStop(plan, i.outs || 0, cfg);
   addSupport(plan, i, cfg);
   settleThrows(plan);
@@ -757,7 +884,7 @@ function tryInfieldOut({ f, tF, tReady, pf, bases, forced, outs, defense, cfg, p
   for (const b of forced) leadForced = Math.max(leadForced, b);
   if (leadForced > 0) {
     const targetBase = leadForced + 1 > 3 ? 4 : leadForced + 1; // runner from `leadForced` heads to the next base
-    const runnerArr = runnerArrival(cfg, leadForced, Math.min(4, leadForced + 1));
+    const runnerArr = runnerArrival(cfg, leadForced, Math.min(4, leadForced + 1), rs(leadForced));
     const way = outAt(targetBase, runnerArr, ctx, plan, cfg);
     if (way) options.push({ kind: 'force', base: targetBase, t: way.tOut, margin: runnerArr - way.tOut, way });
   }
@@ -875,13 +1002,17 @@ function advanceOnGroundout({ bases, forced, outsAfter, f, pf, tReady, cfg, skip
     else if (canAdvance) {
       if (b === 3) {
         const defenseHome = tReady + throwTime(dist(pf.x, pf.z, 0, 0), f, cfg) + F.tagTime;
-        if (runnerArrival(cfg, 3, 4) + F.runnerMargin < defenseHome) d = 4;
+        if (runnerArrival(cfg, 3, 4, rs(3)) + F.runnerMargin < defenseHome) d = 4;
       } else if (b === 2 && (dest[3] === 4 || !occupied[3])) {
         if (f.x > 0) d = 3; // a grounder to the right side
-        else if (bunt) { // on a bunt he breaks for third as it is put down: he takes it unless a throw there would beat him
+        else if (bunt || rs(2) !== undefined) { // (a runner going with the pitch has the same head start) // on a bunt he breaks for third as it is put down: he takes it unless a throw there would beat him
           const [tx, tz] = BASE_XZ[3];
-          if (runnerArrival(cfg, 2, 3) + F.runnerMargin < tReady + throwTime(dist(pf.x, pf.z, tx, tz), f, cfg) + 0.3) d = 3;
+          if (runnerArrival(cfg, 2, 3, rs(2)) + F.runnerMargin < tReady + throwTime(dist(pf.x, pf.z, tx, tz), f, cfg) + 0.3) d = 3;
         }
+      } else if (b === 1 && rs(1) !== undefined && (dest[2] >= 3 || !occupied[2])) {
+        // a runner going with the pitch keeps going to second unless a throw there would beat him
+        const [tx, tz] = BASE_XZ[2];
+        if (runnerArrival(cfg, 1, 2, rs(1)) + F.runnerMargin < tReady + throwTime(dist(pf.x, pf.z, tx, tz), f, cfg) + F.tagTime) d = 2;
       }
     }
     dest[b] = d;
@@ -907,7 +1038,7 @@ function finishHit(plan, ctx) {
     let target = b;
     if (forced.has(b)) target = b + 1;
     for (let m = 4; m > target; m--) {
-      const arrive = runnerArrival(cfg, b, m);
+      const arrive = runnerArrival(cfg, b, m, rs(b));
       if (arrive + F.runnerMargin < D[m]) { target = m; break; }
     }
     if (target < 4 && target >= ceiling) target = Math.max(b, ceiling - 1);

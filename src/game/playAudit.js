@@ -8,7 +8,7 @@
 import { CONFIG } from '../config.js';
 import { BASE_XZ } from '../physics/field.js';
 import { samplePath } from './fielderMotion.js';
-import { runnerArrival } from './runnerMotion.js';
+import { runnerArrival, retreatArrival } from './runnerMotion.js';
 
 const dist = (ax, az, bx, bz) => Math.hypot(ax - bx, az - bz);
 const BAG_TOL = 2.6; // ft: "on the bag" (his foot is on it; the glove stretches a little further)
@@ -26,7 +26,7 @@ export function fielderAt(plan, defense, pos, t) {
  */
 export function auditPlan(plan, defense, cfg = CONFIG) {
   const problems = [];
-  if (!plan || plan.homer || plan.caught || !plan.fair) return problems;
+  if (!plan || plan.homer) return problems;
   const F = cfg.fielding;
   const tol = (base) => (base === 4 || base === 0 ? HOME_TOL : BAG_TOL);
   const baseXZ = (base) => BASE_XZ[base === 0 ? 4 : base];
@@ -59,11 +59,13 @@ export function auditPlan(plan, defense, cfg = CONFIG) {
     if (!mv) problems.push(`out at base ${e.base} has no runner who is out`);
     else {
       const from = mv.from;
-      const arrive = runnerArrival(cfg, from, e.base, mv.tStart);
+      // (a runner doubled off is going back to the base he left)
+      const arrive = mv.back ? retreatArrival(cfg, from, mv.tStart, mv.backAt) : runnerArrival(cfg, from, e.base, mv.tStart);
       if (!(e.t + F.outMargin * 0.5 <= arrive)) problems.push(`out at base ${e.base}: the runner arrives at ${arrive.toFixed(2)} s, the out is made at ${e.t.toFixed(2)} s`);
     }
   }
   const outMoves = plan.moves.filter((m) => m.out).length;
-  if (outMoves !== plan.outsMade) problems.push(`${outMoves} runners are out but outsMade is ${plan.outsMade}`);
+  const byCatch = plan.caught ? 1 : 0; // (the batter caught out is not a runner)
+  if (outMoves + byCatch !== plan.outsMade) problems.push(`${outMoves} runners are out but outsMade is ${plan.outsMade}`);
   return problems;
 }

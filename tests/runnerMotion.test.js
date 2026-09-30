@@ -119,8 +119,10 @@ describe('the planner and the picture use the same times', () => {
         const t = runnerArrival(CONFIG, from, to);
         expect(t).toBeGreaterThan(prev);
         prev = t;
-        // calibration guard: within a third of a second of the constant-speed model the game was balanced on
-        const old = from === 0 ? 3.95 + (to - 1) * (90 / 27) : 0.12 + (to - from) * (90 / 27);
+        // calibration guard: within a third of a second of the constant-speed model the game was balanced on (with its 5.5 ft
+        // lead; runners now take a realistic lead - bigger off second - and that head start is taken off)
+        const extraLead = from === 0 ? 0 : (from === 2 ? R.leadSecond : R.lead) - 5.5;
+        const old = from === 0 ? 3.95 + (to - 1) * (90 / 27) : 0.12 + ((to - from) * 90 - extraLead) / 27;
         expect(Math.abs(t - old)).toBeLessThan(0.35);
       }
     }

@@ -198,6 +198,7 @@ export const CONFIG = {
       guide: { fadeIn: [0.03, 0.18], reveal: [0.02, 0.3], error: 0.12 },
       commandSigma: 0.12, // ft of pitcher inaccuracy
       errorScale: 1.5, // how often the defense makes errors (x fielding.errors)
+      catcherArm: 0.74, // x the catcher's exchange time on a steal. Set with each level's windup and pitch speed for steal success ~88% / 75% / 55%
       movementScale: 0.6,
       tellStrength: 1.0,
       announcePitch: true, // the pitch type is shown as he winds up
@@ -216,6 +217,7 @@ export const CONFIG = {
       guide: { fadeIn: [0.05, 0.22], reveal: [0.05, 0.45], error: 0.27 },
       commandSigma: 0.28,
       errorScale: 1.0,
+      catcherArm: 1.05,
       movementScale: 1.0,
       tellStrength: 0.6,
       announcePitch: false,
@@ -234,6 +236,7 @@ export const CONFIG = {
       guide: { fadeIn: [0.06, 0.22], reveal: [0.04, 0.42], error: 0.33 },
       commandSigma: 0.42,
       errorScale: 0.7,
+      catcherArm: 1.1,
       movementScale: 1.25,
       tellStrength: 0.28,
       announcePitch: false,
@@ -351,13 +354,29 @@ export const CONFIG = {
     // pick it up again - the batter and runners take whatever that delay gives them.
     errors: { ground: 0.04, fly: 0.018, hardFactor: 2, bobbleTime: 0.95, dropTime: 0.85, looseDist: 5 },
   },
+  // Stealing a base (S / the Steal button before the pitch; quick games only). The runner goes with the pitcher's first move;
+  // the catcher's exchange and throw race him to the bag, and the man covering needs a moment to put the tag on. Everything is
+  // real timing (the same runner and fielder models as every play), with a little seeded luck in the jump and the exchange.
+  steal: {
+    jump: { 1: 0.02, 2: 0.03 }, // s after the windup starts that the runner takes off
+    jumpSd: 0.09, // s: how much a jump varies (a good one, a late one)
+    transfer: 0.74, // s: the catcher's exchange (catch to release)
+    transferSd: 0.07,
+    dirtExtra: 0.35, // s more when he has to dig a pitch out of the dirt
+    tagTime: 0.12, // s to put the tag on at second or third
+    coverReact: 0.35, // s after the runner goes that the infielder covering the bag breaks for it
+    noThrow: 0.55, // s: if the runner would beat the throw by more than this, the catcher does not throw
+    readFoul: 0.3, // s after contact a runner going with the pitch sees it is foul and pulls up
+    readFly: 0.8, // s after contact he has read a fly ball (a line drive he only sees caught)
+  },
   runner: {
     speed: 30.2, // ft/s top running speed
     accelTime: 0.42, // s a runner takes to get up to speed from a standstill
     brake: 55, // ft/s^2: how hard he can slow down (he brakes into a base, or slides)
     turnBrake: 30, // ft/s^2: how firmly he eases off for a corner (gentler than the stop at a bag)
     latAccel: 50, // ft/s^2: sideways grip in a turn. Speed in a turn is at most sqrt(latAccel / curvature), so he slows for the corner
-    lead: 5.5, // ft: how far off the bag a runner stands before the pitch
+    lead: 9, // ft: how far off the bag a runner stands before the pitch
+    leadSecond: 18, // ft: the lead off second base (nobody holds him on there, so he takes a much bigger one)
     // Rounding a base he keeps running through: he drifts out from the baseline over `turnLen` ft, goes round an arc of radius
     // `turnRadius` ft that touches the bag, and drifts back onto the next baseline over `turnLen` ft. (A smaller radius = a
     // sharper corner; he slows to at most sqrt(latAccel * radius) ft/s there.)

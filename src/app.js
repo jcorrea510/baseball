@@ -206,6 +206,7 @@ export class App {
       case 'skipSummary': if (this.engine) this.engine.skipSummary(); break;
       case 'batterReady': if (this.engine) this.engine.batterReady(); break;
       case 'bunt': if (this.engine) this.engine.setBunt(!this.engine.buntStance); break;
+      case 'steal': if (this.engine) this.engine.setSteal(!this.engine.stealArmed); break;
       case 'aim': this.aimTouch = d; break;
       case 'practice': if (this.engine) { Object.assign(this.engine.practice, d); } break;
       default: break;
@@ -325,6 +326,7 @@ export class App {
     this.ui.hideAll();
     this.ui.showHud(mode);
     this.ui.setBunt(false);
+    this.ui.setSteal(false, false);
     this.ui.setTeams({ abbr: PLAYER_TEAM.abbr, color: PLAYER_TEAM.color }, { abbr: eng.opponent.abbr, color: eng.opponent.color });
     this.ui.setMuteIcon(this.audio.muted);
     if (eng.game) this.ui.setGameState(eng.game);
@@ -360,6 +362,9 @@ export class App {
     e.on('count', (c) => { ui.setCount(c.balls, c.strikes, c.outs); this.updateScoreboard(); });
     e.on('batterReady', () => ui.hideBatterUp());
     e.on('buntStance', ({ on }) => ui.setBunt(on));
+    e.on('stealArmed', ({ on }) => ui.setSteal(e.canSteal, on));
+    e.on('stealGo', () => audio.crowdSwell(0.3, 1.4)); // the crowd sees him go
+    e.on('stealPlay', () => { this.landing = null; this.landRing.hide(); this.playOuts = 0; });
     e.on('windup', ({ pitch }) => {
       this.pitchMarker.visible = false;
       ui.hideBanner();
@@ -595,6 +600,13 @@ export class App {
       if (r.call === 'ball' && e.game && e.game.balls === 3) audio.crowdSwell(0.2, 1.2);
       return;
     }
+    if (r.kind === 'steal') {
+      const safe = r.result !== 'caughtStealing';
+      const where = { 2: 'Second', 3: 'Third' }[r.base] || '';
+      ui.banner(r.text, safe ? where : (r.halfOver ? 'Inning over' : where), safe ? 'good' : 'bad');
+      if (safe) { audio.crowdSwell(0.55, 2); audio.applause(1.1, 0.45); } else audio.crowdGroan(0.5);
+      return;
+    }
     // plate appearance / play ended
     const res = r.result;
     let big = r.text, sub = '', cls = 'neutral';
@@ -679,6 +691,7 @@ export class App {
           break;
         case 'KeyM': this.toggleMute(); break;
         case 'KeyB': if (inGame && this.engine) this.engine.setBunt(!this.engine.buntStance); break;
+        case 'KeyS': if (inGame && this.engine) this.engine.setSteal(!this.engine.stealArmed); break;
         case 'KeyZ': if (this.engine) { this.changeSetting('zone', !this.settings.zone); } break;
         case 'ArrowLeft': case 'KeyA': if (!inGame) break; e.preventDefault(); this.aimKeys.left = true; break;
         case 'ArrowRight': case 'KeyD': if (!inGame) break; e.preventDefault(); this.aimKeys.right = true; break;
@@ -790,6 +803,9 @@ export class App {
       const aim = clamp((this.aimKeys.right ? 1 : 0) - (this.aimKeys.left ? 1 : 0) + this.aimTouch, -1, 1);
       e.setAim(aim);
       this.ui.setAim(aim, e.batterHand);
+      // the Steal button is only there while a runner could go
+      const can = e.canSteal && !this.paused, on = e.stealArmed || !!(e.steal && (e.phase === 'windup' || e.phase === 'pitch'));
+      if (can !== this.stealShown || on !== this.stealOn) { this.stealShown = can; this.stealOn = on; this.ui.setSteal(can, on); }
     }
     if (e && !this.paused && !e.over || (e && e.phase === 'gameOver')) {
       if (this.hitStop > 0) { this.hitStop -= realDt; simDt = 0; }

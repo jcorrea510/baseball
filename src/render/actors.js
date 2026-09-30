@@ -157,7 +157,9 @@ export class Actors {
     for (const p of this.players.values()) p.active = false;
 
     // ---- pitcher & catcher & fielders
-    this.updateFielders(E, dt, time, pitch, plan, playT);
+    // (a steal is planned the moment the runners go: during the pitch the infielder covering the bag is already on his way)
+    const pre = !inPlay && E.steal && E.steal.plan && pitch && (phase === 'windup' || phase === 'pitch');
+    this.updateFielders(E, dt, time, pitch, pre ? E.steal.plan : plan, pre ? time - pitch.tCatch : playT);
 
     // ---- plate umpire
     if (this.umpire) {
@@ -206,7 +208,7 @@ export class Actors {
       st.fx = damp(st.fx, fx, 7, dt); st.fz = damp(st.fz, fz, 7, dt);
 
       // a new play begins: every planned run starts from his spot, so a fielder still jogging back pops onto it
-      const live = !!plan && playT >= 0;
+      const live = !!plan && (playT >= 0 || !!plan.steal);
       if (live && !st.inPlay && runs && Math.hypot(st.cx - def.homeX, st.cz - def.homeZ) > 0.3) {
         st.mover.reset(def.homeX, def.homeZ); st.cx = def.homeX; st.cz = def.homeZ; st.vx = st.vz = 0;
       }
@@ -320,6 +322,8 @@ export class Actors {
 
   catcherPoseUpdate(E, person, P, time, pitch, plan, playT, move, moving, speed, st, dt) {
     if (move && playT >= 0 && moving) return false;
+    // he comes up out of his crouch to throw (a runner stealing, a bunt he has fielded)
+    if (plan && playT >= 0 && plan.throws.some((th) => th.from === 'C' && playT >= th.t0 - 0.45 && playT <= th.t0 + 0.7)) return false;
     if (speed > 1.5) return false; // jogging back to the plate
     const cfg = E.cfg;
     let mx = 0, my = 2.4, mz = cfg.pitch.catchZ;
@@ -502,8 +506,10 @@ export class Actors {
         if (rp === batterP && batterP.active) continue; // (drawn as the batter this frame)
         rp.active = true;
         const st = this.state.get(rp);
-        const mv = inPlay ? plan.moves.find((m) => m.from === b) : null;
-        this.runnerUpdate(E, rp, st, b, mv, plan, playT, dt, time);
+        let mv = inPlay ? plan.moves.find((m) => m.from === b) : null, t = playT;
+        // stealing: he is off with the pitcher's first move (engine time; the play itself takes over when there is one)
+        if (!inPlay && !E.play && E.steal && E.steal.start[b] !== undefined) { mv = stealMove(st, b, E.steal.start[b]); t = time; }
+        this.runnerUpdate(E, rp, st, b, mv, plan || NO_PLAN, t, dt, time);
         rp.apply();
       }
     }
@@ -745,12 +751,18 @@ export class Actors {
       this.fx && r.speed > 8 && Math.random() < dt * 8 && this.fx.dustPuff(st.x, st.z, 0.25);
     } else {
       st.sliding = false; st.getT = undefined;
-      // relax to the lead-off spot (players who just arrived at base ease into it)
-      st.x = damp(st.x, leadX, 5, dt); st.z = damp(st.z, leadZ, 5, dt);
-      st.yaw = lerpAngle(st.yaw, face, Math.min(1, dt * 6));
+      // walk out to the lead-off spot (players who just arrived at a base take their lead; a runner who went with the pitch
+      // comes back to it) - at a walk or a jog, never a glide
+      const dx = leadX - st.x, dz = leadZ - st.z, d = Math.hypot(dx, dz);
+      const v = Math.min(d > 0.05 ? Math.max(4.5, d * 1.6) : 0, 16);
+      const step = Math.min(d, v * dt);
+      if (d > 0.05) { st.x += (dx / d) * step; st.z += (dz / d) * step; }
+      const walking = d > 0.6;
+      st.yaw = lerpAngle(st.yaw, walking ? Math.atan2(dx, dz) : face, Math.min(1, dt * 7));
       rp.place(st.x, 0, st.z, st.yaw);
       rp.root.updateMatrixWorld(true);
-      runnerLeadPose(rp.pose, time);
+      if (walking) { st.phase = (st.phase || 0) + runCadence(v) * TAU * dt; runPose(rp.pose, st.phase, v, 0, { accel: 0, side: 0 }); }
+      else runnerLeadPose(rp.pose, time);
       rp.pose.batVis = 0;
       if (rp.bat) rp.bat.visible = false;
     }
@@ -895,7 +907,13 @@ export class Actors {
   }
 }
 
-const CATCH_SETTLE = 0.09; // s before a catch when the ball starts to settle into the glove
+const CATCH_SETTLE = 0.09;
+const NO_PLAN = { events: [], homer: false, moves: [] };
+function stealMove(st, b, start) {
+  const m = st.stealMv || (st.stealMv = {});
+  m.from = b; m.to = b + 1; m.out = false; m.tStart = start;
+  return m;
+} // s before a catch when the ball starts to settle into the glove
 
 /**
  * How high off the ground is a fielder who leaps so that his glove meets the ball at time 0 (the top of the jump), `dt` seconds before /

@@ -8,7 +8,7 @@ import { simulateBattedBall, projectDistance } from '../physics/ballistics.js';
 import { resolveSwingTimes, describeError } from './timing.js';
 import { computeContact, computeBunt, derbyBatting } from './contact.js';
 import { choosePitch, pitchWindowScale } from './pitcherAI.js';
-import { createDefense, planPlay, fielderBackTime } from './fielding.js';
+import { createDefense, planPlay, planSteal, fielderBackTime } from './fielding.js';
 import * as rules from './rules.js';
 import { simulateHalf } from './aiHalf.js';
 import { makeLineup, makePitcher, OPPONENTS, PLAYER_TEAM } from './teams.js';
@@ -39,6 +39,8 @@ export class Engine {
     this.waitForBatter = !!o.waitForBatter;
     this.batterReadyFlag = true;
     this.buntStance = false; // squared around to bunt (B): the swing button then pushes the bat at the ball
+    this.stealArmed = false; // the runners will go on the next pitch (S)
+    this.steal = null; // this pitch's steal attempt: { bases, start: { base: engine time he took off } }
     this.practice = { type: 'fastball', speed: cfg.modes.practice.speedDefault, location: 'random', ...(o.practice || {}) };
     this.opponent = o.opponent || OPPONENTS[this.rng.int(0, OPPONENTS.length - 1)];
     this.playerTeam = PLAYER_TEAM;
@@ -123,6 +125,7 @@ export class Engine {
     this.readyUntil = this.time + (first ? this.cfg.pace.firstPitchDelay + 0.3 : this.cfg.pace.firstPitchDelay * 0.65);
     this.batterReadyFlag = !this.waitForBatter;
     this.setBunt(false);
+    this.steal = null; this.setSteal(false);
     this.emit('paStart', { batter: this.batter, index: this.batterIndex, count: this.count, waiting: !this.batterReadyFlag });
     this.emitCount();
   }
@@ -188,6 +191,9 @@ export class Engine {
       resolved: false, caught: false,
     };
     this.swing = null;
+    // runners told to steal go with the pitcher's first move (a jump that is a little better or worse each time)
+    this.steal = null;
+    if (this.stealArmed) this.beginSteal();
     this.setPhase('windup');
     this.emit('windup', { pitch: this.pitch, duration: windup });
   }
@@ -213,6 +219,51 @@ export class Engine {
     const v = !!on && can;
     if (v !== this.buntStance) { this.buntStance = v; this.emit('buntStance', { on: v }); }
     return this.buntStance;
+  }
+
+  // Which runners could steal right now: a runner with an empty base ahead of him (or one that is being emptied by the runner
+  // ahead also going). Nobody steals home. Quick games only.
+  stealBases() {
+    if (this.mode !== 'quick' || !this.game || this.game.outs >= 3) return [];
+    const b = this.game.bases;
+    const out = [];
+    if (b[1] && !b[2]) out.push(2);
+    if (b[0] && (!b[1] || out.includes(2))) out.push(1);
+    return out;
+  }
+  get canSteal() { return this.stealBases().length > 0 && (this.phase === 'ready' || this.phase === 'windup' || this.phase === 'result' || this.phase === 'halfBreak'); }
+  // Tell the runners to go on the next pitch (or call it off). Before the pitch is thrown only. Returns whether they will go.
+  setSteal(on) {
+    let v = !!on && this.canSteal;
+    if (this.phase === 'windup') {
+      if (v && !this.steal) this.beginSteal(); // decided during the windup: a late jump
+      if (!v && this.steal && Object.values(this.steal.start).some((t) => t <= this.time)) v = true; // he has already gone
+      if (!v) this.steal = null;
+    }
+    if (v !== this.stealArmed) { this.stealArmed = v; this.emit('stealArmed', { on: v, bases: v ? this.stealBases() : [] }); }
+    return this.stealArmed;
+  }
+  // The runners take off with the pitcher's first move (a jump that is a little better or worse each time).
+  beginSteal() {
+    const going = this.stealBases();
+    if (!going.length || !this.pitch) return;
+    const S = this.cfg.steal;
+    const pitch = this.pitch;
+    const start = {};
+    for (const b of going) start[b] = Math.max(this.time, pitch.tWindup + S.jump[b] + this.rng.gauss(0, S.jumpSd));
+    // the catcher's exchange is rolled now too (so the whole steal can be planned as the runner goes and the infielder covering
+    // the bag is seen breaking for it during the pitch); a pitch in the dirt has to be blocked first
+    const dirt = pitch.target.y < 1.1;
+    const transfer = Math.max(0.5, (S.transfer + this.rng.gauss(0, S.transferSd)) * (this.d.catcherArm ?? 1)) + (dirt ? S.dirtExtra : 0);
+    const coverStart = Math.min(...Object.values(start)) + S.coverReact - pitch.tCatch;
+    this.steal = { bases: going, start, transfer, coverStart };
+    this.steal.plan = this.planStealNow();
+    this.emit('stealGo', { bases: going });
+  }
+  planStealNow() {
+    const s = this.steal;
+    const running = Object.fromEntries(s.bases.map((b) => [b, s.start[b] - this.pitch.tCatch]));
+    return planSteal({ bases: this.bases, outs: this.outs, defense: this.defense, running, transfer: s.transfer, coverStart: s.coverStart }, this.cfg);
   }
 
   // Player input. `sinceUpdate` = seconds between the last engine update and the actual input event
@@ -298,6 +349,8 @@ export class Engine {
     const call = swung ? 'swingingStrike' : pitch.isStrike ? 'calledStrike' : 'ball';
     this.emit('pitchCall', { ...info, call, result: res.result, strikes: g.strikes, balls: g.balls });
     this.emitCount();
+    // runners were going: the catcher tries to throw one out (not after ball four - they are waved on - or a third out)
+    const stealPlay = this.steal && !res.halfOver && res.result !== 'walk';
     if (res.paEnded) {
       this.stats.pa++;
       if (res.result === 'walk') { this.stats.walks++; this.stats.rbi += res.runs; } // a bases-loaded walk drives in a run
@@ -307,16 +360,55 @@ export class Engine {
         kind: 'pa', result: res.result, text: rules.RESULT_TEXT[res.result], runs: res.runs, outs: g.outs, halfOver: res.halfOver,
         batter: this.batter, ...info,
       });
+      if (stealPlay) return this.startStealPlay(res);
       this.finishPitch(this.cfg.pace.callDisplay + 0.45, res.halfOver, true, res.result);
     } else {
       this.emit('result', { kind: 'pitch', call, text: rules.RESULT_TEXT[res.result], ...info });
+      if (stealPlay) return this.startStealPlay(res);
       this.finishPitch(this.cfg.pace.callDisplay);
     }
+  }
+
+  // ------------------------------------------------------------------ stolen bases
+  // The pitch is in the catcher's glove and the runners are going: play it out (the same play machinery as a ball in play).
+  startStealPlay(res) {
+    const pitch = this.pitch;
+    const plan = this.planStealNow(); // (the same plan as when the runner went; the outs may have changed since)
+    if (!plan) return this.finishPitch(res.paEnded ? this.cfg.pace.callDisplay + 0.45 : this.cfg.pace.callDisplay, res.halfOver, res.paEnded, res.result);
+    this.play = {
+      t0: pitch.tCatch, sim: NO_FLIGHT, plan, contact: { exitVelocity: 0, launchAngle: 0, sprayAngle: 0, grade: 'steal', steal: true }, pitch,
+      distance: 0, projected: { distance: 0, hangTime: 0 }, start: null, steal: { res },
+      events: buildEventList(NO_FLIGHT, plan), nextEvent: 0, prevT: 0, landedReported: false,
+    };
+    this.setPhase('play');
+    this.emit('stealPlay', { plan, bases: this.steal.bases });
+  }
+
+  finishSteal(p) {
+    const plan = p.plan;
+    const g = this.game;
+    const res = p.steal.res;
+    const moves = plan.moves.map((m) => ({ from: m.from, to: m.to, out: !!m.out }));
+    const before = g.bases.slice();
+    const r = rules.applySteal(g, moves);
+    for (const m of moves) {
+      const runner = before[m.from - 1];
+      if (m.out) this.stats.cs++;
+      else if (m.to > m.from) { this.stats.sb++; if (runner && runner.id !== undefined) this.lineOf(runner).sb++; }
+    }
+    const lead = plan.moves[0];
+    const base = lead.out ? lead.outBase : lead.to;
+    const result = plan.result === 'caughtStealing' ? 'caughtStealing' : plan.doubleSteal ? 'doubleSteal' : 'stolenBase';
+    this.emitCount();
+    this.emit('result', { kind: 'steal', result, text: rules.RESULT_TEXT[result], base, outs: g.outs, halfOver: r.halfOver, runs: 0, plan });
+    const halfOver = res.halfOver || r.halfOver;
+    this.finishPitch(this.cfg.pace.playEndPause, halfOver, res.paEnded || halfOver, res.paEnded ? res.result : result);
   }
 
   finishPitch(pause, halfOver = false, paEnded = false, kind = null) {
     this.paEnded = paEnded;
     this.setBunt(false); // (a batter squares around again for each pitch he wants to bunt)
+    if (this.stealArmed) { this.stealArmed = false; this.emit('stealArmed', { on: false, bases: [] }); } // (and the runners are sent again for each pitch)
     this.lastPA = paEnded ? { result: kind, time: this.time } : this.lastPA;
     this.setPhase('result');
     this.resultUntil = this.time + pause;
@@ -352,7 +444,8 @@ export class Engine {
     const simple = this.mode !== 'quick';
     // fielding errors: one roll per ball in play (only in real games)
     const errorRoll = simple ? undefined : this.errorRollOverride ?? this.rng.next(); // (errorRollOverride: QA hook, 0 = always an error)
-    const plan = planPlay({ sim, contact: c, bases: this.bases, outs: this.outs, defense: this.defense, simple, errorRoll, errorScale: this.d.errorScale }, this.cfg);
+    const running = this.steal && !simple ? Object.fromEntries(this.steal.bases.map((b) => [b, this.steal.start[b] - s.tHit])) : null; // runners going with the pitch
+    const plan = planPlay({ sim, contact: c, bases: this.bases, outs: this.outs, defense: this.defense, simple, errorRoll, errorScale: this.d.errorScale, running }, this.cfg);
     const proj = projectDistance(params, this.cfg);
     const fb = sim.firstBounce;
     const distance = plan.homer ? proj.distance : fb ? Math.hypot(fb.x, fb.z) : proj.distance;
@@ -392,6 +485,11 @@ export class Engine {
     const p = this.play;
     const plan = p.plan;
     const c = p.contact;
+    if (p.steal) {
+      const back = Math.max(fielderBackTime(plan, 'P', this.defense, this.cfg, this.time - p.t0), fielderBackTime(plan, 'C', this.defense, this.cfg, this.time - p.t0));
+      this.fieldersSetAt = back > 0 ? p.t0 + back + this.cfg.pace.pitcherSet : 0;
+      return this.finishSteal(p);
+    }
     // The pitcher may have fielded the ball or backed up a base, the catcher may have covered the plate: the next pitch must not
     // start until both are back where they belong (the jog home is the same one the picture shows) and have a moment to get set.
     const playEnd = this.time - p.t0;
@@ -484,7 +582,7 @@ export class Engine {
   }
   lineOf(b) {
     const id = b && b.id !== undefined ? b.id : 'x';
-    return this.lines[id] || (this.lines[id] = { pa: 0, ab: 0, h: 0, hr: 0, rbi: 0, bb: 0, k: 0 });
+    return this.lines[id] || (this.lines[id] = { pa: 0, ab: 0, h: 0, hr: 0, rbi: 0, bb: 0, k: 0, sb: 0 });
   }
 
   // ------------------------------------------------------------------ Home Run Derby
@@ -579,7 +677,7 @@ export class Engine {
 
 function newStats() {
   return {
-    pitchesSeen: 0, swings: 0, bunts: 0, whiffs: 0, contacts: 0, fouls: 0, hits: 0, hr: 0, ab: 0, pa: 0, walks: 0, strikeouts: 0, rbi: 0, runs: 0,
+    pitchesSeen: 0, swings: 0, bunts: 0, sb: 0, cs: 0, whiffs: 0, contacts: 0, fouls: 0, hits: 0, hr: 0, ab: 0, pa: 0, walks: 0, strikeouts: 0, rbi: 0, runs: 0,
     perfect: 0, good: 0, early: 0, late: 0, maxEV: 0, evSum: 0, evN: 0, longestHR: 0,
   };
 }
@@ -599,6 +697,9 @@ function derbyOutText(plan, c) {
   if (plan.result === 'hitSimple') return c.launchAngle < 10 ? 'grounder' : 'in the park';
   return 'out';
 }
+
+// (a steal play has no batted ball)
+const NO_FLIGHT = { firstBounce: null, wallHit: null, homerun: null, standsLanding: null, duration: 0, apex: { y: 0 } };
 
 // Everything that will happen during a play at a fixed time (seconds after contact), for sound / effects.
 function buildEventList(sim, plan) {

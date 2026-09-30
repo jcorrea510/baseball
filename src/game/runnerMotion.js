@@ -21,7 +21,7 @@ export function leadSpot(base, cfg = CONFIG) {
   const b = BASE_XZ[base], n = BASE_XZ[base === 3 ? 4 : base + 1];
   const [ux, uz] = norm(n[0] - b[0], n[1] - b[1]);
   const side = base === 1 ? 1.2 : base === 3 ? -1.2 : 0;
-  const lead = cfg.runner.lead;
+  const lead = base === 2 ? cfg.runner.leadSecond ?? cfg.runner.lead : cfg.runner.lead; // (off second base nobody holds him on: a bigger lead)
   return [b[0] + ux * lead + side, b[1] + uz * lead];
 }
 
@@ -172,7 +172,9 @@ export function buildProfile(route, { vmax, accelTime, brake, turnBrake = brake,
     while (idx < n - 2 && route.s[idx + 1] <= s) idx++;
     const u = (s - route.s[idx]) / Math.max(1e-9, route.s[idx + 1] - route.s[idx]);
     // ... and from the end of the route: he must be able to stop on the bag with `brake` (exact, not interpolated)
-    const lim = Math.min(vcap[idx] + (vcap[idx + 1] - vcap[idx]) * Math.min(1, Math.max(0, u)), Math.sqrt(2 * brake * Math.max(0, sEnd - s)));
+    // (the speed from which braking at `brake` stops him on the bag, taken over one step so the last instant is not harsher)
+    const bd = brake * DT;
+    const lim = Math.min(vcap[idx] + (vcap[idx + 1] - vcap[idx]) * Math.min(1, Math.max(0, u)), Math.sqrt(bd * bd + 2 * brake * Math.max(0, sEnd - s)) - bd);
     v = Math.min(v + ((vmax - v) / accelTime) * DT, lim);
     s += v * DT; t += DT;
     if (sEnd - s < 0.0015 || (v < 0.02 && s > sEnd - 0.3)) {
@@ -253,7 +255,7 @@ const cache = new Map();
 export function runnerProfile(from, to, kind = 'run', cfg = CONFIG) {
   const R = cfg.runner;
   if (to <= from) return stationary(from, cfg); // a runner who stays where he is
-  const key = `${from}>${to}|${kind}|${R.speed}|${R.accelTime}|${R.brake}|${R.latAccel}|${R.turnBrake}|${R.turnLen}|${R.turnRadius}|${R.lead}|${R.overrun}|${R.trotSpeed}`;
+  const key = `${from}>${to}|${kind}|${R.speed}|${R.accelTime}|${R.brake}|${R.latAccel}|${R.turnBrake}|${R.turnLen}|${R.turnRadius}|${R.lead}|${R.leadSecond}|${R.overrun}|${R.trotSpeed}`;
   let p = cache.get(key);
   if (!p) {
     const route = buildRoute(from, to, { through: kind === 'through' }, cfg);
@@ -291,6 +293,7 @@ export function moveKind(move) {
  * the planner used (the planner times every runner as if he stops on the bag), so the picture agrees with the safe/out call.
  */
 export function runnerState(move, t, cfg = CONFIG, out = {}) {
+  if (move.back) return retreatState(move, t, cfg, out);
   const R = cfg.runner;
   const toBase = move.out && move.to === 0 ? move.outBase : move.to;
   const kind = moveKind(move);
@@ -317,5 +320,71 @@ export function runnerState(move, t, cfg = CONFIG, out = {}) {
   out.tStart = t0;
   out.total = p.sEnd;
   out.profile = p;
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Going back: a runner who took off with the pitch (a steal, a hit-and-run) and has to return to his base - the ball was
+// fouled off or caught. He runs toward the next base until `backAt`, brakes, turns and runs back to the bag he left
+// (the bag itself, not his lead-off spot). move = { from, back: true, tStart, backAt } (times in the play's clock).
+// ---------------------------------------------------------------------------------------------------------------
+const covered = (v, tau, A) => v * (tau - A * (1 - Math.exp(-tau / A)));
+function retreatPlan(from, tStart, backAt, cfg) {
+  const R = cfg.runner;
+  const p = runnerProfile(from, from + 1, 'run', cfg);
+  const q = p.at(Math.max(0, backAt - tStart), {});
+  const B = R.brake * 0.8; // (he pulls up hard, but not as hard as a slide into a bag)
+  const tb = q.speed / B;
+  const s2 = q.s + (q.speed * q.speed) / (2 * B);
+  const [lx, lz] = leadSpot(from, cfg);
+  const [bx, bz] = BASE_XZ[from];
+  const lead = Math.hypot(lx - bx, lz - bz);
+  const dist = s2 + lead; // back to the bag
+  // time to run `dist` from a standstill (same get-up-to-speed curve as every run)
+  let lo = 0, hi = dist / R.speed + 4 * R.accelTime + 1;
+  for (let k = 0; k < 40; k++) { const mid = (lo + hi) / 2; if (covered(R.speed, mid, R.accelTime) < dist) lo = mid; else hi = mid; }
+  return { p, s1: q.s, v1: q.speed, B, tb, s2, lead, dist, tRun: hi, tTurn: backAt + tb, tHome: backAt + tb + hi, bx, bz };
+}
+/** When is a runner who is going back on the bag again? */
+export function retreatArrival(cfg, from, tStart, backAt) {
+  return retreatPlan(from, tStart, backAt, cfg).tHome;
+}
+// a point `s` ft along his way to the next base (negative = between his lead-off spot and the bag)
+function alongRoute(rp, s, out) {
+  if (s >= 0) return rp.p.at(rp.p.tAtS(Math.min(s, rp.p.sEnd)), out);
+  const q = rp.p.at(0, out);
+  const k = Math.min(1, -s / Math.max(1e-6, rp.lead));
+  out.x = q.x + (rp.bx - q.x) * k; out.z = q.z + (rp.bz - q.z) * k;
+  return out;
+}
+export function retreatState(move, t, cfg = CONFIG, out = {}) {
+  const t0 = move.tStart ?? cfg.runner.startDelay;
+  const rp = move._rp && move._rp.key === `${move.from}|${t0}|${move.backAt}` ? move._rp : (move._rp = Object.assign(retreatPlan(move.from, t0, move.backAt, cfg), { key: `${move.from}|${t0}|${move.backAt}` }));
+  out.kind = 'back'; out.tStart = t0; out.profile = rp.p; out.total = rp.dist;
+  if (t <= move.backAt) {
+    rp.p.at(t - t0, out);
+    out.waiting = t <= t0; out.running = !out.waiting && out.speed > 0.05; out.done = false;
+    return out;
+  }
+  const heading0 = rp.p.at(Math.max(0, move.backAt - t0), {}).heading;
+  if (t < rp.tTurn) {
+    // pulling up
+    const u = t - move.backAt;
+    const s = rp.s1 + rp.v1 * u - 0.5 * rp.B * u * u;
+    alongRoute(rp, s, out);
+    out.heading = heading0; out.speed = Math.max(0, rp.v1 - rp.B * u); out.accel = -rp.B;
+    out.sLeft = 0; out.side = 0; out.turn = 0;
+    out.waiting = false; out.running = true; out.done = false;
+    return out;
+  }
+  const tau = t - rp.tTurn;
+  const d = Math.min(rp.dist, covered(cfg.runner.speed, tau, cfg.runner.accelTime));
+  alongRoute(rp, rp.s2 - d, out);
+  const done = tau >= rp.tRun;
+  out.heading = heading0 + Math.PI;
+  out.speed = done ? 0 : cfg.runner.speed * (1 - Math.exp(-tau / cfg.runner.accelTime));
+  out.accel = done ? 0 : (cfg.runner.speed - out.speed) / cfg.runner.accelTime;
+  out.sLeft = rp.dist - d; out.side = 0; out.turn = 0;
+  out.waiting = false; out.running = !done; out.done = done;
   return out;
 }

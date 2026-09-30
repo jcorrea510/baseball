@@ -26,10 +26,11 @@ for (const sz of sizes) {
       ui.timing(-12, 'good', { perfect: 20, good: 42 }, 'GOOD · 12 ms early');
       ui.banner('DOUBLE', '98 mph · 2 runs', 'good');
       if (a.engine.mode === 'quick') ui.showBatterUp({ number: 12, name: 'J. Delgado-Whitfield', pos: 'SS' }, { pa: 2, ab: 2, h: 1, hr: 1, rbi: 2, bb: 0 }, ['Bats left', '.312', '14 HR']);
+      if (a.engine.mode === 'quick') ui.setSteal(true, true); // (the Steal button next to Bunt)
       ui.q.banner.style.opacity = '1';
       a.tick(0.001, true);
       // overlap check between visible HUD boxes
-      const sel = ['.pitchinfo', '.callout', '.meter', '.batterup', '.bugwrap', '.derbybox', '.practice', '.hudbtns', '.aimgauge', '.touchaim.l', '.touchaim.r'];
+      const sel = ['.pitchinfo', '.callout', '.meter', '.batterup', '.bugwrap', '.derbybox', '.practice', '.hudbtns', '.acts', '.aimgauge', '.touchaim.l', '.touchaim.r'];
       const boxes = [];
       for (const s of sel) { const e = document.querySelector('.hud ' + s); if (!e) continue; const cs = getComputedStyle(e); if (cs.display === 'none' || +cs.opacity === 0) continue; const b = e.getBoundingClientRect(); if (b.width && b.height) boxes.push({ s, b }); }
       const hits = [];
