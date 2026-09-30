@@ -48,7 +48,7 @@ Module map:
 - `src/game/`: `engine`, `timing`, `contact`, `fielding`, `fielderMotion`, `playAudit`, `runnerMotion`, `rules`, `pitcherAI`, `aiHalf`, `pitchGuide`, `landing`, `progression`, `teams`, `bot`
 - `src/render/`: `scene`, `environment`, `stadium` (+ `perimeter`, `crowd`, `scoreboard`, `textures`), `rig`, `poses`, `actors`, `cameraRig`, `ball`, `effects`, `pitchGuide`, `landingRing`
 - `src/audio/`: `audio` (engine), `umpireVoice`, `voiceRender`, `formants`, `umpireFiles`, `umpireNames`
-- `src/ui/ui.js` + `src/style.css` + `src/ui/logo.js` (the logo and badge as SVG strings, pure)
+- `src/ui/ui.js` + `src/style.css` + `src/ui/logo.js` (the logo, the badge and headline word-art as SVG strings, pure)
 - `scripts/` (Node tools and QA, listed under Commands), `tests/` (26 files, one per module or topic), `public/` (icons, share picture, manifest, `sounds/umpire/`)
 
 ### Coordinates (used by every module)
@@ -169,7 +169,7 @@ Nothing here breaks the game; these are the honest rough edges and the things no
 - **Feel of the newest features is untested by the owner** (pitch guide, landing ring, wall leaps, the new mix levels, the pitch's minimum size, the loading screen). All are plain numbers in `config.js`.
 - **Fielding is fully deterministic and never misplays.** There is no error model (the unused `fielding.errorRate` knob was removed). If misplays are wanted they have to be built in `planPlay`, seeded so plays stay repeatable.
 - **Bot stats look generous** (.542, 85% wins on Pro): the bot swings at 85% of strikes and 6% of balls with ~30 ms timing error; people are far below that. Do not "fix" this by making fielders stronger without also checking `groundcheck.mjs` and `wallcatch.mjs`.
-- **Fonts:** the logo is shapes (same everywhere), but headings such as "YOU WIN" and "HOME RUN!" use the system's heavy italic (`--font-display`: Arial Black / Impact where present), so they look slightly different on Android. Bundling a font would need a font file in the repo.
+- **Fonts:** the logo and the big headlines ("HOME RUN!", "YOU WIN" / "YOU LOSE", "12 HOME RUNS") are drawn in the logo's block letters (`wordSVG` in `src/ui/logo.js`: A C D E F G H I K L M N O P R S T U W Y, 0-9, ! and -; a headline with any other character falls back to text). Everything else uses the system font stack.
 - **Real-device performance was never measured** (this sandbox renders in software). Per-frame game logic is under 1 ms; startup was 2-4 s in software rendering.
 - **By design, the player only bats.** No steals, pickoffs or rundowns.
 - **Nothing else is queued.** Further work comes from the owner's playtest notes. Do not invent features.

@@ -2,7 +2,7 @@
 import { CONFIG, DIFFICULTIES } from '../config.js';
 import { UNIFORMS, BATS } from '../game/teams.js';
 import { UNLOCKS, unlockKey } from '../game/progression.js';
-import { logoSVG } from './logo.js';
+import { logoSVG, wordSVG } from './logo.js';
 
 function h(tag, cls, html) {
   const e = document.createElement(tag);
@@ -51,6 +51,10 @@ const ICONS = {
   trash: '<path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13"/>',
 };
 const icon = (name, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`;
+
+// A results headline in the logo's letters, or plain text if it cannot be drawn.
+let headlineN = 0;
+const headline = (text, tone) => wordSVG(text, { id: 'hl' + ++headlineN, tone }) || text;
 
 // A selector that finds "the same" control again after its screen is rebuilt.
 function focusSelector(el) {
@@ -471,7 +475,7 @@ export class UI {
     if (p.mode === 'quick') {
       const g = p.game;
       const win = p.won;
-      head = `<div class="label">${p.game.walkOff ? 'Walk-off' : 'Final'}</div><div class="result ${win ? 'win' : 'loss'}">${win ? 'YOU WIN' : 'YOU LOSE'}</div>`;
+      head = `<div class="label">${p.game.walkOff ? 'Walk-off' : 'Final'}</div><div class="result ${win ? 'win' : 'loss'}">${headline(win ? 'YOU WIN' : 'YOU LOSE', win ? 'gold' : 'red')}</div>`;
       const n = Math.max(g.line.top.length, 3);
       let hdr = '<tr><th></th>' + Array.from({ length: n }, (_, i) => `<th>${i + 1}</th>`).join('') + '<th>R</th><th>H</th></tr>';
       const row = (name, ab, arr, R, H) => `<tr><td class="tn"><span class="full">${name}</span><span class="ab">${ab}</span></td>` + Array.from({ length: n }, (_, i) => `<td>${arr[i] === undefined ? '' : arr[i]}</td>`).join('') + `<td class="r">${R}</td><td>${H}</td></tr>`;
@@ -479,7 +483,7 @@ export class UI {
       grid = [[avgText(st.hits, st.ab), 'AVG'], [`${st.hits}/${st.ab}`, 'Hits'], [st.hr, 'HR'], [st.rbi, 'RBI'], [st.perfect, 'Perfect'], [st.longestHR ? st.longestHR + ' ft' : '--', 'Longest'], [st.maxEV ? Math.round(st.maxEV) + ' mph' : '--', 'Exit velo'], [`${st.strikeouts} / ${st.walks}`, 'K / BB']];
     } else if (p.mode === 'derby') {
       const d2 = p.derby;
-      head = `<div class="label">Derby</div><div class="result win">${d2.hr} HOME RUN${d2.hr === 1 ? '' : 'S'}</div>`;
+      head = `<div class="label">Derby</div><div class="result win">${headline(`${d2.hr} HOME RUN${d2.hr === 1 ? '' : 'S'}`, 'gold')}</div>`;
       grid = [[d2.hr, 'HR'], [d2.longest ? d2.longest + ' ft' : '--', 'Longest'], [d2.bestStreak, 'Streak'], [st.perfect, 'Perfect'], [st.maxEV ? Math.round(st.maxEV) + ' mph' : '--', 'Exit velo'], [`${Math.round(100 * d2.hr / Math.max(1, st.swings))}%`, 'HR rate'], [st.swings, 'Swings'], [st.whiffs, 'Misses']];
     }
     d.innerHTML = `${head}${table}<div class="statgrid">${grid.map(([v, l]) => `<div class="stat"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('')}</div>
@@ -582,7 +586,9 @@ export class UI {
   banner(big, sub = '', cls = 'neutral', hold = false) {
     const el = this.q.banner;
     el.className = 'banner ' + cls + (hold ? ' hold' : '');
-    el.querySelector('.big').textContent = big;
+    // the home-run celebration is drawn in the logo's letters (the same on every device); anything else is text
+    const art = cls === 'hr' ? wordSVG(big, { id: 'hr' + (this.artN = (this.artN || 0) + 1) }) : null;
+    if (art) el.querySelector('.big').innerHTML = art; else el.querySelector('.big').textContent = big;
     el.querySelector('.sub').textContent = sub;
     void el.offsetWidth;
     el.classList.add('show');

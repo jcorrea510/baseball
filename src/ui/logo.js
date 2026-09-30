@@ -14,12 +14,42 @@ const LETTERS = {
   L: { w: 62, polys: [[[0, 0], [T, 0], [T, 74], [62, 74], [62, 100], [0, 100]]] },
   O: { w: 76, polys: [[[24, 0], [52, 0], [76, 24], [76, 76], [52, 100], [24, 100], [0, 76], [0, 24]], [[34, T], [42, T], [50, 34], [50, 66], [42, 74], [34, 74], [T, 66], [T, 34]]] },
   T: { w: 72, polys: [[[0, 0], [72, 0], [72, T], [49, T], [49, 100], [23, 100], [23, T], [0, T]]] },
+  // the rest of the headline alphabet (HOME RUN!, YOU WIN, YOU LOSE, 12 HOME RUNS, INSIDE-THE-PARK HR ...)
+  H: { w: 74, polys: [[[0, 0], [T, 0], [T, 37], [48, 37], [48, 0], [74, 0], [74, 100], [48, 100], [48, 63], [T, 63], [T, 100], [0, 100]]] },
+  M: { w: 92, polys: [[[0, 100], [0, 0], [25, 0], [46, 34], [67, 0], [92, 0], [92, 100], [66, 100], [66, 48], [46, 76], [T, 48], [T, 100]]] },
+  E: { w: 62, polys: [[[0, 0], [62, 0], [62, T], [T, T], [T, 37], [52, 37], [52, 63], [T, 63], [T, 74], [62, 74], [62, 100], [0, 100]]] },
+  R: { w: 76, polys: [[[0, 0], [52, 0], [74, 20], [74, 44], [62, 56], [76, 100], [49, 100], [39, 64], [T, 64], [T, 100], [0, 100]], [[T, 24], [44, 24], [48, 28], [48, 36], [44, 40], [T, 40]]] },
+  U: { w: 74, polys: [[[0, 0], [T, 0], [T, 70], [32, 74], [42, 74], [48, 70], [48, 0], [74, 0], [74, 78], [52, 100], [22, 100], [0, 78]]] },
+  Y: { w: 76, polys: [[[0, 0], [27, 0], [38, 34], [49, 0], [76, 0], [51, 58], [51, 100], [25, 100], [25, 58]]] },
+  W: { w: 102, polys: [[[0, 0], [25, 0], [32, 58], [43, 24], [59, 24], [70, 58], [77, 0], [102, 0], [89, 100], [63, 100], [51, 62], [39, 100], [13, 100]]] },
+  I: { w: T, polys: [[[0, 0], [T, 0], [T, 100], [0, 100]]] },
+  P: { w: 70, polys: [[[0, 0], [48, 0], [70, 22], [70, 46], [48, 66], [T, 66], [T, 100], [0, 100]], [[T, 24], [40, 24], [44, 28], [44, 38], [40, 42], [T, 42]]] },
+  K: { w: 76, polys: [[[0, 0], [T, 0], [T, 38], [46, 0], [74, 0], [47, 50], [76, 100], [47, 100], [T, 62], [T, 100], [0, 100]]] },
+  C: { w: 68, polys: [[[22, 0], [68, 0], [68, T], [34, T], [T, 34], [T, 66], [34, 74], [68, 74], [68, 100], [22, 100], [0, 78], [0, 22]]] },
+  F: { w: 62, polys: [[[0, 0], [62, 0], [62, T], [T, T], [T, 38], [54, 38], [54, 64], [T, 64], [T, 100], [0, 100]]] },
+  G: { w: 74, polys: [[[22, 0], [70, 0], [70, T], [34, T], [T, 34], [T, 66], [34, 74], [48, 74], [48, 62], [40, 62], [40, 42], [74, 42], [74, 78], [52, 100], [22, 100], [0, 78], [0, 22]]] },
+  '!': { w: 28, polys: [[[1, 0], [27, 0], [22, 68], [6, 68]], [[3, 76], [25, 76], [25, 100], [3, 100]]] },
+  '-': { w: 40, polys: [[[0, 38], [40, 38], [40, 62], [0, 62]]] },
+  '0': { w: 70, polys: [[[20, 0], [50, 0], [70, 20], [70, 80], [50, 100], [20, 100], [0, 80], [0, 20]], [[32, T], [38, T], [44, 32], [44, 68], [38, 74], [32, 74], [T, 68], [T, 32]]] },
+  '1': { w: 50, polys: [[[6, 0], [42, 0], [42, 74], [50, 74], [50, 100], [0, 100], [0, 74], [16, 74], [16, 28], [6, 28]]] },
+  '2': { w: 70, polys: [[[0, 0], [56, 0], [70, 14], [70, 50], [58, 62], [T, 62], [T, 74], [70, 74], [70, 100], [0, 100], [0, 48], [12, 36], [44, 36], [44, T], [0, T]]] },
+  '3': { w: 70, polys: [[[0, 0], [56, 0], [70, 14], [70, 86], [56, 100], [0, 100], [0, 74], [44, 74], [44, 63], [14, 63], [14, 37], [44, 37], [44, T], [0, T]]] },
+  '4': { w: 70, polys: [[[0, 0], [T, 0], [T, 44], [44, 44], [44, 0], [70, 0], [70, 100], [44, 100], [44, 70], [0, 70]]] },
+  '5': { w: 70, polys: [[[0, 0], [70, 0], [70, T], [T, T], [T, 37], [56, 37], [70, 51], [70, 86], [56, 100], [0, 100], [0, 74], [44, 74], [44, 63], [0, 63]]] },
+  '6': { w: 70, polys: [[[14, 0], [66, 0], [66, T], [T, T], [T, 37], [56, 37], [70, 51], [70, 86], [56, 100], [14, 100], [0, 86], [0, 14]], [[T, 61], [44, 61], [44, 76], [T, 76]]] },
+  '7': { w: 70, polys: [[[0, 0], [70, 0], [70, T], [44, 100], [16, 100], [41, T], [0, T]]] },
+  '8': { w: 70, polys: [[[14, 0], [56, 0], [70, 14], [70, 40], [62, 50], [70, 60], [70, 86], [56, 100], [14, 100], [0, 86], [0, 60], [8, 50], [0, 40], [0, 14]], [[T, 24], [44, 24], [44, 39], [T, 39]], [[T, 61], [44, 61], [44, 76], [T, 76]]] },
+  '9': { w: 70, polys: [[[14, 0], [56, 0], [70, 14], [70, 86], [56, 100], [4, 100], [4, 74], [44, 74], [44, 63], [14, 63], [0, 49], [0, 14]], [[T, 24], [44, 24], [44, 39], [T, 39]]] },
+  ' ': { w: 30, polys: [] },
 };
+/** Can this text be drawn in the logo's letters? */
+export const canDrawWord = (text) => [...String(text).toUpperCase()].every((c) => LETTERS[c]);
 const GAP = 7;
 
 // Lay out a word and bend it: slant (italic) and an arch that lifts the middle letters.
 function wordPaths(word, { slant = 0.2, arch = 16 } = {}) {
   const chars = [...word.toUpperCase()].filter((c) => LETTERS[c]);
+  if (!chars.length) return { d: '', width: 0, top: 0 };
   const total = chars.reduce((s, c) => s + LETTERS[c].w, 0) + GAP * (chars.length - 1);
   const cx = total / 2;
   const warp = (x, y) => {
@@ -81,6 +111,25 @@ ${swoosh ? `<g transform="translate(0 6)"><path d="${band}" fill="#140903" opaci
 <path d="${w.d}" fill="#7a2a0c" stroke="#7a2a0c" stroke-width="5" stroke-linejoin="round" fill-rule="evenodd"/>
 <path d="${w.d}" fill="url(#${id}-f)" fill-rule="evenodd"/>
 </svg>`;
+}
+
+/**
+ * A headline in the logo's letters (the home-run celebration, the result of a game), as an SVG string - or null when the text
+ * has a character the alphabet does not have (the caller then shows plain text). tone: 'gold' | 'red'.
+ */
+export function wordSVG(text, { id = 'w', tone = 'gold', arch = 8, slant = 0.18, cls = 'wordart' } = {}) {
+  if (!canDrawWord(text)) return null;
+  const w = wordPaths(String(text), { arch, slant });
+  const pad = 16;
+  const stops = tone === 'red'
+    ? '<stop offset="0" stop-color="#fff1ee"/><stop offset=".45" stop-color="#ffb3a8"/><stop offset="1" stop-color="#e5483b"/>'
+    : '<stop offset="0" stop-color="#fffaf0"/><stop offset=".38" stop-color="#ffe08a"/><stop offset=".72" stop-color="#ffb52e"/><stop offset="1" stop-color="#f07d12"/>';
+  return `<svg class="${cls}" xmlns="http://www.w3.org/2000/svg" viewBox="${-pad} ${(w.top - pad).toFixed(0)} ${(w.width + pad * 2).toFixed(0)} ${(H - w.top + pad * 2 + 6).toFixed(0)}" role="img" aria-label="${String(text).replace(/"/g, '')}">`
+    + `<defs><linearGradient id="${id}-f" x1="0" y1="0" x2="0" y2="1">${stops}</linearGradient></defs>`
+    + `<path d="${w.d}" fill="#140903" stroke="#140903" stroke-width="22" stroke-linejoin="round" fill-rule="evenodd" transform="translate(0 7)" opacity=".55"/>`
+    + `<path d="${w.d}" fill="#140903" stroke="#140903" stroke-width="22" stroke-linejoin="round" fill-rule="evenodd"/>`
+    + `<path d="${w.d}" fill="#fff4dc" stroke="#fff4dc" stroke-width="9" stroke-linejoin="round" fill-rule="evenodd"/>`
+    + `<path d="${w.d}" fill="url(#${id}-f)" fill-rule="evenodd"/></svg>`;
 }
 
 /** A square badge (favicon, app icon): a baseball with a block "S" on it. */
