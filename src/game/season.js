@@ -5,7 +5,7 @@ import { CONFIG } from '../config.js';
 import { createRng } from '../util/rng.js';
 import { clamp } from '../util/math.js';
 import { SKINS } from './teams.js';
-import { FIRST_NAMES, LAST_NAMES, teamById, teamName, leagueFor, starsOf, allStars, uniformFor, teamLineup, shortName } from './mlb.js';
+import { FIRST_NAMES, LAST_NAMES, MLB_TEAMS, teamById, teamName, leagueFor, starsOf, allStars, uniformFor, teamLineup, shortName } from './mlb.js';
 
 export const POSITIONS9 = ['CF', 'SS', '1B', 'LF', 'RF', '3B', 'C', '2B', 'DH'];
 
@@ -86,8 +86,45 @@ export function newSeason(prev, o = {}, cfg = CONFIG) {
     w: 0, l: 0, rs: 0, ra: 0, lineupSeed: rng.int(1, 1e9),
   }));
   s.schedule = makeSchedule(s, cfg);
+  s.others = makeOthers(s, rng, cfg);
   refillShop(s, rng, S.shop.size, cfg);
   return s;
+}
+
+// The other twenty-one clubs (outside your playoff race): they play their own games every day you do, so the standings show all
+// thirty teams and all six divisions.
+function makeOthers(s, rng, cfg) {
+  const S = cfg.season;
+  const inLeague = new Set(s.teams.map((t) => t.id));
+  return MLB_TEAMS.filter((t) => !inLeague.has(t.id)).map((t) => ({
+    id: t.id, name: teamName(t), abbr: t.abbr, color: t.color, color2: t.color2, tier: t.tier,
+    rating: clamp(S.tierRating[t.tier] + rng.int(-S.teamJitter, S.teamJitter) + s.boost, 15, 95), w: 0, l: 0, rs: 0, ra: 0,
+  }));
+}
+// One day for the other clubs: they pair off at random (one has the day off) and play.
+function othersDay(s, rng, cfg) {
+  const o = s.others;
+  if (!o || !o.length) return;
+  const idx = shuffle(rng, o.map((t, i) => i));
+  const pseudo = { teams: o };
+  for (let k = 0; k + 1 < idx.length; k += 2) apply(pseudo, simGame(pseudo, idx[k], idx[k + 1], rng, cfg));
+}
+
+/** Every club's record, by league and division: { AL: { East: [...], ... }, NL: {...} }, best first; `mine` marks your team. */
+export function divisionTables(s) {
+  const all = [...s.teams.map((t, i) => ({ ...t, mine: i === 0 })), ...(s.others || [])];
+  const out = { AL: {}, NL: {} };
+  const pct = (t) => (t.w + t.l ? t.w / (t.w + t.l) : 0);
+  for (const t of all) {
+    const m = teamById(t.id);
+    ((out[m.league] ||= {})[m.division] ||= []).push(t);
+  }
+  for (const lg of Object.keys(out)) for (const dv of Object.keys(out[lg])) {
+    const rows = out[lg][dv].sort((a, b) => pct(b) - pct(a) || (b.rs - b.ra) - (a.rs - a.ra));
+    const lead = rows[0];
+    out[lg][dv] = rows.map((t) => ({ team: t, gb: ((lead.w - t.w) + (t.l - lead.l)) / 2 }));
+  }
+  return out;
 }
 
 /**
@@ -97,6 +134,13 @@ export function newSeason(prev, o = {}, cfg = CONFIG) {
 export function freshen(s) {
   if (!s || !Array.isArray(s.teams)) return s;
   for (const t of s.teams) { const m = teamById(t.id); if (m && m.id === t.id) t.name = teamName(m); }
+  if (!s.others) {
+    // (a league from before all thirty clubs were in the standings: the others catch up on the days already played)
+    const rng = createRng((s.seed ^ 0x6f7468) >>> 0);
+    s.others = makeOthers(s, rng, CONFIG);
+    for (let d = 0; d < (s.round || 0); d++) othersDay(s, rng, CONFIG);
+  }
+  for (const t of s.others) { const m = teamById(t.id); if (m && m.id === t.id) t.name = teamName(m); }
   const byId = new Map(allStars().map((p) => [p.id, p]));
   for (const p of [...(s.roster || []), ...(s.shop || [])]) {
     const q = p && p.star ? byId.get(p.id) : null;
@@ -279,6 +323,7 @@ export function recordGame(s, result, cfg = CONFIG) {
     else items.push(['Game played', S.coins.loss]);
     // the rest of today's games
     for (const [a, b] of s.schedule[s.round]) if (a !== 0 && b !== 0) apply(s, simGame(s, a, b, rng, cfg));
+    othersDay(s, rng, cfg);
     s.round++;
     advance(s, rng, cfg);
   } else {
@@ -307,6 +352,7 @@ export function recordGame(s, result, cfg = CONFIG) {
 function advance(s, rng, cfg) {
   while (s.phase === 'regular' && s.round < s.schedule.length && !s.schedule[s.round].some((p) => p[0] === 0 || p[1] === 0)) {
     for (const [a, b] of s.schedule[s.round]) apply(s, simGame(s, a, b, rng, cfg));
+    othersDay(s, rng, cfg);
     s.round++;
   }
   if (s.phase === 'regular' && s.round >= s.schedule.length) startPlayoffs(s, rng, cfg);

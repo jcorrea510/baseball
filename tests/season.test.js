@@ -267,3 +267,26 @@ describe('older saves', () => {
     expect(star.con).toBe(fresh.con);
   });
 });
+
+describe('all thirty clubs', () => {
+  it('the standings have every club in its division, and the other clubs play every day you do', () => {
+    const s = S.newSeason(null, { team: 'sea', seed: 9 });
+    expect(s.teams.length + s.others.length).toBe(30);
+    for (let i = 0; i < 4; i++) S.recordGame(s, { won: i % 2 === 0, runsFor: i % 2 ? 1 : 5, runsAgainst: 3, lines: {} });
+    const d = S.divisionTables(s);
+    let n = 0;
+    for (const lg of ['AL', 'NL']) for (const dv of ['East', 'Central', 'West']) { expect(d[lg][dv].length).toBe(5); n += 5; }
+    expect(n).toBe(30);
+    expect(d.AL.West.filter((x) => x.team.mine).length).toBe(1);
+    const games = s.others.reduce((t, x) => t + x.w + x.l, 0);
+    expect(games).toBeGreaterThan(s.round * 18); // (twenty of the twenty-one play each day)
+  });
+  it('an older league without the other clubs gets them, caught up on the days already played', () => {
+    const s = S.newSeason(null, { team: 'nym', seed: 2 });
+    for (let i = 0; i < 3; i++) S.recordGame(s, { won: true, runsFor: 4, runsAgainst: 1, lines: {} });
+    delete s.others;
+    S.freshen(s);
+    expect(s.others.length).toBe(21);
+    expect(s.others.reduce((t, x) => t + x.w + x.l, 0)).toBeGreaterThan(0);
+  });
+});

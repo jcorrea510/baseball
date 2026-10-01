@@ -697,7 +697,8 @@ export class UI {
     };
   }
 
-  buildStandings(sea) {
+  buildStandings(sea, tab = this.standTab || 'race') {
+    this.standTab = tab;
     const s = this.fresh('standings');
     const d = h('div', 'league panel rise');
     d.style.setProperty('--accent', sea.teams[0].color);
@@ -713,10 +714,21 @@ export class UI {
       bracket = `<div class="bracket"><div><div class="label">Semifinals</div>${po.semis.map(semi).join('')}</div>
         <div><div class="label">World Series</div>${f ? `<div class="mu"><span class="${sea.champion === f.a ? 'won' : ''}">${nm(f.a)} ${f.wa}</span><span class="${sea.champion === f.b ? 'won' : ''}">${nm(f.b)} ${f.wb}</span></div>` : '<div class="mu"><span>–</span><span>–</span></div>'}</div></div>`;
     }
-    d.innerHTML = `${this.backHead('Standings', '', `League · Year ${sea.year}`)}${bracket}
-      <table class="standings"><tr><th></th><th></th><th>W</th><th>L</th><th>GB</th><th></th></tr>${rows.map(tr).join('')}</table>`;
+    // tabs: your playoff race (the table the playoffs come from), then every club by division
+    const tabs = `<div class="divtabs standtabs">${[['race', 'Race'], ['AL', 'American'], ['NL', 'National']].map(([k, l]) => `<button data-stab="${k}" class="${k === tab ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+    let body;
+    if (tab === 'race') body = `${bracket}<table class="standings"><tr><th></th><th></th><th>W</th><th>L</th><th>GB</th><th></th></tr>${rows.map(tr).join('')}</table>`;
+    else {
+      const all = SEA.divisionTables(sea)[tab] || {};
+      body = `<div class="divgrid">${['East', 'Central', 'West'].map((dv) => `<div class="divblock"><div class="label">${dv}</div><table class="standings small"><tr><th></th><th>W</th><th>L</th><th>GB</th></tr>${(all[dv] || []).map((x) => `<tr class="${x.team.mine ? 'me' : ''}"><td class="tn">${crest(x.team, 'sm')}<span class="nick">${teamById(x.team.id).nick}</span></td><td>${x.team.w}</td><td>${x.team.l}</td><td>${x.gb ? x.gb : '–'}</td></tr>`).join('')}</table></div>`).join('')}</div>`;
+    }
+    d.innerHTML = `${this.backHead('Standings', '', `League · Year ${sea.year}`)}${tabs}${body}`;
     s.appendChild(d);
-    s.onclick = (e) => { const b = e.target.closest('[data-a]'); if (b) this.act(b.dataset.a); };
+    s.onclick = (e) => {
+      const t = e.target.closest('[data-stab]');
+      if (t) { this.act('uiTick'); this.buildStandings(sea, t.dataset.stab); return; }
+      const b = e.target.closest('[data-a]'); if (b) this.act(b.dataset.a);
+    };
   }
 
   // The roster: tap a player, then another, to swap them (batting order, or bench <-> lineup). With `replaceFor` (buying a

@@ -439,6 +439,15 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
 .picker { display: grid; grid-template-columns: minmax(300px, 1fr) 1.15fr; gap: 14px; }
 .divtabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-bottom: 8px; }
 .divtabs button { appearance: none; border: 0; padding: 9px 4px; background: rgba(0, 0, 0, .35); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink-2); font: 800 12px/1 var(--cond); letter-spacing: .12em; text-transform: uppercase; cursor: pointer; border-radius: 2px; }
+.standtabs { max-width: 520px; }
+.divgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.divblock .label { margin: 2px 0 4px; }
+.standings.small td, .standings.small th { padding-top: 4px; padding-bottom: 4px; }
+.standings.small td.tn { width: auto; color: var(--ink); white-space: nowrap; }
+.standings.small td.tn .crest { margin-right: 8px; }
+.standings.small tr.me td.tn { color: var(--gold-hi); }
+.standings.small td:not(.tn) { width: 15%; }
+@media (max-width: 900px) { .divgrid { grid-template-columns: 1fr; } }
 .divtabs button.on { background: linear-gradient(180deg, var(--gold-hi), var(--gold)); color: var(--gold-ink); box-shadow: none; }
 .teamlist { display: flex; flex-direction: column; gap: 6px; }
 .teamrow { appearance: none; display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px 12px 8px 8px; border: 1px solid var(--line); border-left: 4px solid var(--c, var(--line-hi)); border-radius: var(--r-md); background: linear-gradient(90deg, rgba(255, 255, 255, .05), rgba(255, 255, 255, .02)); color: var(--ink); text-align: left; cursor: pointer; font: inherit; transition: transform .16s var(--ease), border-color .16s, background .16s; }
