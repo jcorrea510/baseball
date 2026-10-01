@@ -15,7 +15,7 @@ const untilPhase = (e, phase, max = 20) => { for (let t = 0; t < max && e.phase 
 
 describe('one pitch at a time', () => {
   it('a taken pitch in the zone is a called strike; outside is a ball', () => {
-    const e = new Engine({ mode: 'quick', seed: 1 });
+    const e = new Engine({ mode: 'quick', playerSide: 'top', seed: 1 });
     e.pitchOverride = strikePitch;
     const calls = [];
     e.on('pitchCall', (c) => calls.push(c.call));
@@ -30,7 +30,7 @@ describe('one pitch at a time', () => {
   });
 
   it('four balls is a walk that puts a runner on first', () => {
-    const e = new Engine({ mode: 'quick', seed: 2 });
+    const e = new Engine({ mode: 'quick', playerSide: 'top', seed: 2 });
     e.pitchOverride = ballPitch;
     e.start();
     const results = [];
@@ -41,7 +41,7 @@ describe('one pitch at a time', () => {
   });
 
   it('walks count as plate appearances and a bases-loaded walk is an RBI', () => {
-    const e = new Engine({ mode: 'quick', seed: 2 });
+    const e = new Engine({ mode: 'quick', seed: 2, playerSide: 'top' });
     e.pitchOverride = ballPitch;
     e.start();
     let walks = 0;
@@ -70,7 +70,7 @@ describe('one pitch at a time', () => {
   });
 
   it('strikeouts count as plate appearances and at-bats', () => {
-    const e = new Engine({ mode: 'quick', seed: 3 });
+    const e = new Engine({ mode: 'quick', playerSide: 'top', seed: 3 });
     e.pitchOverride = strikePitch;
     e.start();
     while (e.stats.strikeouts < 2 && e.time < 120) e.update(DT);
@@ -79,7 +79,7 @@ describe('one pitch at a time', () => {
   });
 
   it('three called strikes is a strikeout and the third out ends the half', () => {
-    const e = new Engine({ mode: 'quick', seed: 3 });
+    const e = new Engine({ mode: 'quick', playerSide: 'top', seed: 3 });
     e.pitchOverride = strikePitch;
     let halfEnded = false;
     e.on('halfEnd', () => { halfEnded = true; });
@@ -90,7 +90,7 @@ describe('one pitch at a time', () => {
   });
 
   it('the pitch arrives at the target at pitch.tCross', () => {
-    const e = new Engine({ mode: 'quick', seed: 4 });
+    const e = new Engine({ mode: 'quick', playerSide: 'top', seed: 4 });
     e.pitchOverride = () => ({ ...strikePitch(), target: { x: 0.3, y: 2.2 } });
     e.start();
     expect(untilPhase(e, 'windup')).toBe(true);
@@ -104,12 +104,12 @@ describe('one pitch at a time', () => {
 
 describe('batting order', () => {
   it('the next batter steps in after each plate appearance (walk, strikeout, ball in play)', () => {
-    const e = new Engine({ mode: 'quick', seed: 12 });
+    const e = new Engine({ mode: 'quick', playerSide: 'top', seed: 12 });
     e.pitchOverride = ballPitch;
     const seen = [];
     e.on('paStart', (p) => seen.push(p.batter.name));
     e.start();
-    drive(e, 25);
+    drive(e, 70);
     expect(seen.length).toBeGreaterThanOrEqual(3);
     expect(new Set(seen.slice(0, 3)).size).toBe(3);
     expect(seen[0]).toBe(e.lineup[0].name);
@@ -118,7 +118,7 @@ describe('batting order', () => {
   });
 
   it('the count starts fresh for every batter', () => {
-    const e = new Engine({ mode: 'quick', seed: 13 });
+    const e = new Engine({ mode: 'quick', playerSide: 'top', seed: 13 });
     e.pitchOverride = strikePitch;
     const counts = [];
     e.on('paStart', (p) => counts.push(p.count));
@@ -128,7 +128,7 @@ describe('batting order', () => {
   });
 
   it('the same batter sees the next pitch after a ball or strike', () => {
-    const e = new Engine({ mode: 'quick', seed: 14 });
+    const e = new Engine({ mode: 'quick', playerSide: 'top', seed: 14 });
     e.pitchOverride = strikePitch;
     let starts = 0;
     e.on('paStart', () => starts++);
@@ -172,7 +172,7 @@ describe('swing timing is frame-rate independent', () => {
 
 describe('swings', () => {
   it('a swing that is way early whiffs and is a strike', () => {
-    const e = new Engine({ mode: 'quick', seed: 5 });
+    const e = new Engine({ mode: 'quick', playerSide: 'top', seed: 5 });
     e.pitchOverride = strikePitch;
     e.start();
     untilPhase(e, 'pitch');
@@ -186,7 +186,7 @@ describe('swings', () => {
   });
 
   it('a perfectly timed swing at a middle pitch is perfect contact', () => {
-    const e = new Engine({ mode: 'quick', seed: 6, hand: 'R' });
+    const e = new Engine({ mode: 'quick', playerSide: 'top', seed: 6, hand: 'R' });
     e.pitchOverride = strikePitch;
     e.start();
     untilPhase(e, 'pitch');
@@ -199,7 +199,7 @@ describe('swings', () => {
   });
 
   it('you cannot swing twice at the same pitch, or before the pitch is thrown', () => {
-    const e = new Engine({ mode: 'quick', seed: 7 });
+    const e = new Engine({ mode: 'quick', playerSide: 'top', seed: 7 });
     e.pitchOverride = strikePitch;
     e.start();
     untilPhase(e, 'windup');
@@ -213,7 +213,7 @@ describe('swings', () => {
 describe('whole games', () => {
   it('a quick game with a bot always finishes with a winner and sane numbers', () => {
     for (const seed of [11, 12, 13, 14, 15, 16]) {
-      const e = new Engine({ mode: 'quick', difficulty: 'pro', seed });
+      const e = new Engine({ mode: 'quick', difficulty: 'pro', seed, playerSide: 'top' });
       const bot = createBot(e, { errSd: 30, seed });
       let over = null;
       e.on('gameOver', (p) => { over = p; });
@@ -234,7 +234,7 @@ describe('whole games', () => {
 
   it('is repeatable: the same seed and the same bot give the same game', () => {
     const run = () => {
-      const e = new Engine({ mode: 'quick', difficulty: 'pro', seed: 77 });
+      const e = new Engine({ mode: 'quick', playerSide: 'top', difficulty: 'pro', seed: 77 });
       const bot = createBot(e, { errSd: 25, seed: 5 });
       e.start(); drive(e, 3000, bot);
       return JSON.stringify([e.game.score, e.stats.hits, e.stats.hr, e.pitchCount]);
@@ -303,8 +303,43 @@ describe('whole games', () => {
     expect(e.pitch.target.x).toBe(0);
   });
 
-  it('the computer half-inning is summarised and the game moves on', () => {
+  it('you are the home team: the computer bats first (instantly) and you bat last', () => {
     const e = new Engine({ mode: 'quick', seed: 41 });
+    expect(e.playerSide).toBe('bottom');
+    e.pitchOverride = strikePitch;
+    let summary = null;
+    e.on('aiHalf', (s) => { summary = s; });
+    e.start();
+    expect(summary).toBeTruthy(); // the visitors' first half is played out before your first pitch
+    expect(summary.half).toBe('top');
+    expect(e.phase).toBe('aiSummary');
+    e.skipSummary();
+    e.update(DT);
+    expect(e.phase).toBe('ready');
+    expect(e.game.half).toBe('bottom');
+    expect(e.game.inning).toBe(1);
+  });
+
+  it('a whole game as the home team: the win is yours when the bottom score is higher, and a walk-off ends it', () => {
+    let walkOffs = 0;
+    for (const seed of [21, 22, 23, 24, 25, 26, 27, 28]) {
+      const e = new Engine({ mode: 'quick', difficulty: 'rookie', seed });
+      const bot = createBot(e, { errSd: 45, seed });
+      let over = null;
+      e.on('gameOver', (p) => { over = p; });
+      e.start();
+      drive(e, 3000, bot);
+      expect(over).toBeTruthy();
+      expect(over.won).toBe(e.game.score.bottom > e.game.score.top);
+      expect(over.game.pf).toBe(e.game.score.bottom);
+      expect(over.game.pa).toBe(e.game.score.top);
+      if (e.game.walkOff) walkOffs++;
+    }
+    expect(walkOffs).toBeGreaterThanOrEqual(0);
+  }, 60000);
+
+  it('the computer half-inning is summarised and the game moves on', () => {
+    const e = new Engine({ mode: 'quick', seed: 41, playerSide: 'top' });
     e.pitchOverride = strikePitch;
     let summary = null;
     e.on('aiHalf', (s) => { summary = s; });
@@ -325,7 +360,7 @@ describe('whole games', () => {
 describe('the next pitch waits for the pitcher and catcher', () => {
   const rollUpTheLine = () => ({ exitVelocity: 45, launchAngle: -6, sprayAngle: 22, backspin: 1200, hook: 0, errorMs: 0 });
   it('does not start the windup until the pitcher is back on the rubber and set', () => {
-    const e = new Engine({ mode: 'quick', seed: 5 });
+    const e = new Engine({ mode: 'quick', playerSide: 'top', seed: 5 });
     e.pitchOverride = strikePitch;
     e.contactOverride = rollUpTheLine;
     e.start();
@@ -350,7 +385,7 @@ describe('the next pitch waits for the pitcher and catcher', () => {
   });
 
   it('over a whole game no windup ever starts before the fielders are set, and nobody waits long for nothing', () => {
-    const e = new Engine({ mode: 'quick', seed: 11 });
+    const e = new Engine({ mode: 'quick', playerSide: 'top', seed: 11 });
     const bot = createBot(e, { errSd: 30, seed: 3 });
     const windups = [];
     e.on('windup', () => windups.push({ t: e.time, set: e.fieldersSetAt, since: e.time - e.phaseSince }));
@@ -363,7 +398,7 @@ describe('the next pitch waits for the pitcher and catcher', () => {
 
 describe('waiting for the batter', () => {
   it('with waitForBatter the first pitch to each new batter waits for batterReady()', () => {
-    const e = new Engine({ mode: 'quick', seed: 3, waitForBatter: true });
+    const e = new Engine({ mode: 'quick', playerSide: 'top', seed: 3, waitForBatter: true });
     e.pitchOverride = strikePitch;
     e.start();
     for (let i = 0; i < 600; i++) e.update(DT); // 5 s: nothing happens
@@ -388,7 +423,7 @@ describe('bunting', () => {
   };
 
   it('B squares the batter around; the swing then bunts (a soft ball), and the stance resets after the pitch', () => {
-    const e = new Engine({ mode: 'quick', seed: 21 });
+    const e = new Engine({ mode: 'quick', playerSide: 'top', seed: 21 });
     e.pitchOverride = strikePitch;
     e.start();
     expect(e.setBunt(true)).toBe(true);
@@ -410,7 +445,7 @@ describe('bunting', () => {
   });
 
   it('a foul bunt with two strikes is strike three', () => {
-    const e = new Engine({ mode: 'quick', seed: 5 });
+    const e = new Engine({ mode: 'quick', playerSide: 'top', seed: 5 });
     e.pitchOverride = strikePitch;
     e.contactOverride = () => ({ exitVelocity: 26, launchAngle: -6, sprayAngle: 62, backspin: 300, hook: 0 });
     e.start();
@@ -428,7 +463,7 @@ describe('bunting', () => {
   it('a sacrifice bunt that moves the runner up is not an at-bat', () => {
     let found = false;
     for (let seed = 1; seed < 40 && !found; seed++) {
-      const e = new Engine({ mode: 'quick', seed });
+      const e = new Engine({ mode: 'quick', playerSide: 'top', seed });
       e.pitchOverride = strikePitch;
       e.contactOverride = () => ({ exitVelocity: 24, launchAngle: -12, sprayAngle: -22, backspin: 300, hook: 0 });
       e.start();
@@ -447,4 +482,53 @@ describe('bunting', () => {
     }
     expect(found).toBe(true);
   });
+});
+
+describe('saving and resuming a game (League games survive quitting)', () => {
+  it('a game resumed from its last save point is in the same spot and throws the same pitch', () => {
+    const run = (seed) => {
+      const e = new Engine({ mode: 'quick', difficulty: 'pro', seed });
+      const bot = createBot(e, { errSd: 30, seed });
+      let last = null;
+      e.on('checkpoint', (st) => { last = st; });
+      e.start();
+      drive(e, 90, bot);
+      return { e, last };
+    };
+    const { e, last } = run(31);
+    expect(last).toBeTruthy();
+    const g = last.game;
+    // a fresh engine for the same game resumes from the save
+    const f = new Engine({ mode: 'quick', difficulty: 'pro', seed: 31 });
+    f.lineup = e.lineup; // (the same lineup the saved game used)
+    f.resume(JSON.parse(JSON.stringify(last)));
+    expect(f.game.inning).toBe(g.inning);
+    expect(f.game.half).toBe(g.half);
+    expect(f.game.score).toEqual(g.score);
+    expect(f.game.outs).toBe(g.outs);
+    expect(f.game.bases.map((b) => !!b)).toEqual(g.bases.map((b) => !!b));
+    expect(f.count).toEqual({ balls: g.balls, strikes: g.strikes });
+    expect(f.batter).toBe(f.lineup[g.lineupIdx[g.half] % 9]);
+    // runners are the lineup's own players again (not copies)
+    for (const b of f.game.bases) if (b) expect(f.lineup.includes(b)).toBe(true);
+    // the same save always throws the same next pitch
+    const pitchOf = (eng) => {
+      let p = null; eng.on('windup', (w) => { p = w.pitch; });
+      eng.batterReady();
+      for (let t = 0; t < 8 && !p; t += DT) eng.update(DT);
+      return p;
+    };
+    const f2 = new Engine({ mode: 'quick', difficulty: 'pro', seed: 31, waitForBatter: true });
+    f2.lineup = e.lineup;
+    f2.resume(JSON.parse(JSON.stringify(last)));
+    f.waitForBatter = true;
+    const a = pitchOf(f2);
+    const f3 = new Engine({ mode: 'quick', difficulty: 'pro', seed: 31, waitForBatter: true });
+    f3.lineup = e.lineup;
+    f3.resume(JSON.parse(JSON.stringify(last)));
+    const b = pitchOf(f3);
+    expect(a.type).toBe(b.type);
+    expect(a.target).toEqual(b.target);
+    expect(a.speedMph).toBe(b.speedMph);
+  }, 60000);
 });

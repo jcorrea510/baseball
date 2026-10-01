@@ -20,7 +20,7 @@ const play = (ev, la, spray, o = {}) => {
 
 // a quick game with runners placed, the steal on, and nobody swinging: returns the steal result
 function stealAttempt(bases, { seed = 1, difficulty = 'pro' } = {}) {
-  const e = new Engine({ mode: 'quick', difficulty, seed });
+  const e = new Engine({ mode: 'quick', playerSide: 'top', difficulty, seed });
   e.start();
   e.game.bases = bases;
   let res = null;
@@ -32,7 +32,7 @@ function stealAttempt(bases, { seed = 1, difficulty = 'pro' } = {}) {
 }
 
 describe('who can steal', () => {
-  const eng = (bases) => { const e = new Engine({ mode: 'quick', seed: 3 }); e.start(); e.game.bases = bases; return e; };
+  const eng = (bases) => { const e = new Engine({ mode: 'quick', playerSide: 'top', seed: 3 }); e.start(); e.game.bases = bases; return e; };
   it('a runner with an open base ahead; both on a double steal; nobody steals home', () => {
     expect(eng([1, null, null]).stealBases()).toEqual([1]);
     expect(eng([null, 2, null]).stealBases()).toEqual([2]);

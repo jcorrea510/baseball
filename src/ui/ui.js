@@ -361,7 +361,7 @@ export class UI {
   }
 
   // ---------------- pause
-  buildPause(st) {
+  buildPause(st, season = false) {
     const s = this.fresh('pause');
     const d = h('div', 'dialog panel pause rise');
     const sw = (key, ic, label, on) => `<div class="setrow"><span class="nm">${icon(ic)}${label}</span><button class="switch ${on ? 'on' : ''}" data-set="${key}" data-bool="1" role="switch" aria-checked="${on ? 'true' : 'false'}" aria-label="${label}"></button></div>`;
@@ -374,7 +374,7 @@ export class UI {
         ${sw('sound', 'soundOn', 'Sound', st.sound)}
       </div>
       <div class="row"><button class="btn small ghost" data-a="settingsPause">${icon('gear')}Settings</button><button class="btn small ghost" data-a="howtoPause">${icon('help')}Help</button></div>
-      <div class="row"><button class="btn small ghost" data-a="restart" data-confirm="Restart?">${icon('restart')}Restart</button><button class="btn small ghost warn" data-a="quit" data-confirm="Quit game?">${icon('home')}Quit</button></div>`;
+      <div class="row">${season ? '' : `<button class="btn small ghost" data-a="restart" data-confirm="Restart?">${icon('restart')}Restart</button>`}<button class="btn small ghost warn" data-a="quit" data-confirm="${season ? 'Save & quit?' : 'Quit game?'}">${icon('home')}${season ? 'Save &amp; quit' : 'Quit'}</button></div>`;
     s.appendChild(d);
     s.onclick = (e) => {
       if (this.settingClick(e, true)) return;
@@ -480,7 +480,7 @@ export class UI {
   showSummary(data, teamName, lineStart = 0.55) {
     const s = this.fresh('summary');
     const d = h('div', 'summary panel rise');
-    d.innerHTML = `<div class="label">Bottom ${data.inning}</div><h2>${teamName}</h2><div class="lines"></div><div class="total"></div><div class="row"><button class="btn small ghost" data-a="skipSummary">${icon('ff')}Skip</button></div>`;
+    d.innerHTML = `<div class="label">${data.half === 'top' ? 'Top' : 'Bottom'} ${data.inning}</div><h2>${teamName}</h2><div class="lines"></div><div class="total"></div><div class="row"><button class="btn small ghost" data-a="skipSummary">${icon('ff')}Skip</button></div>`;
     s.appendChild(d);
     const lines = $(d, '.lines');
     data.events.forEach((ev, i) => {
@@ -593,7 +593,7 @@ export class UI {
           <div class="label">${g.label}</div>
           <div class="match"><span class="tm"><i style="background:${me.color}"></i>${me.abbr}<small>${me.w}–${me.l}</small></span><span class="vs">at</span><span class="tm"><i style="background:${t.color}"></i>${t.abbr}<small>${t.w}–${t.l}</small></span></div>
           <div class="oppname">${t.name}${stars(t.rating, true)}${series}</div>
-          <button class="btn wide" data-a="seasonPlay">${icon('play')}Play</button>
+          <button class="btn wide" data-a="seasonPlay">${icon('play')}${sea.inProgress ? 'Resume' : 'Play'}</button>${sea.inProgress ? `<div class="chips"><span class="chip">${sea.inProgress.state.game.half === 'top' ? 'Top' : 'Bottom'} ${sea.inProgress.state.game.inning}</span><span class="chip">${sea.inProgress.state.game.score.top}–${sea.inProgress.state.game.score.bottom}</span></div>` : ''}
         </div>`;
       } else {
         const fin = SEA.finishOf(sea);

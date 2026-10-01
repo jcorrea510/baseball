@@ -107,11 +107,11 @@ export class Progress {
       c.games++;
       if (res.won) c.wins++;
       if (res.season) { const unlocked = this.checkUnlocks(); this.save(); return { records, unlocked }; } // (a Season game: no Quick Game best)
-      const score = res.game.score;
-      const margin = score.top - score.bottom;
+      const pf = res.game.pf ?? res.game.score.top, pa = res.game.pa ?? res.game.score.bottom; // (runs for / against the player)
+      const margin = pf - pa;
       const prev = this.data.high.quick[res.difficulty];
-      if (!prev || margin > prev.margin || (margin === prev.margin && score.top > prev.runs)) {
-        this.data.high.quick[res.difficulty] = { margin, runs: score.top, against: score.bottom };
+      if (!prev || margin > prev.margin || (margin === prev.margin && pf > prev.runs)) {
+        this.data.high.quick[res.difficulty] = { margin, runs: pf, against: pa };
         if (prev) records.push('Best Quick Game');
       }
     } else if (res.mode === 'derby') {

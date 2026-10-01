@@ -68,6 +68,7 @@ export function newSeason(prev, o = {}, cfg = CONFIG) {
     nextId: prev ? prev.nextId : 0,
     roster: prev ? prev.roster : [],
     history: prev ? prev.history.slice() : [],
+    inProgress: null, // a game that was left half-way (saved at every pitch, see Engine.checkpoint)
     stats: {}, games: [], phase: 'regular', round: 0, playoffs: null, champion: null,
     shop: [],
   };

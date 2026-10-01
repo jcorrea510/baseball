@@ -253,11 +253,11 @@ export const CONFIG = {
   // --------------------------------------------------------------------------
   pace: {
     firstPitchDelay: 0.85, // batter walks up to the plate
-    nextPitchDelay: 0.22, // gap between the call and the pitcher starting again
-    afterReady: 0.45, // s between pressing Ready for a new batter and the pitcher starting his windup
-    callDisplay: 0.55, // how long the ball/strike call is shown
-    playEndPause: 0.5, // pause after a play finishes
-    pitcherSet: 0.4, // s the pitcher (and catcher) need to be set once they are back in place: no pitch before it
+    nextPitchDelay: 0.95, // gap between the call and the pitcher starting again (a moment to breathe between pitches)
+    afterReady: 0.7, // s between pressing Ready for a new batter and the pitcher starting his windup
+    callDisplay: 0.75, // how long the ball/strike call is shown
+    playEndPause: 0.8, // pause after a play finishes
+    pitcherSet: 0.65, // s the pitcher (and catcher) need to be set once they are back in place: no pitch before it
     fastForward: 4.5, // speed multiplier when you tap to skip a play
     aiSummaryLine: 0.55, // seconds per line of the computer's half-inning highlights
   },
@@ -331,7 +331,6 @@ export const CONFIG = {
       getUp: 0.62, // s to get back onto his feet
       throwExtra: 0.42, // extra s before a fielder who dove can throw (he throws from his knees)
       preferRun: 0.2, // nobody dives for a ball a fielder can simply run to within this many seconds
-      highlightSlowMo: { catchScale: 0.36, catchDur: 1.0, stopScale: 0.6, stopDur: 0.6 }, // slow motion on a dive (game feel)
     },
     // Covering a base: an out needs a fielder standing on the bag WITH the ball before the runner gets there. Whoever is not fielding
     // the ball and is nearest to the play breaks for the bag; the fielder with the ball either carries it there himself (when he

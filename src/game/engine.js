@@ -27,6 +27,7 @@ export class Engine {
    * @param {boolean} [o.waitForBatter] hold the first pitch to each new batter until batterReady() is called
    * Season games also pass:
    * @param {number} [o.innings]        game length (default modes.quick.innings)
+   * @param {'top'|'bottom'} [o.playerSide] which half you bat in a game: 'bottom' (you are the home team and bat last; the default) or 'top'
    * @param {Array}  [o.lineup]         your nine batters, in order (Season players carry con / pow / spd ratings)
    * @param {Array}  [o.oppLineup]      the other team's names
    * (and the config itself - `cfg` - is the Season's one for this opponent: see season.gameConfig)
@@ -80,6 +81,9 @@ export class Engine {
     this.lastPlayResult = null;
     this.over = false;
 
+    // You are the home team: the computer bats first (its half is played out instantly) and you always get the last at-bat.
+    this.playerSide = this.mode === 'quick' ? (o.playerSide || 'bottom') : 'top';
+    this.oppSide = this.playerSide === 'top' ? 'bottom' : 'top';
     this.game = this.mode === 'quick' ? rules.createGame({ innings: o.innings ?? cfg.modes.quick.innings, extraRunner: cfg.modes.quick.extraInningRunner }) : null;
     // Practice keeps runners on base and counts the runs of the session - but nobody is ever out for good (outs reset every play)
     this.pgame = this.mode === 'practice' ? rules.createGame({ innings: 1e6, extraRunner: false }) : null;
@@ -119,10 +123,34 @@ export class Engine {
   start() {
     if (this.phase !== 'idle') return;
     this.emit('gameStart', { mode: this.mode });
+    if (this.game && this.game.half !== this.playerSide) return this.runAiHalf(); // the visitors bat first
     this.beginPlateAppearance(true);
   }
 
-  beginPlateAppearance(first = false) {
+  // A save point at the start of every pitch (a Season game saves here, so quitting never throws a game away - or lets you replay
+  // it): the random numbers are re-seeded from the game's seed, so a game that is resumed throws exactly the same pitch.
+  checkpoint() {
+    this.rngN = (this.rngN || 0) + 1;
+    this.rng = createRng((this.seed ^ Math.imul(this.rngN, 0x9e3779b1)) >>> 0);
+    if (this.game) this.emit('checkpoint', this.saveState());
+  }
+  saveState() {
+    return JSON.parse(JSON.stringify({ rngN: this.rngN, game: this.game, stats: this.stats, lines: this.lines, pitchCount: this.pitchCount, lastType: this.lastType }));
+  }
+  // Carry on from a saved state: the same score, outs, runners, count, lineup spot and numbers; the batter's Ready card comes up first.
+  resume(st) {
+    if (this.phase !== 'idle') return;
+    this.rngN = st.rngN;
+    this.rng = createRng((this.seed ^ Math.imul(this.rngN, 0x9e3779b1)) >>> 0);
+    const g = st.game;
+    g.bases = g.bases.map((b) => (b && b.id !== undefined ? this.lineup.find((p) => p.id === b.id) || b : b)); // (runners are the lineup's own players again)
+    this.game = g;
+    this.stats = st.stats; this.lines = st.lines; this.pitchCount = st.pitchCount; this.lastType = st.lastType;
+    this.emit('gameStart', { mode: this.mode, resumed: true });
+    this.beginPlateAppearance(true, true);
+  }
+
+  beginPlateAppearance(first = false, quiet = false) {
     if (this.diamond) {
       this.batterIndex = this.diamond.lineupIdx[this.diamond.half] % 9;
       this.batter = this.lineup[this.batterIndex];
@@ -137,6 +165,7 @@ export class Engine {
     this.steal = null; this.setSteal(false);
     this.emit('paStart', { batter: this.batter, index: this.batterIndex, count: this.count, waiting: !this.batterReadyFlag });
     this.emitCount();
+    if (!quiet) this.checkpoint();
   }
 
   emitCount() {
@@ -447,6 +476,7 @@ export class Engine {
     this.pitch = null; this.swing = null; this.play = null;
     this.setPhase('ready');
     this.readyUntil = this.time + this.cfg.pace.nextPitchDelay;
+    this.checkpoint();
   }
 
   // ------------------------------------------------------------------ contact and plays
@@ -657,21 +687,23 @@ export class Engine {
     const res = rules.advanceHalf(g, { ghost: true, name: 'Runner' });
     this.emit('halfEnd', { game: g });
     if (res.gameOver) return this.finishGame();
-    if (g.half === 'bottom') {
-      // the computer bats: simulate it and show a short highlights summary
-      this.emit('inningChange', { inning: g.inning, half: g.half });
-      const before = { ...g.score };
-      const sim = simulateHalf(g, { difficulty: this.difficulty, rng: this.rng, lineup: this.oppLineup }, this.cfg);
-      this.aiSummary = { events: sim.events, runs: sim.runs, inning: g.inning, score: { ...g.score }, before, over: g.over };
-      this.setPhase('aiSummary');
-      const lines = Math.max(1, sim.events.length);
-      this.summaryUntil = this.time + Math.max(1.6, lines * this.cfg.pace.aiSummaryLine + 0.9);
-      this.emit('aiHalf', this.aiSummary);
-      return;
-    }
+    if (g.half !== this.playerSide) return this.runAiHalf();
     this.emit('inningChange', { inning: g.inning, half: g.half, newInning: true });
     this.setPhase('halfBreak');
     this.beginPlateAppearance(true);
+  }
+
+  // The computer bats: simulate its half-inning at once and show a short highlights summary.
+  runAiHalf() {
+    const g = this.game;
+    this.emit('inningChange', { inning: g.inning, half: g.half });
+    const before = { ...g.score };
+    const sim = simulateHalf(g, { difficulty: this.difficulty, rng: this.rng, lineup: this.oppLineup }, this.cfg);
+    this.aiSummary = { events: sim.events, runs: sim.runs, inning: g.inning, half: g.half, score: { ...g.score }, before, over: g.over };
+    this.setPhase('aiSummary');
+    const lines = Math.max(1, sim.events.length);
+    this.summaryUntil = this.time + Math.max(1.6, lines * this.cfg.pace.aiSummaryLine + 0.9);
+    this.emit('aiHalf', this.aiSummary);
   }
 
   // The summary screen can be skipped.
@@ -696,8 +728,11 @@ export class Engine {
     const payload = {
       mode: this.mode, difficulty: this.difficulty, stats: { ...this.stats },
       derby: this.mode === 'derby' ? { ...this.derby } : null,
-      game: g ? { score: { ...g.score }, winner: g.winner, innings: g.inning, line: rules.lineScore(g), hits: { ...g.hits }, errors: { ...(g.errors || { top: 0, bottom: 0 }) }, walkOff: g.walkOff } : null,
-      won: g ? g.winner === 'top' : null,
+      game: g ? {
+        score: { ...g.score }, winner: g.winner, innings: g.inning, line: rules.lineScore(g), hits: { ...g.hits }, errors: { ...(g.errors || { top: 0, bottom: 0 }) }, walkOff: g.walkOff,
+        playerSide: this.playerSide, pf: g.score[this.playerSide], pa: g.score[this.oppSide], // runs for / against YOU
+      } : null,
+      won: g ? g.winner === this.playerSide : null,
       opponent: this.opponent,
     };
     this.emit('gameOver', payload);

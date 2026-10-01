@@ -161,7 +161,7 @@ describe('what strength and ratings do', () => {
   it('a season game: six innings, your lineup, their name; a fast runner beats out more infield grounders than a slow one', () => {
     const s = S.newSeason(null, { seed: 13 });
     const set = S.gameSetup(s);
-    const e = new Engine({ mode: 'quick', difficulty: set.level, innings: set.innings, lineup: set.lineup, opponent: set.opponent, oppLineup: set.oppLineup, seed: 3 }, set.cfg);
+    const e = new Engine({ mode: 'quick', playerSide: 'top', difficulty: set.level, innings: set.innings, lineup: set.lineup, opponent: set.opponent, oppLineup: set.oppLineup, seed: 3 }, set.cfg);
     expect(e.game.innings).toBe(6);
     expect(e.lineup[0].id).toBe(s.roster[0].id);
     expect(e.opponent.name).toBe(s.teams[set.game.opp].name);

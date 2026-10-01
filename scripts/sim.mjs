@@ -41,7 +41,7 @@ for (let i = 0; i < games; i++) {
   allViol.push(...r.violations);
   totalPitches += r.counts.pitches;
   const g = r.e.game;
-  runsFor += g.score.top; runsAgainst += g.score.bottom; if (g.winner === 'top') wins++;
+  runsFor += g.score[r.e.playerSide]; runsAgainst += g.score[r.e.oppSide]; if (g.winner === r.e.playerSide) wins++;
   hrs += r.e.stats.hr; hits += r.e.stats.hits; ab += r.e.stats.ab; so += r.e.stats.strikeouts; bb += r.e.stats.walks;
   gameSecs += r.t;
   for (const k in r.counts.results) res[k] = (res[k] || 0) + r.counts.results[k];

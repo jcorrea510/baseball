@@ -263,7 +263,7 @@ export class App {
   }
 
   showMenuScreen(name) {
-    if (name === 'pause') { this.ui.buildPause(this.settings); this.ui.show('pause'); return; }
+    if (name === 'pause') { this.ui.buildPause(this.settings, !!this.seasonGame); this.ui.show('pause'); return; }
     if (!(this.engine && !this.engine.over && this.paused)) this.screen = name; // (settings opened from the pause menu: still in the game)
     if (name === 'title') { this.nav = []; this.ui.buildTitle(this.prog); }
     if (name === 'modes') this.ui.buildModes(this.prog);
@@ -296,11 +296,24 @@ export class App {
     const sea = this.prog.data.season;
     const setup = sea && SEA.gameSetup(sea);
     if (!setup) return;
+    // a game that was left half-way carries on from where it was (the lineup, the seed and the state were saved at the last pitch)
+    const saved = sea.inProgress || null;
     this.seasonGame = setup.game;
+    this.seasonLineup = saved ? saved.lineup : setup.lineup;
+    this.seasonSeed = saved ? saved.seed : setup.seed;
     this.startGame('quick', {
-      engine: { difficulty: setup.level, innings: setup.innings, lineup: setup.lineup, opponent: setup.opponent, oppLineup: setup.oppLineup },
+      engine: { difficulty: setup.level, innings: setup.innings, lineup: this.seasonLineup, opponent: setup.opponent, oppLineup: setup.oppLineup, seed: this.seasonSeed },
       cfg: setup.cfg,
+      resume: saved ? saved.state : null,
     });
+  }
+
+  // Season: save the game at every pitch, so quitting (or closing the page) never loses it or lets you start it over.
+  saveSeasonGame(st) {
+    const sea = this.prog.data.season;
+    if (!this.seasonGame || !sea) return;
+    sea.inProgress = { lineup: this.seasonLineup, seed: this.seasonSeed, state: st };
+    this.prog.save();
   }
 
   goModes() { this.nav = ['title']; this.showMenuScreen('modes'); }
@@ -341,7 +354,7 @@ export class App {
     if (!this.engine || this.engine.over) return;
     this.paused = p;
     this.nav = [];
-    if (p) { this.ui.buildPause(this.settings); this.ui.show('pause'); }
+    if (p) { this.ui.buildPause(this.settings, !!this.seasonGame); this.ui.show('pause'); }
     else { this.ui.hideAll(); this.lastFrameStamp = performance.now(); blurFocus(); }
   }
 
@@ -395,7 +408,7 @@ export class App {
     this.ui.showHud(mode);
     this.ui.setBunt(false);
     this.ui.setSteal(false, false);
-    this.ui.setTeams({ abbr: PLAYER_TEAM.abbr, color: PLAYER_TEAM.color }, { abbr: eng.opponent.abbr, color: eng.opponent.color });
+    this.ui.setTeams({ abbr: eng.opponent.abbr, color: eng.opponent.color }, { abbr: PLAYER_TEAM.abbr, color: PLAYER_TEAM.color }); // (visitors on top: you are the home team)
     this.ui.setMuteIcon(this.audio.muted);
     if (eng.game) this.ui.setGameState(eng.game);
     if (mode === 'derby') this.ui.setDerby({ ...eng.derby });
@@ -405,8 +418,11 @@ export class App {
     this.updateScoreboard();
     if (this.params.get('bot')) this.bot = createBot(eng, { errSd: +(this.params.get('sd') || 20), seed: 5 });
     else this.bot = null;
-    eng.start();
-    if (mode === 'quick') this.audio.callUmpire('playball', { delay: 0.6 }); // the plate umpire opens the game
+    if (extra && extra.resume) eng.resume(extra.resume);
+    else {
+      eng.start();
+      if (mode === 'quick') this.audio.callUmpire('playball', { delay: 0.6 }); // the plate umpire opens the game
+    }
     if (!this.prog.data.tipShown) {
       this.ui.hint(this.touch ? 'Tap to swing' : 'Space to swing', 4200);
       this.prog.data.tipShown = 1; this.prog.save();
@@ -429,6 +445,7 @@ export class App {
     });
     e.on('count', (c) => { ui.setCount(c.balls, c.strikes, c.outs); this.updateScoreboard(); });
     e.on('batterReady', () => ui.hideBatterUp());
+    e.on('checkpoint', (st) => this.saveSeasonGame(st));
     e.on('buntStance', ({ on }) => ui.setBunt(on));
     e.on('practice', (st) => { ui.setPracticeState(st); this.updateScoreboard(); });
     e.on('stealArmed', ({ on }) => ui.setSteal(e.canSteal, on));
@@ -579,6 +596,8 @@ export class App {
         break;
       case 'catch':
         audio.glovePop(0.8);
+        // a caught ball that is an out: the umpire calls it (at a base the 'outCall' event does it)
+        if (e.mode !== 'derby' && c && !c.homer && c.plan.caught && c.plan.outsMade > 0) this.later(() => this.umpireCall('out', 0), 160);
         if (c && !c.homer) { audio.crowdSwell(c.big ? 0.55 : 0.28, 2); }
         if (ev.dive) {
           // a diving catch is a highlight: big crowd reaction and a banner
@@ -588,13 +607,7 @@ export class App {
           this.later(() => ui.hideBanner(), 1400);
         }
         break;
-      case 'dive': {
-        // launch: a beat of slow motion so you see the fielder leave his feet
-        const H = CONFIG.fielding.dive.highlightSlowMo;
-        this.slowMo = ev.catch ? { t: 0, dur: H.catchDur, delay: 0, scale: H.catchScale } : { t: 0, dur: H.stopDur, delay: 0, scale: H.stopScale };
-        audio.crowdSwell(0.35, 1.2);
-        break;
-      }
+      case 'dive': audio.crowdSwell(0.35, 1.2); break; // (no slow motion on a dive: it plays at full speed)
       case 'diveLand':
         this.fx.dustPuff(ev.x, ev.z, 0.55);
         this.fx.grassBits(ev.x, ev.z, 1);
@@ -723,7 +736,8 @@ export class App {
       const lines = {};
       for (const b of e.lineup) lines[b.id] = e.lineOf(b);
       const label = this.seasonGame.label;
-      const r = SEA.recordGame(sea, { won: p.won, runsFor: p.game.score.top, runsAgainst: p.game.score.bottom, lines });
+      sea.inProgress = null; // (finished: nothing left to resume)
+      const r = SEA.recordGame(sea, { won: p.won, runsFor: p.game.pf, runsAgainst: p.game.pa, lines });
       const me = sea.teams[0];
       seasonInfo = { items: r.items, coins: sea.coins, label, record: `${me.w}–${me.l}` };
       p.season = true;
@@ -733,7 +747,7 @@ export class App {
     const g = p.game;
     if (g) g.line = lineScore(e.game);
     this.ui.buildTitle(this.prog);
-    const names = { away: PLAYER_TEAM.name.toUpperCase(), home: e.opponent.name.toUpperCase(), awayAbbr: PLAYER_TEAM.abbr, homeAbbr: e.opponent.abbr };
+    const names = { away: e.opponent.name.toUpperCase(), home: PLAYER_TEAM.name.toUpperCase(), awayAbbr: e.opponent.abbr, homeAbbr: PLAYER_TEAM.abbr };
     this.later(() => {
       this.ui.showGameOver(p, records, unlocked, names, seasonInfo); // (new unlocks are listed on it as badges)
       if (unlocked.length) this.audio.unlockChime();
@@ -750,7 +764,7 @@ export class App {
       const ls = lineScore(g);
       sb.set({
         mode: 'quick', title: 'SANDLOT PARK', innings: Math.max(g.innings, g.inning), inning: g.inning, half: g.half,
-        teams: [{ abbr: PLAYER_TEAM.abbr, color: PLAYER_TEAM.color, runs: ls.top, R: g.score.top, H: g.hits.top, E: (g.errors || {}).top || 0 }, { abbr: e.opponent.abbr, color: e.opponent.color, runs: ls.bottom, R: g.score.bottom, H: g.hits.bottom, E: (g.errors || {}).bottom || 0 }],
+        teams: [{ abbr: e.opponent.abbr, color: e.opponent.color, runs: ls.top, R: g.score.top, H: g.hits.top, E: (g.errors || {}).top || 0 }, { abbr: PLAYER_TEAM.abbr, color: PLAYER_TEAM.color, runs: ls.bottom, R: g.score.bottom, H: g.hits.bottom, E: (g.errors || {}).bottom || 0 }],
         count: { b: g.balls, s: g.strikes, o: g.outs },
       });
     } else if (e.mode === 'derby') {

@@ -30,7 +30,7 @@ for (const sz of sizes) {
     await page.waitForTimeout(300);
     // a quick game waits for the Ready button before the first pitch: press it for real
     if (mode === 'quick') {
-      await page.evaluate(() => { const a = window.__app; for (let i = 0; i < 600 && !a.engine.awaitingBatter; i++) a.tick(1 / 60, false); a.tick(0.001, true); });
+      await page.evaluate(() => { const a = window.__app; for (let i = 0; i < 2400 && !a.engine.awaitingBatter; i++) a.tick(1 / 60, false); a.tick(0.001, true); });
       await page.addStyleTag({ content: '.batterup{transition:none!important}' });
       await press('.hud .batterup.show [data-a=batterReady]');
     }
@@ -55,14 +55,14 @@ for (const sz of sizes) {
       }
       for (let i = 0; i < 120; i++) a.tick(1 / 60, false); // results screen appears ~0.9 s after the end
       a.tick(0.001, true);
-      return { over: e.over, screen: a.ui.current, seen, score: e.game ? e.game.score : null, derby: e.mode === 'derby' ? { hr: e.derby.hr, outs: e.derby.outs } : null, time: Math.round(e.time) };
+      return { over: e.over, screen: a.ui.current, seen, score: e.game ? e.game.score : null, side: e.playerSide, derby: e.mode === 'derby' ? { hr: e.derby.hr, outs: e.derby.outs } : null, time: Math.round(e.time) };
     }, mode);
     await page.waitForTimeout(1500);
     await page.addStyleTag({ content: '*,*::before,*::after{transition:none!important;animation:none!important}' });
     await page.evaluate(() => window.__app.tick(0.001, true));
     res.screen = await page.evaluate(() => window.__app.ui.current);
     await page.screenshot({ path: `qa-output/play-${sz}-${mode}.png` });
-    out.push(`${sz} ${mode}: real ${touch ? 'tap' : 'key'} swung=${swung}; over=${res.over} screen=${res.screen} t=${res.time}s ${res.score ? 'score ' + res.score.top + '-' + res.score.bottom : ''}${res.derby ? 'derby ' + res.derby.hr + ' HR' : ''} results=${JSON.stringify(res.seen)} errors=${errors.length ? errors.join(' | ') : 'none'}`);
+    out.push(`${sz} ${mode}: real ${touch ? 'tap' : 'key'} swung=${swung}; over=${res.over} screen=${res.screen} t=${res.time}s ${res.score ? 'score ' + res.score[res.side] + '-' + res.score[res.side === 'top' ? 'bottom' : 'top'] : ''}${res.derby ? 'derby ' + res.derby.hr + ' HR' : ''} results=${JSON.stringify(res.seen)} errors=${errors.length ? errors.join(' | ') : 'none'}`);
     await ctx.close();
   }
 }
