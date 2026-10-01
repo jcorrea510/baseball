@@ -766,6 +766,12 @@ export class Actors {
     const brake = r.profile.brake;
     if (st.rsKey !== r.profile) { st.rsKey = r.profile; st.sliding = false; st.getT = undefined; }
     if (r.waiting) { runnerLeadPose(P, time); st.sliding = false; st.getT = undefined; return; }
+    if (r.walk) {
+      // tagged out: he walks off to the dugout
+      st.sliding = false; st.getT = undefined;
+      if (r.speed > 0.5) { st.phase += runCadence(r.speed) * TAU * dt; runPose(P, st.phase, r.speed, 0, { accel: 0, side: 0 }); } else standingPose(P, time);
+      return;
+    }
     if (!st.prevRun) st.prevRun = makePose();
     if (!r.done && slide && !st.sliding && r.speed > 7 && r.sLeft <= (r.speed * r.speed) / (2 * brake) * 1.06 + 0.4) {
       st.sliding = true; st.slideStart = Math.max(1, r.sLeft); st.getT = undefined; // start the slide as the braking begins

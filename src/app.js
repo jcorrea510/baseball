@@ -22,7 +22,7 @@ import { LandingRing } from './render/landingRing.js';
 import { BatAim } from './render/batAim.js';
 import { landingSpot, landingRing } from './game/landing.js';
 import * as SEA from './game/season.js';
-import { runnerState } from './game/runnerMotion.js';
+import { runnerState, runnerProfile } from './game/runnerMotion.js';
 
 // scorekeeping numbers for the error banner (E6 = an error by the shortstop)
 const POSITION_NUMBER = { P: 1, C: 2, '1B': 3, '2B': 4, '3B': 5, SS: 6, LF: 7, CF: 8, RF: 9 };
@@ -763,8 +763,19 @@ export class App {
       if (!sac) audio.crowdGroan(0.35);
       if (runsText) sub += runsText;
     }
+    // a runner you sent was tagged out (or doubled off): the banner says so - the batter thrown out stretching a hit is an out, not a hit
+    const note = r.plan && r.plan.outNote && e.mode !== 'derby' ? r.plan.outNote : null;
+    let noteText = '';
+    if (note) {
+      const where = ['', '1st', '2nd', '3rd', 'home'][note.base] || '';
+      const hitName = r.text ? r.text.charAt(0) + r.text.slice(1).toLowerCase() : '';
+      if (note.from === 0 && isHitResult(res)) { big = `OUT AT ${where.toUpperCase()}`; sub = `${hitName} · tagged out${runsText}`; cls = 'bad'; noteText = `out at ${where}`; audio.crowdGroan(0.45); }
+      else if (res === 'doublePlay') { sub = `${r.plan.doubledOff ? 'Doubled off' : 'Out at'} ${where}${runsText}`; noteText = sub; }
+      else { noteText = `runner out at ${where}`; sub = `Runner out at ${where}${runsText}`; }
+    }
     if (e.mode === 'practice' && r.kind === 'play') {
       big = r.text; sub = `${Math.round(r.exitVelocity)} mph · ${Math.round(r.distance)} ft${runsText}`;
+      if (note) { if (note.from === 0 && isHitResult(res)) big = `OUT AT ${['', '1st', '2nd', '3rd', 'home'][note.base].toUpperCase()}`; sub = `${noteText} · ${sub}`; }
       cls = res === 'homer' || res === 'insideParkHomer' ? 'hr' : isHitResult(res) || r.runs > 0 ? 'good' : 'neutral';
     }
     if (e.mode === 'derby' && r.kind === 'play') {
@@ -780,10 +791,10 @@ export class App {
     } else {
       // a play that drove in runs says the RUNS in big letters and the hit in smaller ones
       if (r.runs > 0 && e.mode !== 'derby') {
-        const hit = big; // (SINGLE, DOUBLE, SAC FLY, WALK, ERROR ...)
+        const hit = note && note.from === 0 && isHitResult(res) ? r.text : big; // (SINGLE, DOUBLE, SAC FLY, WALK, ERROR ...)
         const mph = r.exitVelocity ? `${Math.round(r.exitVelocity)} mph` : '';
         big = `${r.runs} RUN${r.runs > 1 ? 'S' : ''}`;
-        sub = [hit, mph].filter(Boolean).join(' · ');
+        sub = [hit, noteText || mph].filter(Boolean).join(' · ');
         cls = 'good';
       }
       ui.banner(big, sub, cls);
@@ -1050,10 +1061,16 @@ export class App {
     const dots = [];
     for (const m of p.plan.moves) {
       if (m.back && m.from === 0) continue;
+      if (m.out && m.outAt !== undefined && t > m.outAt) continue; // (tagged out: off the diamond)
       const q = runnerState(m, t, e.cfg, this.padQ || (this.padQ = {}));
-      dots.push({ x: q.x, z: q.z, sent: !!m.sent });
+      dots.push({ x: q.x, z: q.z, sent: !!m.sent && t < (m.outAt ?? Infinity) });
     }
-    this.ui.setBasePad({ targets: e.sendTargets().map((q) => q.base), dots });
+    // (the batter on a ball caught in the air has no move: he is still a dot on his way to first until the catch)
+    if (!p.plan.moves.some((m) => m.from === 0) && !p.plan.homer && t < (p.plan.catchT ?? 0)) {
+      const q = runnerProfile(0, 1, 'run', e.cfg).at(Math.max(0, t - e.cfg.runner.batterStart), this.padQ || (this.padQ = {}));
+      dots.push({ x: q.x, z: q.z, sent: false });
+    }
+    this.ui.setBasePad({ targets: e.sendTargets(), dots });
   }
 
   swingInput(ev) {

@@ -336,6 +336,9 @@ body.touch .swingbtn.show { display: flex; }
 .basepad.show .bpbase.can { pointer-events: auto; cursor: pointer; }
 .bpbase.can::before { background: linear-gradient(180deg, var(--gold-hi), var(--gold)); border-color: #fff; box-shadow: 0 0 16px rgba(255, 196, 64, .8); animation: bppulse .9s var(--ease) infinite alternate; }
 .bpbase.can span { display: block; }
+.basepad.show .bpbase.back { pointer-events: auto; cursor: pointer; }
+.bpbase.back::before { background: linear-gradient(180deg, #ffb27a, #e8682c); border-color: #fff; box-shadow: 0 0 16px rgba(240, 110, 50, .85); animation: bppulse .9s var(--ease) infinite alternate; }
+.bpbase.back span { display: block; color: #3a1405; }
 .bpbase.hit::before { transform: rotate(45deg) scale(1.25); background: #fff; }
 .bpbase.home.hit::before { transform: scale(1.2); }
 @keyframes bppulse { to { box-shadow: 0 0 4px rgba(255, 196, 64, .4); filter: brightness(1.12); } }

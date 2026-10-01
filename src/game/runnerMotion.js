@@ -8,7 +8,7 @@
 //    fast as his sideways grip allows (v <= sqrt(latAccel / curvature)), so he slows into a turn and speeds up coming out
 //    of it; at the last base he brakes (or slides) and stops on the bag.
 import { CONFIG } from '../config.js';
-import { BASE_XZ } from '../physics/field.js';
+import { BASE_XZ, dugoutSpot } from '../physics/field.js';
 
 const STEP = 0.5; // ft between route samples
 const DT = 1 / 240; // s between speed samples
@@ -252,15 +252,15 @@ const cache = new Map();
  * The (cached) profile for a runner going from base `from` to base `to`.
  * kind: 'run' (top speed, stops on the last base) | 'through' (batter running through first) | 'trot' (home-run trot) | 'jog' (walk to first).
  */
-export function runnerProfile(from, to, kind = 'run', cfg = CONFIG, spd = 1, fromBag = false) {
+export function runnerProfile(from, to, kind = 'run', cfg = CONFIG, spd = 1, fromBag = false, v0 = 0) {
   const R = cfg.runner;
   if (to <= from) return stationary(from, cfg); // a runner who stays where he is
-  const key = `${from}>${to}|${kind}|${spd}|${fromBag ? 'bag' : ''}|${R.speed}|${R.accelTime}|${R.brake}|${R.latAccel}|${R.turnBrake}|${R.turnLen}|${R.turnRadius}|${R.lead}|${R.leadSecond}|${R.overrun}|${R.trotSpeed}`;
+  const key = `${from}>${to}|${kind}|${spd}|${fromBag ? 'bag' : ''}|${v0}|${R.speed}|${R.accelTime}|${R.brake}|${R.latAccel}|${R.turnBrake}|${R.turnLen}|${R.turnRadius}|${R.lead}|${R.leadSecond}|${R.overrun}|${R.trotSpeed}`;
   let p = cache.get(key);
   if (!p) {
     const route = buildRoute(from, to, { through: kind === 'through', fromBag }, cfg);
     const vmax = kind === 'trot' ? R.trotSpeed : kind === 'jog' ? R.jogSpeed : R.speed * spd; // (spd: a fast or slow runner, Season ratings)
-    p = buildProfile(route, { vmax, accelTime: kind === 'trot' ? R.accelTime * 1.4 : R.accelTime, brake: kind === 'trot' ? R.brake * 0.6 : R.brake, turnBrake: R.turnBrake, latAccel: R.latAccel });
+    p = buildProfile(route, { vmax, v0, accelTime: kind === 'trot' ? R.accelTime * 1.4 : R.accelTime, brake: kind === 'trot' ? R.brake * 0.6 : R.brake, turnBrake: R.turnBrake, latAccel: R.latAccel });
     cache.set(key, p);
   }
   return p;
@@ -304,13 +304,28 @@ export function roundProfile(from, to, cfg = CONFIG, spd = 1, fromBag = false) {
 
 // The rest of the way after he pulled up past a bag he rounded: from where he stands (`s0` ft along the route he was on) on to
 // base `to`, from a standstill.
-export function resumeProfile(from, to, s0, cfg = CONFIG, spd = 1, fromBag = false) {
+export function resumeProfile(from, to, s0, cfg = CONFIG, spd = 1, fromBag = false, v0 = 0) {
   const R = cfg.runner;
-  const key = `resume|${from}>${to}|${s0.toFixed(3)}|${spd}|${fromBag}|${R.speed}|${R.accelTime}|${R.brake}|${R.latAccel}|${R.turnBrake}|${R.turnLen}|${R.turnRadius}|${R.lead}|${R.leadSecond}`;
+  const key = `resume|${from}>${to}|${s0.toFixed(3)}|${v0.toFixed(3)}|${spd}|${fromBag}|${R.speed}|${R.accelTime}|${R.brake}|${R.latAccel}|${R.turnBrake}|${R.turnLen}|${R.turnRadius}|${R.lead}|${R.leadSecond}`;
   let p = cache.get(key);
   if (!p) {
     const full = buildRoute(from, to, { fromBag }, cfg);
-    p = buildProfile(sliceRoute(full, s0, full.sEnd), { vmax: R.speed * spd, accelTime: R.accelTime, brake: R.brake, turnBrake: R.turnBrake, latAccel: R.latAccel });
+    p = buildProfile(sliceRoute(full, s0, full.sEnd), { vmax: R.speed * spd, v0, accelTime: R.accelTime, brake: R.brake, turnBrake: R.turnBrake, latAccel: R.latAccel });
+    cache.set(key, p);
+  }
+  return p;
+}
+
+// A runner going part of the way on a ball in the air (it may be caught): from his lead toward the next base, he pulls up `frac` of
+// the way there and waits to see what happens - the same on a ball that drops and on one that is caught, so nothing gives it away.
+export function halfProfile(from, frac, cfg = CONFIG, spd = 1) {
+  const R = cfg.runner;
+  const key = `half|${from}|${frac}|${spd}|${R.speed}|${R.accelTime}|${R.roundBrake}|${R.latAccel}|${R.turnBrake}|${R.turnLen}|${R.turnRadius}|${R.lead}|${R.leadSecond}`;
+  let p = cache.get(key);
+  if (!p) {
+    const full = buildRoute(from, from + 1, {}, cfg);
+    const route = sliceRoute(full, 0, Math.max(1, full.sBase[from + 1] * frac));
+    p = buildProfile(route, { vmax: R.speed * spd, accelTime: R.accelTime, brake: R.roundBrake, turnBrake: R.turnBrake, latAccel: R.latAccel });
     cache.set(key, p);
   }
   return p;
@@ -334,6 +349,8 @@ function sliceRoute(r, s0, s1) {
  *   { kind: 'run', from, to, t0, fromBag }   a run (fromBag: from the bag itself, after he had stopped on it)
  *   { kind: 'round', from, to, t0, fromBag }  he rounds base `to` and pulls up just past it
  *   { kind: 'resume', from, to, s0, t0, fromBag }  on from where he pulled up (s0 ft along the route from `from`) to base `to`
+ *   { kind: 'half', from, to: from, frac, t0 }  part of the way toward the next base on a ball in the air, and wait there
+ *   { kind: 'reverse', tb, toBase, t0 }  he turns back at `tb` on the leg before and runs back to the bag of base `toBase`
  * Returns them with `last` set on the final one (t0 = seconds after contact when that leg starts).
  */
 export function moveLegs(move, cfg = CONFIG) {
@@ -343,9 +360,10 @@ export function moveLegs(move, cfg = CONFIG) {
   if (move.legs && move.legs.length) {
     const legs = move.legs.map((L) => ({ ...L, last: false }));
     legs[0].t0 = t0; // (the renderer may re-time the batter's start: the first leg follows the move)
+    for (let i = 1; i < legs.length; i++) if (legs[i].kind === 'reverse') { legs[i - 1].cut = legs[i].tb; legs[i].of = { ...legs[i - 1], last: false }; } // (he turns back on the leg before)
     const L = legs[legs.length - 1];
     L.last = true;
-    if (move.out && move.to === 0) L.to = move.outBase;
+    if (move.out && move.to === 0 && L.kind !== 'reverse') L.to = move.outBase;
     return legs;
   }
   const to = Math.max(toBase, move.from);
@@ -353,30 +371,106 @@ export function moveLegs(move, cfg = CONFIG) {
   return [{ kind: 'run', from: move.from, to, t0, fromBag: false, last: true }];
 }
 
-/** The speed profile of one leg (see moveLegs). */
+/** The speed profile of one leg (see moveLegs). (A 'reverse' leg has none of its own: this is the leg he turned back on.) */
 export function legProfile(L, move, cfg = CONFIG) {
   const spd = move.spd || 1;
+  if (L.kind === 'reverse') return legProfile({ ...L.of, last: false }, move, cfg);
   if (L.kind === 'round') return roundProfile(L.from, L.to, cfg, spd, L.fromBag);
-  if (L.kind === 'resume') return resumeProfile(L.from, L.to, L.s0, cfg, spd, L.fromBag);
-  return runnerProfile(L.from, L.to, L.last ? moveKind(move) : 'run', cfg, spd, L.fromBag);
+  if (L.kind === 'half') return halfProfile(L.from, L.frac, cfg, spd);
+  if (L.kind === 'resume') return resumeProfile(L.from, L.to, L.s0, cfg, spd, L.fromBag, L.v0 || 0);
+  return runnerProfile(L.from, L.to, L.last ? moveKind(move) : 'run', cfg, spd, L.fromBag, L.v0 || 0);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Turning back: a runner on his way (leg `of`) is told at `tb` (seconds after contact) to get back to base `toBase` behind him - you
+// called him back, or the ball was caught. He brakes, turns and runs back along the way he came to the bag (the bag itself, even when
+// he started from his lead-off spot), and reaches it at full tilt (he dives back in). L = { kind: 'reverse', of, tb, toBase }.
+// ---------------------------------------------------------------------------------------------------------------
+// Where along a route is a base's bag? (negative: behind where the route starts - a lead-off spot is in front of its bag)
+function bagS(route, base) {
+  if (route.sBase[base] !== undefined) return route.sBase[base];
+  const [bx, bz] = BASE_XZ[base];
+  let best = Infinity, bi = 0;
+  for (let i = 0; i < route.n; i++) { const d = Math.hypot(route.x[i] - bx, route.z[i] - bz); if (d < best) { best = d; bi = i; } }
+  return bi === 0 && best > 0.3 ? -best : route.s[bi];
+}
+const revCache = new Map();
+function reversePlan(L, move, cfg) {
+  const key = `${L.tb}|${L.toBase}|${move.spd || 1}|${L.of.kind}|${L.of.from}|${L.of.to}|${L.of.t0}|${L.of.s0 || 0}|${L.of.fromBag}|${L.of.of ? 'r' : ''}`;
+  const hit = revCache.get(key);
+  if (hit && hit.cfg === cfg) return hit;
+  if (revCache.size > 400) revCache.clear();
+  const R = cfg.runner;
+  const p = legProfile({ ...L.of, last: false }, move, cfg);
+  const q = p.at(Math.max(0, L.tb - L.of.t0), {});
+  const V = R.speed * (move.spd || 1);
+  const B = R.brake * 0.8;
+  const v1 = q.speed, s1 = q.s;
+  const tb = v1 / B, s2 = s1 + (v1 * v1) / (2 * B);
+  const route = p.route;
+  const sT = route ? bagS(route, L.toBase) : -Math.hypot(q.x - BASE_XZ[L.toBase][0], q.z - BASE_XZ[L.toBase][1]);
+  const dir = s2 >= sT ? -1 : 1; // (back the way he came - or, if he can pull up short of the bag, on to it)
+  const dist = Math.abs(s2 - sT);
+  let lo = 0, hi = dist / V + 4 * R.accelTime + 1;
+  for (let k = 0; k < 40; k++) { const mid = (lo + hi) / 2; if (covered(V, mid, R.accelTime) < dist) lo = mid; else hi = mid; }
+  // a point `s` ft along the route (behind its start: on the straight line back to the bag)
+  const start = route ? [route.x[0], route.z[0]] : [q.x, q.z];
+  const bag = BASE_XZ[L.toBase];
+  const along = (s, out) => {
+    if (route && s >= 0) return p.at(p.tAtS(Math.min(s, p.sEnd)), out);
+    const k = Math.min(1, -s / Math.max(1e-6, Math.hypot(bag[0] - start[0], bag[1] - start[1])));
+    out.x = start[0] + (bag[0] - start[0]) * k; out.z = start[1] + (bag[1] - start[1]) * k;
+    return out;
+  };
+  // (from a standstill at his lead-off spot there is no route: he simply faces the bag)
+  const heading0 = route ? q.heading : Math.atan2(start[0] - bag[0], start[1] - bag[1]);
+  const rp = { cfg, dir, p, s1, v1, B, tTurn: L.tb + tb, s2, sT, dist, tRun: hi, tHome: L.tb + tb + hi, V, heading0, along };
+  revCache.set(key, rp);
+  return rp;
+}
+function reverseState(L, move, t, cfg, out) {
+  const rp = reversePlan(L, move, cfg);
+  const R = cfg.runner;
+  out.kind = 'back'; out.profile = rp.p; out.total = rp.dist; out.tStart = L.of.t0;
+  if (t <= L.tb) { rp.p.at(t - L.of.t0, out); out.running = out.speed > 0.05; out.waiting = false; out.done = false; return out; }
+  if (t < rp.tTurn) {
+    const u = t - L.tb;
+    rp.along(rp.s1 + rp.v1 * u - 0.5 * rp.B * u * u, out);
+    out.heading = rp.heading0; out.speed = Math.max(0, rp.v1 - rp.B * u); out.accel = -rp.B;
+    out.sLeft = rp.dist; out.side = 0; out.turn = 0; out.waiting = false; out.running = true; out.done = false;
+    return out;
+  }
+  const tau = t - rp.tTurn;
+  const d = Math.min(rp.dist, covered(rp.V, tau, R.accelTime));
+  rp.along(rp.s2 + rp.dir * d, out);
+  const done = tau >= rp.tRun;
+  out.heading = rp.heading0 + (rp.dir < 0 ? Math.PI : 0);
+  out.speed = done ? 0 : rp.V * (1 - Math.exp(-tau / R.accelTime));
+  out.accel = done ? 0 : (rp.V - out.speed) / R.accelTime;
+  out.sLeft = rp.dist - d; out.side = 0; out.turn = 0; out.waiting = false; out.running = !done; out.done = done;
+  return out;
 }
 
 /** When (seconds after contact) does the runner of this move touch `base`? (undefined if his run does not reach it) */
 export function moveArrival(cfg, move, base) {
+  // (the LAST time he touches it: a runner who turned back touched second on the way out and touches first again on the way back)
+  let res;
   for (const L of moveLegs(move, cfg)) {
+    if (L.kind === 'reverse') { if (base === L.toBase) res = reversePlan(L, move, cfg).tHome; continue; }
     const kind = L.kind === 'run' && L.last ? moveKind(move) : L.kind;
-    if (kind === 'through' && base === 1) return L.t0 + runnerProfile(0, 1, 'run', cfg, move.spd || 1).tBase[1]; // (timed as if he stopped on it: see runnerState)
+    if (kind === 'through' && base === 1) { res = L.t0 + runnerProfile(0, 1, 'run', cfg, move.spd || 1).tBase[1]; continue; } // (timed as if he stopped on it: see runnerState)
     if (base > L.to || (L.kind !== 'resume' && base <= L.from)) continue;
     const tb = legProfile(L, move, cfg).tBase[base];
-    if (tb !== undefined) return L.t0 + tb;
+    if (tb !== undefined && L.t0 + tb <= (L.cut ?? Infinity)) res = L.t0 + tb;
   }
-  return undefined;
+  return res;
 }
 
 /** When has the runner of this move stopped for good? */
 export function moveFinish(cfg, move) {
   const legs = moveLegs(move, cfg);
   const L = legs[legs.length - 1];
+  if (L.kind === 'reverse') return reversePlan(L, move, cfg).tHome;
   return L.t0 + legProfile(L, move, cfg).duration;
 }
 
@@ -386,12 +480,14 @@ export function moveFinish(cfg, move) {
  * the planner used (the planner times every runner as if he stops on the bag), so the picture agrees with the safe/out call.
  */
 export function runnerState(move, t, cfg = CONFIG, out = {}) {
+  if (move.walkOff && move.out && move.outAt !== undefined && t > move.outAt + cfg.runner.walkOffDelay) return walkOffState(move, t, cfg, out);
   if (move.back) return retreatState(move, t, cfg, out);
   const R = cfg.runner;
   const spd = move.spd || 1;
   const legs = moveLegs(move, cfg);
   let L = legs[0];
   for (const q of legs) if (t >= q.t0 && !(move.stopAt !== undefined && q.t0 > move.stopAt)) L = q; // (the inning ended before he set off again: he stays)
+  if (L.kind === 'reverse') { reverseState(L, move, t, cfg, out); out.waiting = t <= legs[0].t0; out.leg = legs.indexOf(L); return out; }
   const kind = L.kind === 'run' ? (L.last ? moveKind(move) : 'run') : L.kind;
   let t0 = L.t0;
   if (kind === 'through') t0 += runnerProfile(0, 1, 'run', cfg, spd).tBase[1] - runnerProfile(0, 1, 'through', cfg, spd).tBase[1];
@@ -417,6 +513,93 @@ export function runnerState(move, t, cfg = CONFIG, out = {}) {
   out.total = p.sEnd;
   out.profile = p;
   out.leg = legs.indexOf(L);
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Changing a runner's mind (your orders, or the ball being caught). `legs` are a move's explicit legs (see moveLegs), changed in place.
+// ---------------------------------------------------------------------------------------------------------------
+const stillLeg = (L) => L.kind === 'run' && L.to <= L.from; // (waiting at his lead-off spot)
+/** Where does the leg in progress end, as a runner who keeps on going? (the base he is on, or will stop at) */
+export function legsGoal(legs) {
+  const L = legs[legs.length - 1];
+  if (!L) return 0;
+  if (L.kind === 'reverse') return L.toBase;
+  if (L.kind === 'half') return L.from;
+  return L.to;
+}
+/**
+ * He goes on to base `base`, reacting at `tAct`. A runner who has not yet started to pull up simply keeps going on the longer route;
+ * one who has (or who has stopped) finishes pulling up and sets off again from there; one going back finishes getting back to the bag.
+ */
+export function extendLegs(legs, from, base, tAct, cfg = CONFIG, spd = 1) {
+  const mv = { spd };
+  if (!legs.length) { legs.push({ kind: 'run', from, to: base, t0: tAct, fromBag: false }); return legs; }
+  const L = legs[legs.length - 1];
+  if (stillLeg(L)) { legs[legs.length - 1] = { kind: 'run', from: L.from, to: base, t0: Math.max(tAct, L.t0), fromBag: L.fromBag }; return legs; }
+  if (L.kind !== 'reverse' && L.kind !== 'half' && L.to >= base) return legs; // (he is on his way there already)
+  if (L.kind === 'reverse') {
+    const tHome = moveFinish(cfg, { from, legs: legs.map((q) => ({ ...q })), spd, tStart: legs[0].t0 });
+    // (one who has been standing on the bag waiting - a tag-up - leaves with a rocking start)
+    const leg = { kind: 'run', from: L.toBase, to: base, t0: Math.max(tAct, tHome), fromBag: true };
+    if (tAct > tHome + 0.3) leg.v0 = cfg.runner.tagRoll;
+    legs.push(leg);
+    return legs;
+  }
+  const cand = L.kind === 'resume' ? { ...L, to: base } : { kind: 'run', from: L.from, to: base, t0: L.t0, fromBag: L.fromBag };
+  const pL = legProfile({ ...L, last: false }, mv, cfg);
+  const pC = legProfile({ ...cand, last: false }, mv, cfg);
+  if (tAct - L.t0 <= sameUntil(pL, pC)) { legs[legs.length - 1] = cand; return legs; }
+  const tGo = Math.max(tAct, L.t0 + pL.duration);
+  if ((L.kind === 'round' || L.kind === 'half') && tAct < L.t0 + pL.duration) {
+    // still pulling up: he goes on from where he is, at the speed he still has
+    const q = pL.at(tAct - L.t0, {});
+    legs.push({ kind: 'resume', from: L.from, to: base, s0: q.s, v0: q.speed, t0: tAct, fromBag: L.fromBag });
+  } else if (L.kind === 'round' || L.kind === 'half') legs.push({ kind: 'resume', from: L.from, to: base, s0: pL.sEnd, t0: tGo, fromBag: L.fromBag });
+  else legs.push({ kind: 'run', from: L.to, to: base, t0: tGo, fromBag: true });
+  return legs;
+}
+/**
+ * He gets back to base `base` (behind him, or the one he is heading for if he can still pull up on it), reacting at `tAct`: if he can
+ * simply stop there he does; otherwise he brakes, turns and runs back to the bag.
+ */
+export function backLegs(legs, from, base, tAct, cfg = CONFIG, spd = 1) {
+  const mv = { spd };
+  const L = legs[legs.length - 1];
+  if (!L || L.kind === 'reverse') return legs;
+  if (stillLeg(L) || L.kind === 'half') {
+    if (base > L.from) return extendLegs(legs, from, base, tAct, cfg, spd); // (the bag "back" is the one ahead of him: he goes on to it)
+    legs.push({ kind: 'reverse', tb: Math.max(tAct, L.t0), toBase: base, t0: Math.max(tAct, L.t0) });
+    return legs;
+  }
+  const p = legProfile({ ...L, last: false }, mv, cfg);
+  const tb = p.tBase[base];
+  if (base > L.from && tb !== undefined && L.t0 + tb > tAct) {
+    // a bag he has not reached yet: he stops on it, if he can still do so without stopping short of where he already is
+    const cand = L.kind === 'resume' ? { ...L, to: base } : { kind: 'run', from: L.from, to: base, t0: L.t0, fromBag: L.fromBag };
+    if (tAct - L.t0 <= sameUntil(p, legProfile({ ...cand, last: false }, mv, cfg))) { legs[legs.length - 1] = cand; return legs; }
+  }
+  legs.push({ kind: 'reverse', tb: tAct, toBase: base, t0: tAct });
+  return legs;
+}
+
+// A runner who was tagged out gets up and walks off toward the dugout (the third-base side, where the home team sits).
+let DUGOUT_DOOR = null;
+function walkOffState(move, t, cfg, out) {
+  const R = cfg.runner;
+  const tOff = move.outAt + R.walkOffDelay;
+  runnerState({ ...move, walkOff: false }, tOff, cfg, out);
+  if (!DUGOUT_DOOR) { const g = dugoutSpot(-1); DUGOUT_DOOR = [(g.front0[0] + g.front1[0]) / 2, (g.front0[1] + g.front1[1]) / 2]; }
+  const [dx, dz] = [DUGOUT_DOOR[0] - out.x, DUGOUT_DOOR[1] - out.z];
+  const D = Math.hypot(dx, dz) || 1;
+  const tau = t - tOff;
+  const d = Math.min(D, R.walkOffSpeed * Math.max(0, tau - 0.25 * (1 - Math.exp(-tau / 0.25))));
+  out.x += (dx / D) * d; out.z += (dz / D) * d;
+  out.heading = Math.atan2(dx, dz);
+  out.speed = d >= D ? 0 : R.walkOffSpeed * (1 - Math.exp(-tau / 0.25));
+  out.accel = 0; out.side = 0; out.turn = 0;
+  out.s = (out.s || 0) + d;
+  out.walk = true; out.running = out.speed > 0.05; out.done = d >= D; out.waiting = false;
   return out;
 }
 

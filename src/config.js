@@ -461,18 +461,35 @@ export const CONFIG = {
     // What a runner does while the ball is in the air: he waits this long (s) before breaking for the next base (a fly ball or a pop-up
     // might be caught; a grounder he goes on at once).
     read: { ground: 0, line: 0.12, fly: 0.5, pop: 0.7 },
-    holdStep: 0.22, // s a runner who was not sent keeps drifting toward the next base after a caught ball is hit, before he gets back to the bag
-    // Sending runners (you tap a base): on their own runners only ever take ONE base. On a ball to the outfield they round their
-    // base, pull up `roundPast` ft beyond it (braking at `roundBrake` ft/s^2) and wait, ready to be sent on. A runner reacts to being
-    // sent `sendReact` s after the tap. You can send runners from the moment the ball is down (it bounced, or a fielder dropped it)
-    // until `sendLead` s before the fielder is ready to throw (the defense sees where everybody is going and throws accordingly);
-    // a window shorter than `sendMin` s is not offered (an infield single).
+    // Sending runners (you tap a base on the little diamond): on their own runners only ever take ONE base. You can send them from
+    // `sendFrom` s after contact - on a ball in the air every runner does the same whether it will be caught or not, so the diamond
+    // gives nothing away - until `sendAfter` s after the fielder is ready to throw. The defense picks where to throw `sendLead` s
+    // before he is ready; a runner sent after that is chased by a second throw if it can get him. Tap the base a runner is heading
+    // for again to call him back. A runner reacts `sendReact` s after the tap.
+    sendFrom: 0.1,
+    sendAfter: 0.45,
+    sendLead: 0.1,
+    sendReact: 0.12,
+    sendTag: 0.15, // s for the fielder to catch the throw and put the tag on a runner you sent (he is out if that beats him)
+    tagLead: 0.1, // s: the tag goes on him this long before he would have touched the bag (he slides into the glove)
+    outLinger: 2.3, // s the play goes on after a runner is tagged out, so you see the tag and see him walk off
+    walkOffDelay: 1.3, // s after the tag before he gets up and walks to the dugout
+    walkOffSpeed: 6, // ft/s
+    autoMargin: 1.4, // s: when the window closes, a runner who would make the next base by this much goes on by himself
+    // On a ball to the outfield a runner rounds his base, pulls up `roundPast` ft beyond it (braking at `roundBrake` ft/s^2) and waits.
     roundPast: 14,
     roundBrake: 30,
-    sendReact: 0.12,
-    sendLead: 0.1,
-    sendMin: 0.35,
-    sendTag: 0.15, // s for the fielder to catch the throw and put the tag on a runner you sent (he is out if that beats him)
+    // On a ball in the air (fewer than two outs) a runner on first - or second, unless it is deep - goes `halfway` (a share of the
+    // way to the next base) and waits; the man on third, and on second on a ball coming down past `tagDepth` ft, goes back to his bag
+    // to tag up (`tagBack` s after contact). Once it is down or caught they react in `downReact` s.
+    halfway: 0.5,
+    halfwayLine: 0.22, // (on a line drive only a few steps - after a moment's freeze, `read.line`)
+    tagDepth: 320,
+    tagBack: 0.12,
+    downReact: 0.15,
+    tagReact: 0.05, // s after the catch a runner tagging up leaves the bag (he times it)...
+    tagRoll: 12, // ...with a rocking start: he is already moving at this many ft/s as he leaves
+    tagWindow: 1.2, // s after a catch you can still send a runner to tag up
     leadSecond: 18, // ft: the lead off second base (nobody holds him on there, so he takes a much bigger one)
     // Rounding a base he keeps running through: he drifts out from the baseline over `turnLen` ft, goes round an arc of radius
     // `turnRadius` ft that touches the bag, and drifts back onto the next baseline over `turnLen` ft. (A smaller radius = a

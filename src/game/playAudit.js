@@ -47,7 +47,8 @@ export function auditPlan(plan, defense, cfg = CONFIG) {
     const at = fielderAt(plan, defense, e.pos, e.t);
     if (dist(at.x, at.z, bx, bz) > tol(e.base)) problems.push(`out at base ${e.base}: ${e.pos} is ${dist(at.x, at.z, bx, bz).toFixed(1)} ft from the bag`);
     // 2. holding the ball
-    const th = plan.throws.find((q) => q.to === e.pos && q.toBase === e.base && Math.abs(q.t1 - e.t) < 0.06);
+    // (the throw that got him there: it may have arrived a moment before the tag - he waits for the runner with the ball)
+    const th = plan.throws.filter((q) => q.to === e.pos && q.toBase === e.base && q.t1 <= e.t + 0.06).sort((a, b) => b.t1 - a.t1)[0];
     if (th) {
       if (th.t0 > th.t1) problems.push(`out at base ${e.base}: the throw arrives before it is thrown`);
       const gaveBall = th.from === plan.fielder || plan.throws.some((q) => q.to === th.from && q.t1 <= th.t0 + 1e-6);
@@ -61,7 +62,8 @@ export function auditPlan(plan, defense, cfg = CONFIG) {
       const from = mv.from;
       // (a runner doubled off is going back to the base he left)
       const arrive = mv.back ? retreatArrival(cfg, from, mv.tStart, mv.backAt, mv.spd || 1) : mv.legs || mv.round ? moveArrival(cfg, mv, e.base) : runnerArrival(cfg, from, e.base, mv.tStart, 'run', mv.spd || 1);
-      if (!(e.t + F.outMargin * 0.5 <= arrive)) problems.push(`out at base ${e.base}: the runner arrives at ${arrive.toFixed(2)} s, the out is made at ${e.t.toFixed(2)} s`);
+      if (arrive === undefined) problems.push(`out at base ${e.base}: the runner's run never takes him there`);
+      else if (!(e.t + F.outMargin * 0.5 <= arrive)) problems.push(`out at base ${e.base}: the runner arrives at ${arrive.toFixed(2)} s, the out is made at ${e.t.toFixed(2)} s`);
     }
   }
   const outMoves = plan.moves.filter((m) => m.out).length;

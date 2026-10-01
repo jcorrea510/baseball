@@ -184,7 +184,7 @@ export class UI {
     };
     // the base diamond (sending runners): a base is taken the moment it is touched
     this.q.basepad.addEventListener('pointerdown', (e) => {
-      const b = e.target.closest('.bpbase.can');
+      const b = e.target.closest('.bpbase.can, .bpbase.back');
       e.preventDefault(); e.stopPropagation();
       if (b) { b.classList.add('hit'); setTimeout(() => b.classList.remove('hit'), 260); this.act('send', +b.dataset.base); }
     });
@@ -909,10 +909,19 @@ export class UI {
     const on = !!o;
     if (on !== this.padOn) { this.padOn = on; el.classList.toggle('show', on); this.hud.classList.toggle('sending', on); }
     if (!on) return;
-    const key = o.targets.join(',');
+    // targets: [{ base, kind: 'send' | 'back' }] - a base you can send a runner to glows; the base a runner you sent is heading for
+    // glows orange (tap it again to call him back)
+    const key = o.targets.map((q) => q.base + q.kind).join(',');
     if (key !== this.padKey) {
       this.padKey = key;
-      for (const b of el.querySelectorAll('.bpbase')) b.classList.toggle('can', o.targets.includes(+b.dataset.base));
+      for (const b of el.querySelectorAll('.bpbase')) {
+        const q = o.targets.find((x) => x.base === +b.dataset.base);
+        b.classList.toggle('can', !!q && q.kind === 'send');
+        b.classList.toggle('back', !!q && q.kind === 'back');
+        const sp = b.querySelector('span');
+        if (sp.dataset.label === undefined) sp.dataset.label = sp.textContent;
+        sp.textContent = q && q.kind === 'back' ? 'Back' : sp.dataset.label;
+      }
     }
     const g = el.querySelector('.dots');
     while (g.children.length < o.dots.length) g.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'circle'));

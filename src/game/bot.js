@@ -19,7 +19,7 @@ export function createBot(engine, o = {}) {
   const underSd = o.underSd ?? 0.1;
   const swingStrike = o.swingStrike ?? 0.85;
   const swingBall = o.swingBall ?? 0.06;
-  const sendGamble = o.sendGamble ?? 0.04; // the chance it sends a runner it should not have (people misjudge too)
+  const sendGamble = o.sendGamble ?? 0.015; // the chance (per look, every 0.4 s) it sends a runner it should not have (people misjudge too)
   let plan = null;
   let sendPlay = null, sendAt = 0;
   engine.on('windup', ({ pitch }) => {
@@ -40,12 +40,15 @@ export function createBot(engine, o = {}) {
       if (engine.phase === 'play' && engine.sendOpen) {
         const p = engine.play;
         if (sendPlay !== p) { sendPlay = p; sendAt = engine.time + rng.range(0.15, 0.6); }
-        if (engine.time >= sendAt) {
+        const t = engine.time - p.t0;
+        const res = p.plan.send && p.plan.send.res;
+        if (engine.time >= sendAt && !(res !== undefined && t < res)) { // (it waits to see the ball caught or down)
           sendAt = engine.time + 0.4;
-          const t = engine.time - p.t0;
           for (const tg of engine.sendTargets().reverse()) {
-            const hyp = planPlay({ ...p.planIn, orders: [...p.planIn.orders, { base: tg.base, t }] }, engine.cfg);
-            if (!hyp.sentOut || rng.chance(sendGamble)) { engine.sendRunner(tg.base); break; }
+            if (tg.kind !== 'send') continue;
+            const hyp = planPlay({ ...p.planIn, orders: [...p.planIn.orders, { base: tg.base, t, from: tg.from }] }, engine.cfg);
+            const goes = hyp.moves.some((m) => m.from === tg.from && m.sent && !m.out && m.to === tg.base);
+            if ((goes && !hyp.sentOut) || (hyp.sentOut && rng.chance(sendGamble))) { engine.sendRunner(tg.base); break; }
           }
         }
         return;

@@ -9,7 +9,7 @@ import { simulateBattedBall, projectDistance } from '../physics/ballistics.js';
 import { resolveSwingTimes, describeError } from './timing.js';
 import { computeSwing, computeBunt, derbyBatting, contactWindow, contactPoint, scaleWindow } from './contact.js';
 import { choosePitch, pitchWindowScale } from './pitcherAI.js';
-import { createDefense, planPlay, planSteal, fielderBackTime } from './fielding.js';
+import { createDefense, planPlay, sendOptions, planSteal, fielderBackTime } from './fielding.js';
 import * as rules from './rules.js';
 import { simulateHalf } from './aiHalf.js';
 import { makeLineup, makePitcher, PLAYER_TEAM } from './teams.js';
@@ -578,9 +578,10 @@ export class Engine {
   }
 
   // ------------------------------------------------------------------ sending runners
-  // On a hit, runners take one base on their own; you send them further by tapping a base. You can do it from the moment the ball
-  // is down until just before the fielder is ready to throw (plan.send). The play is planned again with your orders - everything
-  // up to the tap stays exactly as it was (see fielding.js sendRunner), and the defense throws at whoever it can get.
+  // Runners take one base on their own; you send them further by tapping a base, from the moment the ball is hit (on a ball in the
+  // air everybody does the same until it is caught or down, so nothing gives a catch away) until just after the fielder is ready to
+  // throw (plan.send). Tapping the base a runner you sent is heading for calls him back. The play is planned again with your orders -
+  // everything up to the tap stays exactly as it was - and the defense throws at whoever it can get.
   get sendOpen() {
     const p = this.play;
     if (this.phase !== 'play' || !p || p.steal || !p.plan.send || this.paused) return false;
@@ -588,31 +589,26 @@ export class Engine {
     return t >= p.plan.send.from && t <= p.plan.send.by;
   }
 
-  // The bases you can send a runner to right now: [{ base, from }] (from = the runner's starting base, 0 = the batter).
+  // The bases you can tap right now: [{ base, from, kind: 'send' | 'back' }] (from = the runner's starting base, 0 = the batter).
   sendTargets() {
     if (!this.sendOpen) return [];
-    const out = [];
-    for (const m of this.play.plan.moves) {
-      if (m.out || m.back || m.trot) continue;
-      const at = m.to; // where he is headed (or holding)
-      if (at >= 1 && at < 4) out.push({ base: at + 1, from: m.from });
-    }
-    return out.sort((a, b) => a.base - b.base);
+    return sendOptions(this.play.plan, this.time - this.play.t0, this.cfg);
   }
 
-  // Send the runner on his way to the base before `base` on to it. Returns true when taken.
+  // Tap base `base`: send the runner heading for the base before it on to it - or call back the runner you sent there. True when taken.
   sendRunner(base) {
-    if (!this.sendTargets().some((q) => q.base === base)) return false;
+    const opt = this.sendTargets().find((q) => q.base === base);
+    if (!opt) return false;
     const p = this.play;
     const t = this.time - p.t0;
-    p.planIn.orders.push({ base, t });
+    p.planIn.orders.push({ base, t, from: opt.from, back: opt.kind === 'back' || undefined });
     const plan = planPlay(p.planIn, this.cfg);
     p.plan = plan;
     p.events = buildEventList(p.sim, plan);
     p.nextEvent = p.events.findIndex((e) => e.t > t + 1e-9);
     if (p.nextEvent < 0) p.nextEvent = p.events.length;
-    this.stats.sends = (this.stats.sends || 0) + 1;
-    this.emit('send', { base, t, plan });
+    if (opt.kind === 'send') this.stats.sends = (this.stats.sends || 0) + 1;
+    this.emit('send', { base, t, plan, kind: opt.kind });
     return true;
   }
 
