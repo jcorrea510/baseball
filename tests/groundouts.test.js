@@ -71,7 +71,7 @@ describe('an out needs a fielder with the ball on the bag before the runner', ()
   it('no one covering = no out', () => {
     // a grounder to the first baseman, who is standing far from the bag; the pitcher and second baseman are nowhere near it either
     const d = createDefense();
-    d['1B'].x = 25; d['1B'].z = -115; d['1B'].homeX = 25; d['1B'].homeZ = -115;
+    d['1B'].x = 0; d['1B'].z = -150; d['1B'].homeX = 0; d['1B'].homeZ = -150; // (deep behind second: too far to run the ball to the bag)
     for (const pos of ['P', '2B']) { d[pos].x = -150; d[pos].z = -250; d[pos].homeX = -150; d[pos].homeZ = -250; }
     let checked = 0;
     for (let spray = 20; spray <= 45; spray += 1) {
@@ -100,8 +100,8 @@ describe('an out needs a fielder with the ball on the bag before the runner', ()
 
   it('a first baseman pulled far from the bag flips to the pitcher (or second baseman), who runs over and covers', () => {
     let covered = 0;
-    for (let spray = 5; spray <= 46; spray += 1) {
-      for (const ev of [45, 55, 65, 75]) {
+    for (let spray = 5; spray <= 46; spray += 0.5) {
+      for (const ev of [35, 40, 45, 50, 55, 65, 75]) {
         const { plan, defense } = play(ev, -2, spray);
         if (plan.fielder !== '1B' || plan.result !== 'groundout') continue;
         const e = outEvent(plan);
@@ -113,10 +113,15 @@ describe('an out needs a fielder with the ball on the bag before the runner', ()
           const start = fielderAt(plan, defense, e.pos, 0.2), onBag = fielderAt(plan, defense, e.pos, e.t);
           expect(dist([start.x, start.z], BASE_XZ[1])).toBeGreaterThan(20); // he had to run over
           expect(dist([onBag.x, onBag.z], BASE_XZ[1])).toBeLessThan(2.6);
+        } else {
+          // he ran it over himself: only from close by, and without stopping first
+          const at = fielderAt(plan, defense, '1B', plan.pickupT);
+          expect(dist([at.x, at.z], BASE_XZ[1])).toBeLessThan(CONFIG.fielding.cover.maxCarry + 1);
+          expect(e.t - plan.pickupT).toBeLessThan(2.9);
         }
       }
     }
-    expect(covered).toBeGreaterThan(5);
+    expect(covered).toBeGreaterThan(3);
   });
 
   it('the pitcher, second baseman, shortstop and third baseman all get their grounders and throw to a man who is on first', () => {

@@ -358,7 +358,7 @@ describe('whole games', () => {
 });
 
 describe('the next pitch waits for the pitcher and catcher', () => {
-  const rollUpTheLine = () => ({ exitVelocity: 45, launchAngle: -6, sprayAngle: 22, backspin: 1200, hook: 0, errorMs: 0 });
+  const rollUpTheLine = () => ({ exitVelocity: 40, launchAngle: -6, sprayAngle: 18, backspin: 1200, hook: 0, errorMs: 0 }); // (the first baseman ranges far to his right and flips to the pitcher covering first)
   it('does not start the windup until the pitcher is back on the rubber and set', () => {
     const e = new Engine({ mode: 'quick', playerSide: 'top', seed: 5 });
     e.pitchOverride = strikePitch;

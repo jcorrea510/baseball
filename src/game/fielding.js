@@ -200,12 +200,30 @@ function findGroundPickup(sim, defense, cfg) {
 //   opts.avail  how far (ft) he can really cover by tArrive - if the target is farther he stops that much short (glove reach)
 //   opts.start  when he begins moving (defaults to his reaction time)
 //   opts.vmax   top speed override;  opts.dive / opts.watch / opts.role are labels for the renderer
+// Cut a planned run short at time t: he is wherever the run had got him, and from there the next run takes over.
+function cutRun(run, t) {
+  const q = sampleRun(run, t, {});
+  run.segs = run.segs.filter((g) => g.t0 < t);
+  run.segs.push({ name: 'rest', t0: t, s0: q.s, v0: 0, a: 0 });
+  run.tStop = t; run.sStop = q.s; run.xStop = q.x; run.zStop = q.z;
+  if (run.tReach > t) run.tReach = t;
+}
+// Where a fielder would be at time t if his last run were cut short there (see cutRun).
+function cutPoint(run, t) {
+  if (!run || run.dive || t >= run.tStop) return null;
+  const q = sampleRun(run, Math.max(t, run.tStart), {});
+  return { x: q.x, z: q.z };
+}
+
 function addMove(plan, f, toX, toZ, tArrive, opts = {}, cfg = CONFIG) {
   const F = cfg.fielding;
   // nobody ever runs to a spot in or beyond the wall: the target is pulled back inside (his glove still reaches the ball)
   [toX, toZ] = clampToField(toX, toZ, F.wallMargin);
   const runs = (plan.paths[f.pos] = plan.paths[f.pos] || []);
   const prev = runs[runs.length - 1];
+  // `cut`: he heads off from wherever the last run has got him at `start` (the last run is cut short there) instead of
+  // first coming to a full stop - a fielder who has the ball turns for the bag at once
+  if (opts.cut && prev && opts.start !== undefined && opts.start < prev.tStop && !prev.dive) cutRun(prev, opts.start);
   const x0 = prev ? prev.xStop : f.x, z0 = prev ? prev.zStop : f.z;
   const vmax = opts.vmax ?? f.speed * effort(f, toX, toZ);
   let tStart = opts.start ?? f.react;
@@ -231,7 +249,7 @@ function addMove(plan, f, toX, toZ, tArrive, opts = {}, cfg = CONFIG) {
   let run = opts.dive
     ? planDiveRun({ x0, z0, px: toX, pz: toZ, tStart, tCatch: tArrive, vmax, accel: vmax / F.accel, brake: F.brake, dive: F.dive, limitS: wallLimit(x0, z0, toX, toZ, dist(x0, z0, toX, toZ) - F.dive.armReach + 0.5) })
     : null;
-  if (!run) run = planRun({ x0, z0, x1, z1, tStart, tArrive: Math.max(tArrive, tStart + 0.05), vmax, accel: vmax / F.accel, brake: F.brake, minEffort: opts.minEffort ?? F.minRunEffort, heading: Math.atan2(toX - x0, toZ - z0), limitS: wallLimit(x0, z0, x1, z1, dist(x0, z0, x1, z1) + 0.4), wallBrake: F.wallBrake });
+  if (!run) run = planRun({ x0, z0, x1, z1, tStart, tArrive: Math.max(tArrive, tStart + 0.05), vmax, accel: vmax / (opts.accelTime ?? F.accel), brake: F.brake, minEffort: opts.minEffort ?? F.minRunEffort, heading: Math.atan2(toX - x0, toZ - z0), limitS: wallLimit(x0, z0, x1, z1, dist(x0, z0, x1, z1) + 0.4), wallBrake: F.wallBrake });
   runs.push(run);
   const move = {
     pos: f.pos,
@@ -308,17 +326,21 @@ function coverOptions(o, plan, defense, cfg) {
     out.push({ recv: q, self: false, tagged: tag > 0, tOut, t1: tOut, t0: Math.max(tReady, tOut - tag - flight), tCover: arr.t, coverStart: arr.start, speed: arr.speed, score: tOut - (idx === 0 ? F.cover.traditionBonus : 0) });
   });
   if (o.tHave !== undefined) {
-    // he carries it there from where his own run left him (he cannot start before he has stopped)
+    // he carries it there himself (only from close by: from farther away a throw to the man covering is the play)
     const runs = plan.paths[thrower.pos];
     const last = runs && runs[runs.length - 1];
-    const x0 = last ? last.xStop : from.x, z0 = last ? last.zStop : from.z;
-    const start = Math.max(o.tHave + F.cover.selfStart + (o.dive ? F.dive.throwExtra : 0), last ? last.tStop : 0);
+    // he turns for the bag as soon as he has the ball (still braking from the pickup is fine: that run is cut short)
+    const want = o.tHave + F.cover.selfStart + (o.dive ? F.dive.throwExtra : 0);
+    const cut = cutPoint(last, want);
+    const x0 = cut ? cut.x : last ? last.xStop : from.x, z0 = cut ? cut.z : last ? last.zStop : from.z;
+    const start = cut ? want : Math.max(want, last ? last.tStop : 0);
     const d = dist(x0, z0, bx, bz);
-    const tOut = start + timeToCover(thrower.speed, d, F.accel);
-    // a first baseman who has the ball near his bag walks over and steps on it (flipping to the pitcher is for balls he cannot run down)
+    const carry = Math.max(thrower.speed, F.cover.carrySpeed);
+    const tOut = start + timeToCover(carry, d, F.cover.carryAccel);
+    // a first baseman who has the ball near his bag runs over and steps on it (flipping to the pitcher is for balls he cannot run down)
     const first = thrower.pos === '1B' && base === 1;
     const closeEnough = d <= (first ? F.cover.firstSelfDistance : F.cover.selfDistance);
-    out.push({ recv: thrower, self: true, tagged: tag > 0, tOut, t1: tOut, t0: start, tCover: tOut, coverStart: start, speed: thrower.speed, score: tOut - (closeEnough ? (first ? F.cover.firstSelfBonus : F.cover.selfBonus) : 0) });
+    if (d <= F.cover.maxCarry) out.push({ recv: thrower, self: true, cut: !!cut, tagged: tag > 0, tOut, t1: tOut, t0: start, tCover: tOut, coverStart: start, speed: carry, score: tOut - (closeEnough ? (first ? F.cover.firstSelfBonus : F.cover.selfBonus) : 0) });
   }
   const runnerT = o.runnerT ?? Infinity;
   return out.filter((c) => c.tOut + F.outMargin <= runnerT).sort((a, b) => a.score - b.score);
@@ -953,7 +975,7 @@ function planOut(plan, way, base, thrower, from, tReady, cfg, role = 'cover') {
   const F = cfg.fielding;
   const [bx, bz] = BASE_XZ[base === 0 ? 4 : base];
   const recv = way.recv;
-  addMove(plan, recv, bx, bz, Math.max(way.coverStart + 0.05, way.tOut - (base === 4 ? F.tagTime : 0)), { role, start: way.coverStart, vmax: way.speed, minEffort: 0.8 }, cfg);
+  addMove(plan, recv, bx, bz, Math.max(way.coverStart + 0.05, way.tOut - (base === 4 ? F.tagTime : 0)), { role, start: way.coverStart, vmax: way.speed, minEffort: way.self ? 1 : 0.8, cut: way.self && way.cut, accelTime: way.self ? F.cover.carryAccel : undefined }, cfg);
   if (way.self) {
     const carry = plan.carries.find((c) => c.pos === thrower.pos && c.t1 - c.t0 < 5);
     if (carry) carry.t1 = way.tOut + 99;
