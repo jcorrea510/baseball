@@ -218,7 +218,7 @@ kbd { display: inline-block; min-width: 26px; padding: 5px 7px; text-align: cent
 .bug .diamond .base.on, .practbox .diamond .base.on { fill: var(--gold); stroke: #fff; filter: drop-shadow(0 0 6px var(--gold)); }
 
 /* the batting order, down the left side */
-.lineup { position: absolute; left: calc(var(--safe-l) + 12px); top: calc(var(--safe-t) + 64px); display: none; flex-direction: column; width: 172px; border-radius: var(--r-md); overflow: hidden; background: var(--glass); border: 1px solid var(--line-hi); box-shadow: 0 10px 28px rgba(0, 0, 0, .5); --row: clamp(17px, 3.7vh, 26px); }
+.lineup { position: absolute; left: calc(var(--safe-l) + 12px); top: calc(var(--safe-t) + 60px); display: none; flex-direction: column; width: 172px; border-radius: var(--r-md); overflow: hidden; background: var(--glass); border: 1px solid var(--line-hi); box-shadow: 0 10px 28px rgba(0, 0, 0, .5); --row: clamp(14px, 3.6vh, 26px); }
 .hud[data-mode="quick"] .lineup { display: flex; }
 .lineup .lh { display: flex; align-items: center; justify-content: space-between; padding: 0 8px 0 10px; height: calc(var(--row) * .9); background: rgba(0, 0, 0, .35); font: 800 clamp(8px, 1.5vh, 10px)/1 var(--cond); letter-spacing: .24em; color: var(--ink-3); text-transform: uppercase; }
 .lineup ol { list-style: none; margin: 0; padding: 0; }
@@ -292,7 +292,9 @@ svg.wordart { display: block; height: 1.08em; width: auto; max-width: 100%; marg
 .batterup .bextra { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; max-width: 520px; }
 .batterup .bextra:empty { display: none; }
 .batterup .bextra .chip { background: rgba(9, 15, 29, .9); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line-hi); }
+.batterup { max-width: calc(100vw - 16px); }
 .batterup .btn { min-width: 180px; }
+@media (max-width: 520px) { .batterup .bcard { padding: 8px 20px 9px; max-width: calc(100vw - 32px); } .batterup .who { white-space: normal; font-size: 19px; text-wrap: balance; } .batterup .bextra { max-width: calc(100vw - 24px); } }
 @media (max-height: 520px) { .batterup { top: 34%; gap: 6px; } .batterup .btn { min-height: 40px; } }
 
 /* timing meter, bottom centre */
@@ -372,6 +374,7 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
 /* ------------------------------------------------------------------ league */
 .league { width: min(1060px, 100%); max-height: 100%; overflow: auto; padding: var(--sp-4) var(--sp-5) var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-3); scrollbar-width: none; }
 .league::-webkit-scrollbar { display: none; }
+.league > * { flex-shrink: 0; }
 .league .head .spacer { flex: 1; }
 .coins { display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; height: 38px; background: rgba(0, 0, 0, .35); box-shadow: inset 0 0 0 1px rgba(247, 185, 43, .5); color: var(--gold-hi); font: 800 18px/1 var(--cond); letter-spacing: .06em; font-variant-numeric: tabular-nums; clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%); }
 .coins svg.i { width: 18px; height: 18px; }
@@ -406,7 +409,7 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
 .league .setup .grp { display: flex; flex-direction: column; gap: 6px; }
 
 /* pick your team */
-.picker { display: grid; grid-template-columns: minmax(300px, 1fr) 1.15fr; gap: 14px; min-height: 0; }
+.picker { display: grid; grid-template-columns: minmax(300px, 1fr) 1.15fr; gap: 14px; }
 .divtabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-bottom: 8px; }
 .divtabs button { appearance: none; border: 0; padding: 9px 4px; background: rgba(0, 0, 0, .35); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink-2); font: 800 12px/1 var(--cond); letter-spacing: .12em; text-transform: uppercase; cursor: pointer; border-radius: 2px; }
 .divtabs button.on { background: linear-gradient(180deg, var(--gold-hi), var(--gold)); color: var(--gold-ink); box-shadow: none; }
@@ -492,6 +495,7 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
   .league { padding: 12px; }
   .league .head .ttl { font-size: 20px; white-space: nowrap; }
   .prow .who b { font-size: 15px; } .prow .who small { font-size: 10px; }
+  .starrow { gap: 6px; padding: 6px 8px; } .starrow .pos { width: 22px; } .starrow .nm { font-size: 14px; white-space: normal; line-height: 1.05; } .starrow .rate { gap: 6px; } .starrow .rt { min-width: 34px; font-size: 15px; } .sect .rate .rt { min-width: 34px; }
 }
 
 /* ------------------------------------------------------------------ pause / summary / game over / locker */
@@ -581,9 +585,10 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
   .tile .chips { display: none; }
 }
 @media (max-width: 760px) and (orientation: portrait) {
-  .tiles { grid-template-columns: 1fr; grid-template-rows: none; grid-auto-rows: 118px; height: auto; }
+  .tiles { grid-template-columns: 1fr; grid-template-rows: 150px repeat(3, 112px); height: auto; }
+  .opts { flex-direction: column; align-items: stretch; gap: 10px; } .opts .grp { align-items: stretch; } .opts .seg { display: flex; } .opts .seg button { flex: 1; padding: 0 6px; }
   .tile.t-league, .tile.t-quick, .tile.t-derby, .tile.t-practice { grid-column: 1; grid-row: auto; }
-  .tile.t-league { min-height: 150px; } .tile h3, .tile.t-league h3 { font-size: 30px; }
+  .tile h3, .tile.t-league h3 { font-size: 30px; }
   .meter { width: min(300px, 70vw); }
   .touchaim { bottom: calc(var(--safe-b) + 170px); }
   .bugwrap { left: 50%; transform: translateX(-50%); align-items: center; }
@@ -614,11 +619,15 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
   .touchaim { bottom: calc(var(--safe-b) + 112px); }
   .meter { bottom: calc(var(--safe-b) + 84px); }
   .banner { top: 38%; }
-  .tiles { height: clamp(210px, 62vh, 330px); }
-  .tile.t-league h3 { font-size: clamp(30px, 8vh, 48px); } .tile h3 { font-size: clamp(22px, 6vh, 32px); }
+  .tiles { height: clamp(176px, 50vh, 330px); grid-template-rows: repeat(2, minmax(0, 1fr)); }
+  .tile.t-league h3 { font-size: clamp(30px, 8vh, 48px); } .tile h3 { font-size: clamp(20px, 5.6vh, 32px); }
+  .tile.t-derby .eyebrow, .tile.t-practice .eyebrow { display: none; }
+  .hubgrid { grid-template-columns: 1.6fr 1fr; gap: 8px; } .hubnav { flex-direction: column; gap: 6px; } .navtile { padding: 6px 12px; gap: 10px; } .navtile .ico { width: 34px; height: 34px; } .navtile h4 { font-size: 18px; }
+  .picker { grid-template-columns: 1fr 1fr; gap: 8px; } .teamrow { padding: 5px 10px 5px 6px; } .teamrow .nm b { font-size: 18px; } .crest { --s: 34px; } .crest.xl { --s: 56px; } .crest.sm { --s: 24px; } .divtabs button { padding: 6px 2px; }
+  .opts { padding: 6px 12px; } .opts .grp { flex-direction: row; align-items: center; }
 }
 @media (max-height: 360px) {
-  .lineup { display: none; }
+  .lineup { display: none !important; }
   .hud[data-mode="quick"] .batter-tag { display: block; }
   .dialog.pause h2 { display: none; }
   .dialog.pause .btn { min-height: 38px; } .dialog.pause .setrow { min-height: 34px; } .dialog.pause .setrow.stack { padding-top: 2px; padding-bottom: 2px; }
@@ -647,6 +656,8 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
   .title-stack .btn.small { padding: 0 10px; font-size: 12px; gap: 6px; }
 }
 @media (max-width: 520px) {
+  .pitchinfo { padding: 0 14px; gap: 8px; letter-spacing: .1em; font-size: 12px; }
+  .pitchinfo .mph { font-size: 19px; }
   .pitchinfo { left: auto; right: calc(var(--safe-r) + 12px); transform: translate(0, -14px); }
   .pitchinfo.show { transform: none; }
 }
