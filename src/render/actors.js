@@ -378,6 +378,12 @@ export class Actors {
       const lo = plan.looses && plan.looses[0];
       if (lo && playT > lo.t0 + 0.25) catchT = lo.t1;
     }
+    // a fielder receiving a throw (at a base, at the plate) catches it the same way
+    if (plan) for (const th of plan.throws) {
+      if (th.to === pos && playT > th.t1 - 0.5 && playT < th.t1 + 1.2 && (catchT === null || Math.abs(playT - th.t1) < Math.abs(playT - catchT))) catchT = th.t1;
+    }
+    // a tag play: after the catch the glove sweeps down onto the runner as he slides in
+    const tagOut = plan ? plan.events.find((q) => q.type === 'out' && q.tag && q.pos === pos) : null;
     if (dive) {
       // the glove reaches for the ball until it is caught, then stays where the catch happened and comes down with it
       if (dive.phase === 'air' && dive.u < dive.catchU) {
@@ -427,7 +433,13 @@ export class Actors {
         if (dl > lim) { const k = lim / dl; tx = 0.74 + dx * k; ty = sh + dy * k; tz = dz * k; }
         const settle = smoothstep(0, 0.5, dtC);
         tx = lerp(tx, 0.5, settle); ty = lerp(ty, 3.6, settle); tz = lerp(tz, 0.7, settle);
-        catchPose(P, [tx, ty, tz], clamp(1 - ty / 4.2, 0, 1) * 0.9);
+        let crouch = clamp(1 - ty / 4.2, 0, 1) * 0.9;
+        if (tagOut) {
+          // down to the runner's feet at the bag, then back up with the ball
+          const k = smoothstep(tagOut.t - 0.32, tagOut.t, playT) * (1 - smoothstep(tagOut.t + 0.25, tagOut.t + 0.7, playT));
+          tx = lerp(tx, 0.35, k); ty = lerp(ty, 0.75, k); tz = lerp(tz, 1.5, k); crouch = lerp(crouch, 0.95, k);
+        }
+        catchPose(P, [tx, ty, tz], crouch);
         if (runW > 0.01) {
           // a running catch: keep striding with the glove out, settle into the catch pose as he slows
           runReachPose(scratch, st.phase, speed, [tx, ty, tz], look);

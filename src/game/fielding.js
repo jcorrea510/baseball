@@ -305,7 +305,7 @@ function coverOptions(o, plan, defense, cfg) {
   coverCandidates(base, thrower, defense).forEach((q, idx) => {
     const arr = coverArrival(plan, q, base, o.coverStart ?? F.cover.start, cfg);
     const tOut = Math.max(tReady + flight + tag, arr.t + tag);
-    out.push({ recv: q, self: false, tOut, t1: tOut, t0: Math.max(tReady, tOut - tag - flight), tCover: arr.t, coverStart: arr.start, speed: arr.speed, score: tOut - (idx === 0 ? F.cover.traditionBonus : 0) });
+    out.push({ recv: q, self: false, tagged: tag > 0, tOut, t1: tOut, t0: Math.max(tReady, tOut - tag - flight), tCover: arr.t, coverStart: arr.start, speed: arr.speed, score: tOut - (idx === 0 ? F.cover.traditionBonus : 0) });
   });
   if (o.tHave !== undefined) {
     // he carries it there from where his own run left him (he cannot start before he has stopped)
@@ -318,7 +318,7 @@ function coverOptions(o, plan, defense, cfg) {
     // a first baseman who has the ball near his bag walks over and steps on it (flipping to the pitcher is for balls he cannot run down)
     const first = thrower.pos === '1B' && base === 1;
     const closeEnough = d <= (first ? F.cover.firstSelfDistance : F.cover.selfDistance);
-    out.push({ recv: thrower, self: true, tOut, t1: tOut, t0: start, tCover: tOut, coverStart: start, speed: thrower.speed, score: tOut - (closeEnough ? (first ? F.cover.firstSelfBonus : F.cover.selfBonus) : 0) });
+    out.push({ recv: thrower, self: true, tagged: tag > 0, tOut, t1: tOut, t0: start, tCover: tOut, coverStart: start, speed: thrower.speed, score: tOut - (closeEnough ? (first ? F.cover.firstSelfBonus : F.cover.selfBonus) : 0) });
   }
   const runnerT = o.runnerT ?? Infinity;
   return out.filter((c) => c.tOut + F.outMargin <= runnerT).sort((a, b) => a.score - b.score);
@@ -964,7 +964,7 @@ function planOut(plan, way, base, thrower, from, tReady, cfg, role = 'cover') {
     plan.throws.push({ from: thrower.pos, to: recv.pos, t0: way.t0, t1: way.t1, ax: from.x, az: from.z, bx, bz, toBase: base });
     plan.carries.push({ pos: recv.pos, t0: way.t1, t1: way.t1 + 99 });
   }
-  plan.events.push({ t: way.tOut, type: 'out', base: base === 0 ? 4 : base, pos: recv.pos });
+  plan.events.push({ t: way.tOut, type: 'out', base: base === 0 ? 4 : base, pos: recv.pos, tag: !!way.tagged }); // (tag: the runner is not forced: the fielder has to put the ball on him)
 }
 
 function finishInfieldOut(plan, at, ctx) {
