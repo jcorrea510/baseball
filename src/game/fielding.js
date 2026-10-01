@@ -343,6 +343,7 @@ function planPlayCore(i, cfg) {
   const F = cfg.fielding;
   const R = cfg.runner;
   const type = battedBallType(contact.launchAngle);
+  READ = R.read[type] || 0;
   const fair = judgeFairFoul(sim);
   const plan = {
     fair, type,
@@ -413,7 +414,7 @@ function planPlayCore(i, cfg) {
       plan.batterDest = 0;
       plan.endTime = air.t + 0.9;
       plan.notes.push('foul ball caught by ' + f.pos);
-      if (!i.simple) runnersGoBack(plan, f, air, type, bases, outs, defense, cfg);
+      if (!i.simple) { runnersGoBack(plan, f, air, type, bases, outs, defense, cfg); runnersHold(plan, bases, cfg); }
       return plan;
     }
     plan.result = sim.apex.y <= 24 ? 'lineout' : (type === 'pop' || sim.apex.y >= 75) && Math.hypot(air.ball.x, air.ball.z) < 150 ? 'popout' : 'flyout';
@@ -452,6 +453,7 @@ function planPlayCore(i, cfg) {
         }
       }
     }
+    runnersHold(plan, bases, cfg); // everyone else stays on (or gets back to) his base
     return plan;
   }
 
@@ -529,6 +531,7 @@ function endInningStop(plan, outs, cfg) {
   let running = false;
   for (const m of plan.moves) {
     if (m.out || m.to <= m.from) continue;
+    if (plan.timePlay && m.to >= 4 && arrivalAt(cfg, m.from, 4, m.tStart) <= tOut) { m.beforeOut = true; continue; } // scored before the tag: it counts
     if (finishAt(cfg, m.from, m.to, m.tStart) > stopAt) { m.stopAt = stopAt; running = true; }
   }
   if (!running) return;
@@ -546,8 +549,13 @@ const rs = (b) => (RUN ? RUN[b] : undefined);
 // Each runner's speed (x the standard runner; Season players' Speed rating): `i.speeds` = { 0: the batter, 1..3: the runners }.
 let SPD = null;
 const sp = (b) => (SPD && SPD[b]) || 1;
-const arrivalAt = (cfg, from, to, tStart, kind = 'run') => runnerArrival(cfg, from, to, tStart, kind, sp(from));
-const finishAt = (cfg, from, to, tStart, kind = 'run') => runnerFinish(cfg, from, to, tStart, kind, sp(from));
+// A runner waits to see what the ball does: on a ball in the air he does not break for the next base for READ seconds.
+let READ = 0;
+// A seeded roll for baserunning gambles (a stretch for an extra base): without it nobody gambles.
+let ADV;
+const readDelay = (cfg, from) => (from >= 1 && READ > 0 && rs(from) === undefined ? cfg.runner.startDelay + READ : undefined);
+const arrivalAt = (cfg, from, to, tStart, kind = 'run') => runnerArrival(cfg, from, to, tStart ?? readDelay(cfg, from), kind, sp(from));
+const finishAt = (cfg, from, to, tStart, kind = 'run') => runnerFinish(cfg, from, to, tStart ?? readDelay(cfg, from), kind, sp(from));
 
 // Give every runner move of a going runner his real start; one who ends up staying put has to go back to his base.
 function runningStarts(plan, cfg) {
@@ -565,6 +573,18 @@ function runningStarts(plan, cfg) {
     if (rs(b) === undefined || plan.moves.some((m) => m.from === b) || plan.homer) continue;
     const backAt = Math.max(rs(b) + 0.2, plan.pickupT ?? plan.catchT ?? cfg.steal.readFoul);
     plan.moves.push({ from: b, to: b, back: true, tStart: rs(b), backAt });
+  }
+}
+
+// A ball in the air that is caught: runners who were not sent do not run - they take a step or two off the bag, see it
+// is a fly ball, and get back (a pop-up: they stand almost still).
+function runnersHold(plan, bases, cfg) {
+  for (let b = 1; b <= 3; b++) {
+    if (!bases[b - 1] || plan.moves.some((m) => m.from === b)) continue;
+    const t0 = cfg.runner.startDelay;
+    const backAt = t0 + cfg.runner.holdStep;
+    plan.moves.push({ from: b, to: b, back: true, tStart: t0, backAt });
+    plan.endTime = Math.max(plan.endTime, retreatArrival(cfg, b, t0, backAt, sp(b)) + 0.2);
   }
 }
 
@@ -716,6 +736,8 @@ function dropFly(plan, i, f, air, bases, outs, defense, cfg) {
 export function planPlay(i, cfg = CONFIG) {
   RUN = i.running || null;
   SPD = i.speeds || null;
+  ADV = i.advRoll;
+  READ = 0;
   try {
     const plan = planPlayCore(i, cfg);
     if (RUN) runningStarts(plan, cfg);
@@ -725,7 +747,7 @@ export function planPlay(i, cfg = CONFIG) {
     settleThrows(plan);
     addCalls(plan, cfg);
     return plan;
-  } finally { RUN = null; SPD = null; }
+  } finally { RUN = null; SPD = null; ADV = undefined; READ = 0; }
 }
 // (the renderer draws each runner at his own speed)
 function speedsOnMoves(plan) {
@@ -1078,10 +1100,33 @@ function finishHit(plan, ctx) {
   // Batter cannot be on the same base as a trailing runner's destination handled by ceiling.
   plan.batterDest = bd;
 
-  for (const b of order) plan.moves.push({ from: b, to: dests[b], out: false });
+  // The hit he earned (a stretch that fails is still this hit, then an out on the bases).
+  const earned = bd;
+  // --- a gamble: the lead man (the batter, or the lead runner) tries for one base more than the throw says he can safely take.
+  // Whether it works is settled below, once we know when the ball actually gets there: out if it beats him, else safe (a close play).
+  let gamble = null;
+  {
+    let leadFrom = 0, leadTo = bd;
+    for (const b of order) if (dests[b] > leadTo || (dests[b] === leadTo && leadFrom === 0)) { leadFrom = b; leadTo = dests[b]; }
+    const m = leadTo + 1;
+    const blocked = m > 4 || (leadFrom === 0 ? m >= ceiling : order.some((b) => b !== leadFrom && dests[b] === m));
+    if (ADV !== undefined && !blocked && leadTo >= 1) {
+      const G = cfg.runner.gamble;
+      const slack = arrivalAt(cfg, leadFrom, m) - D[m]; // + = the throw gets there first
+      if (slack >= -F.runnerMargin && slack <= G.window) {
+        const p = G.p * (1 - 0.7 * Math.max(0, slack) / G.window) * (outs >= 2 ? G.twoOuts : 1);
+        const roll = (ADV * 7919) % 1;
+        if (roll < p) { gamble = { from: leadFrom, to: m }; if (leadFrom === 0) bd = m; else dests[leadFrom] = m; }
+      }
+    }
+  }
+  plan.batterDest = bd;
+
+  for (const b of order) plan.moves.push({ from: b, to: dests[b], out: false, tStart: readDelay(cfg, b) });
   plan.moves.push({ from: 0, to: bd, out: false });
 
-  plan.result = bd === 4 ? 'insideParkHomer' : bd === 3 ? 'triple' : bd === 2 ? 'double' : 'single';
+  const resultOf = (x) => (x === 4 ? 'insideParkHomer' : x === 3 ? 'triple' : x === 2 ? 'double' : 'single');
+  plan.result = resultOf(bd);
   plan.infieldHit = plan.result === 'single' && f.type !== 'OF';
 
   // Ball movement after the pickup: throw toward where the lead runner is heading.
@@ -1141,13 +1186,31 @@ function finishHit(plan, ctx) {
     }
   }
 
+  // Settle the gamble: he is out when the ball and a fielder get to the bag before he does (a tag, not a force).
+  if (gamble) {
+    const mv = plan.moves.find((q) => q.from === gamble.from && !q.out);
+    const tBall = plan.ballEnd;
+    const recvPos = (plan.events.find((e) => e.type === 'throwEnd' && Math.abs(e.t - tBall) < 1e-6) || {}).pos;
+    const arrive = arrivalAt(cfg, gamble.from, gamble.to, mv.tStart);
+    if (recvPos && tBall + F.outMargin <= arrive) {
+      mv.to = 0; mv.out = true; mv.outAt = tBall; mv.outBase = gamble.to;
+      plan.events.push({ t: tBall, type: 'out', base: gamble.to, pos: recvPos, tag: true });
+      plan.outsMade = (plan.outsMade || 0) + 1;
+      if (gamble.from === 0) { plan.batterDest = 0; plan.result = resultOf(earned); plan.infieldHit = plan.result === 'single' && f.type !== 'OF'; }
+      else plan.result = resultOf(bd);
+      plan.gambleOut = true;
+      if (outs + plan.outsMade >= 3) plan.timePlay = true; // runs that crossed the plate before the tag still count
+    } else plan.events.push({ t: tBall + 0.1, type: 'safe', base: gamble.to });
+  }
+
   // The play ends when every runner has stopped and the throw is in.
   let last = plan.ballEnd;
   for (const m of plan.moves) {
+    if (m.out) { last = Math.max(last, m.outAt + 0.3); continue; }
     last = Math.max(last, finishAt(cfg, m.from, m.to, m.tStart));
   }
   plan.endTime = last + 0.35;
-  void outs; void tF;
+  void tF;
   return plan;
 }
 

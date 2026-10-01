@@ -429,6 +429,7 @@ export class Engine {
     this.paEnded = paEnded;
     this.setBunt(false); // (a batter squares around again for each pitch he wants to bunt)
     if (this.stealArmed) { this.stealArmed = false; this.emit('stealArmed', { on: false, bases: [] }); } // (and the runners are sent again for each pitch)
+    this.steal = null; // (the steal belongs to the pitch that has just ended: the picture must not replay it with the runners' new bases)
     this.lastPA = paEnded ? { result: kind, time: this.time } : this.lastPA;
     this.setPhase('result');
     this.resultUntil = this.time + pause;
@@ -465,7 +466,8 @@ export class Engine {
     // fielding errors: one roll per ball in play (only in real games)
     const errorRoll = simple ? undefined : this.errorRollOverride ?? this.rng.next(); // (errorRollOverride: QA hook, 0 = always an error)
     const running = this.steal && !simple ? Object.fromEntries(this.steal.bases.map((b) => [b, this.steal.start[b] - s.tHit])) : null; // runners going with the pitch
-    const plan = planPlay({ sim, contact: c, bases: this.bases, outs: this.outs, defense: this.defense, simple, errorRoll, errorScale: this.d.errorScale, running, speeds: this.runnerSpeeds() }, this.cfg);
+    const advRoll = simple ? undefined : this.rng.next(); // (a baserunning gamble: a stretch for an extra base)
+    const plan = planPlay({ sim, contact: c, bases: this.bases, outs: this.outs, defense: this.defense, simple, errorRoll, advRoll, errorScale: this.d.errorScale, running, speeds: this.runnerSpeeds() }, this.cfg);
     const proj = projectDistance(params, this.cfg);
     const fb = sim.firstBounce;
     const distance = plan.homer ? proj.distance : fb ? Math.hypot(fb.x, fb.z) : proj.distance;
@@ -568,8 +570,8 @@ export class Engine {
     const play = {
       result: plan.result === 'hitSimple' ? 'single' : plan.result,
       batterDest: plan.batterDest,
-      moves: plan.moves.filter((m) => m.from >= 1).map((m) => ({ from: m.from, to: m.to, out: !!m.out })),
-      outsMade: plan.outsMade,
+      moves: plan.moves.filter((m) => m.from >= 1 && !m.back).map((m) => ({ from: m.from, to: m.to, out: !!m.out, before: !!m.beforeOut })),
+      outsMade: plan.outsMade, timePlay: !!plan.timePlay,
     };
     if (plan.result === 'foulOut') play.result = 'foulOut';
     // a bunt that is out at first but moves a runner up (with fewer than two outs) is a sacrifice: it does not count as an at-bat

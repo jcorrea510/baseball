@@ -381,6 +381,13 @@ export const CONFIG = {
     turnBrake: 30, // ft/s^2: how firmly he eases off for a corner (gentler than the stop at a bag)
     latAccel: 50, // ft/s^2: sideways grip in a turn. Speed in a turn is at most sqrt(latAccel / curvature), so he slows for the corner
     lead: 9, // ft: how far off the bag a runner stands before the pitch
+    // What a runner does while the ball is in the air: he waits this long (s) before breaking for the next base (a fly ball or a pop-up
+    // might be caught; a grounder he goes on at once).
+    read: { ground: 0, line: 0.12, fly: 0.5, pop: 0.7 },
+    holdStep: 0.22, // s a runner who was not sent keeps drifting toward the next base after a caught ball is hit, before he gets back to the bag
+    // A gamble: the lead man tries for one more base than is safe when the throw only just beats him. window = how close (s) the
+    // play may be, p = the chance he goes (less when it is closer to hopeless), twoOuts = x that with two outs (he is more careful).
+    gamble: { window: 0.4, p: 0.6, twoOuts: 0.7 },
     leadSecond: 18, // ft: the lead off second base (nobody holds him on there, so he takes a much bigger one)
     // Rounding a base he keeps running through: he drifts out from the baseline over `turnLen` ft, goes round an arc of radius
     // `turnRadius` ft that touches the bag, and drifts back onto the next baseline over `turnLen` ft. (A smaller radius = a

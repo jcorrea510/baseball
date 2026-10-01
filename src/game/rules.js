@@ -117,6 +117,7 @@ export function pitchFoul(g) {
  */
 export function applyPlay(g, play, batter) {
   const moves = (play.moves || []).filter((m) => m.from >= 1);
+  const oldBases = g.bases.slice();
   const newBases = [null, null, null];
   let runs = 0;
   const scoredRunners = [];
@@ -144,8 +145,16 @@ export function applyPlay(g, play, batter) {
 
   g.bases = newBases;
   recordOut(g, outsMade);
-  // No runs score if the third out ends the inning on a force / batter out (all our out plays qualify).
-  if (g.outs >= 3) runs = 0;
+  // No runs score if the third out ends the inning on a force / batter out. (A tag out on the bases is a time play: runs that
+  // crossed the plate before it count.)
+  if (g.outs >= 3) {
+    if (play.timePlay) {
+      const early = moves.filter((m) => !m.out && m.to >= 4 && m.before && oldBases[m.from - 1]);
+      runs = early.length;
+      scoredRunners.length = 0;
+      for (const m of early) scoredRunners.push(oldBases[m.from - 1]);
+    } else runs = 0;
+  }
   if (isHitResult(play.result)) g.hits[g.half]++;
   if (play.result === 'error' && g.errors) g.errors[g.half === 'top' ? 'bottom' : 'top']++; // reached on an error: the fielding team is charged
   addRuns(g, runs);
