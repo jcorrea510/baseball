@@ -1,7 +1,9 @@
 // Headless playtest: run many simulated games/derbies with a bot and print statistics + sanity checks.
-// usage: node scripts/sim.mjs [games=200] [errSd=14] [difficulty=pro]
+// usage: node scripts/sim.mjs [games=200] [errSd=14] [difficulty=pro] [park=sandlot]
 import { Engine } from '../src/game/engine.js';
 import { createBot } from '../src/game/bot.js';
+import { setPark } from '../src/physics/field.js';
+setPark(process.argv[5] || 'sandlot');
 
 const games = +(process.argv[2] || 200);
 const errSd = +(process.argv[3] || 14);

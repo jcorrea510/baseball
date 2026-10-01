@@ -26,9 +26,41 @@ export function sprayOf(x, z) {
   return Math.atan2(x, -z) / DEG;
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// The ballpark in use (config.parks): Sandlot Park unless setPark() picked another. Changing it changes the fence curve, the wall
+// heights, the air and the outline every fielder and every ball uses; the stadium is drawn again (render/scene.js setPark).
+// ---------------------------------------------------------------------------------------------------------------
+const SANDLOT = { fencePoints: CONFIG.field.fencePoints.map((p) => p.slice()), fenceHeight: CONFIG.field.fenceHeight, dragK: CONFIG.physics.dragK };
+const SPRAYS = [-45, -22.5, 0, 22.5, 45];
+let PARK = { id: 'sandlot', ...CONFIG.parks.list.sandlot };
+let WALLS = SPRAYS.map((a) => [a, SANDLOT.fenceHeight]);
+export const parkId = () => PARK.id;
+export const currentPark = () => PARK;
+/** Use ballpark `id` (a key of config.parks.list; unknown = Sandlot Park). Returns true when it changed. */
+export function setPark(id) {
+  const P = CONFIG.parks.list[id] ? id : 'sandlot';
+  if (P === PARK.id) return false;
+  const def = CONFIG.parks.list[P];
+  PARK = { id: P, ...def };
+  if (P === 'sandlot' || !def.fence) {
+    CONFIG.field.fencePoints = SANDLOT.fencePoints.map((p) => p.slice());
+    CONFIG.field.fenceHeight = SANDLOT.fenceHeight;
+    WALLS = SPRAYS.map((a) => [a, SANDLOT.fenceHeight]);
+  } else {
+    const k = CONFIG.parks.scale;
+    const fp = SPRAYS.map((a, i) => [a, def.fence[i] * k]).concat((def.extra || []).map(([a, d]) => [a, d * k]));
+    CONFIG.field.fencePoints = fp.sort((p, q) => p[0] - q[0]);
+    WALLS = SPRAYS.map((a, i) => [a, def.walls[i]]);
+    CONFIG.field.fenceHeight = def.walls[2];
+  }
+  CONFIG.physics.dragK = SANDLOT.dragK * (def.air || 1);
+  PLAYABLE = buildPlayable();
+  return true;
+}
+
 // Catmull-Rom through the fence control points so the wall curves smoothly.
-const pts = CONFIG.field.fencePoints;
 export function fenceDistance(sprayDeg) {
+  const pts = CONFIG.field.fencePoints;
   const a = Math.max(pts[0][0], Math.min(pts[pts.length - 1][0], sprayDeg));
   let i = 0;
   while (i < pts.length - 2 && a > pts[i + 1][0]) i++;
@@ -41,6 +73,21 @@ export function fenceDistance(sprayDeg) {
   return 0.5 * (2 * p1 + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (-p0 + 3 * p1 - 3 * p2 + p3) * t3);
 }
 
+/** How high the outfield wall is at this spray angle (a ball must clear it to be a home run). */
+export function fenceHeightAt(sprayDeg) {
+  const a = Math.max(-45, Math.min(45, sprayDeg));
+  let i = 0;
+  while (i < WALLS.length - 2 && a > WALLS[i + 1][0]) i++;
+  const [a0, h0] = WALLS[i], [a1, h1] = WALLS[i + 1];
+  const u = (a - a0) / (a1 - a0);
+  // (a wall height changes over a few feet, not gradually all the way between the five points)
+  const s = Math.max(0, Math.min(1, (u - 0.42) / 0.16));
+  return h0 + (h1 - h0) * s;
+}
+/** The tallest stretch of wall (for drawing). */
+export const maxFenceHeight = () => Math.max(...WALLS.map((w) => w[1]));
+
+/** (Sandlot Park's wall height; a park's walls vary - use fenceHeightAt.) */
 export const FENCE_HEIGHT = CONFIG.field.fenceHeight;
 
 // Fair territory: in front of the plate and between the foul lines.
@@ -51,9 +98,9 @@ export function isFairXZ(x, z) {
 // Height of the grandstand seating surface beyond the fence (`over` feet past the wall).
 // It rises at a constant slope, then flattens into the "roof" level; a ball must
 // clear that level to leave the park entirely.
-export function standsHeight(over) {
+export function standsHeight(over, sprayDeg = 0) {
   const s = CONFIG.field.stands;
-  return CONFIG.field.fenceHeight + Math.min(Math.max(over, 0), s.depth) * s.slope;
+  return fenceHeightAt(sprayDeg) + Math.min(Math.max(over, 0), s.depth) * s.slope;
 }
 
 export function distanceFromHome(x, z) {
@@ -94,7 +141,7 @@ export function dugoutSpot(sd) {
   };
 }
 
-const PLAYABLE = (() => {
+function buildPlayable() {
   const poly = [];
   for (let a = -45; a <= 45.0001; a += 1.5) { const p = polar(a, fenceDistance(a)); poly.push([p.x, p.z]); } // left pole -> right pole
   const S = Math.SQRT1_2;
@@ -109,7 +156,8 @@ const PLAYABLE = (() => {
   };
   const back = [[46, 78], [24, 92], [0, 96], [-24, 92], [-46, 78]];
   return poly.concat(side(1), back, side(-1).reverse());
-})();
+}
+let PLAYABLE = buildPlayable();
 
 function pointInPolygon(x, z, poly) {
   let inside = false;

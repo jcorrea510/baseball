@@ -1,7 +1,8 @@
 // Builds the whole ballpark: field, chalk, wall, stands, dugouts, light towers, scoreboard, crowd.
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
-import { BASE_XZ, fenceDistance, polar, dugoutSpot, DUGOUT } from '../physics/field.js';
+import { BASE_XZ, fenceDistance, polar, dugoutSpot, DUGOUT, currentPark } from '../physics/field.js';
+import { MLB_TEAMS } from '../game/mlb.js';
 import { buildPerimeter, ribbonGeometry, groundStripGeometry } from './perimeter.js';
 import { grassTexture, dirtTexture, infieldTexture, wallTexture, seatTexture, softDotTexture, makeCanvas, toTexture } from './textures.js';
 import { createScoreboard } from './scoreboard.js';
@@ -60,6 +61,7 @@ export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {
   {
     const detail = dirtTexture('#c8c8c8', 256, 17);
     detail.repeat.set(1, 1);
+    infield.material.userData.extraTextures = [detail]; // (freed with the stadium, see scene.js disposeTree)
     infield.material.onBeforeCompile = (shader) => {
       shader.uniforms.uDetail = { value: detail };
       shader.vertexShader = shader.vertexShader
@@ -205,19 +207,32 @@ export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {
     const inset = a === -45 ? 12 : a === 45 ? -12 : 0;
     return { s: best.s - ofPts[0].s + inset, text: String(Math.round(fenceDistance(a))) };
   });
-  const wTex = wallTexture(ofLen, F.fenceHeight, markers);
+  // (the padded wall with its signs is as high as the lowest stretch of wall; where the park's wall is taller - a Green Monster -
+  // it goes on up in the park's wall colour)
+  const park = currentPark();
+  const wallColor = park.wall || '#0f3d24';
+  const baseH = Math.min(...ofPts.map((p) => p.h0));
+  const wTex = wallTexture(ofLen, baseH, markers, wallColor);
   const wallOfPts = ofPts.map((p) => ({ ...p, s: p.s - ofPts[0].s }));
   const wall = new THREE.Mesh(
-    ribbonGeometry(wallOfPts, { y0: 0, y1: F.fenceHeight, uPerFt: 1 / ofLen, vScale: 1 }),
+    ribbonGeometry(wallOfPts, { y0: 0, y1: baseH, uPerFt: 1 / ofLen, vScale: 1 }),
     new THREE.MeshStandardMaterial({ map: wTex, roughness: 0.9, side: THREE.DoubleSide })
   );
   wall.receiveShadow = true;
   root.add(wall);
+  if (ofPts.some((p) => p.h0 > baseH + 0.05)) {
+    const upper = new THREE.Mesh(
+      ribbonGeometry(wallOfPts, { y0: baseH, y1: (p) => p.h0, uPerFt: 0.05 }),
+      new THREE.MeshStandardMaterial({ color: new THREE.Color(wallColor).multiplyScalar(1.45), roughness: 0.92, side: THREE.DoubleSide })
+    );
+    upper.receiveShadow = true;
+    root.add(upper);
+  }
   void arc;
 
   // foul-territory / back walls (padded, plain)
   const foulPts = perimeter.filter((p) => p.kind !== 'of');
-  const foulWallMat = new THREE.MeshStandardMaterial({ color: 0x14361f, roughness: 0.9, side: THREE.DoubleSide });
+  const foulWallMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(wallColor).multiplyScalar(1.2), roughness: 0.9, side: THREE.DoubleSide });
   const foulWall = new THREE.Mesh(ribbonGeometry(foulPts, { y0: 0, y1: (p) => p.h0, uPerFt: 0.05 }), foulWallMat);
   foulWall.receiveShadow = true;
   root.add(foulWall);
@@ -246,7 +261,10 @@ export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {
     const col = new Float32Array(n * K * 3);
     const idx = [];
     const c = new THREE.Color();
-    const seatColor = { of: '#2f5f9f', foul: '#3a6fb0', back: '#284a7c' };
+    // seats: blue at Sandlot Park; in a club's park they take a shade of the club's colour
+    const club = MLB_TEAMS.find((t) => t.id === park.id);
+    const tint = (k) => (club ? '#' + new THREE.Color('#5a6270').lerp(new THREE.Color(club.color), 0.62).multiplyScalar(k).getHexString() : null);
+    const seatColor = club ? { of: tint(0.95), foul: tint(1.05), back: tint(0.85) } : { of: '#2f5f9f', foul: '#3a6fb0', back: '#284a7c' };
     for (let i = 0; i < n; i++) {
       const p = perimeter[i];
       c.set(seatColor[p.kind]);
@@ -359,7 +377,7 @@ export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {
       ctx.fillStyle = '#16284a'; ctx.fillRect(0, 0, 1024, 64);
       ctx.fillStyle = '#ffb52e'; ctx.fillRect(0, 6, 1024, 4); ctx.fillRect(0, 54, 1024, 4);
       ctx.fillStyle = '#f5f7fc'; ctx.font = 'italic 900 34px Arial Black, Arial, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('SANDLOT PARK', 512, 33);
+      ctx.fillText(currentPark().name.toUpperCase(), 512, 33);
       return new THREE.MeshStandardMaterial({ map: toTexture(canvas, { anisotropy: 4 }), roughness: 0.7 });
     })();
     const D = DUGOUT.depth, back = -3, Hh = 7.6;

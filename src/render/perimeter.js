@@ -2,9 +2,8 @@
 // points with outward normals. Stands, walls, warning track and crowd all hang off it.
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
-import { fenceDistance, polar } from '../physics/field.js';
+import { fenceDistance, fenceHeightAt, polar } from '../physics/field.js';
 
-const F = CONFIG.field;
 
 // kind: 'of' = outfield fence (exact fence curve used by the physics), 'foul' = foul territory wall, 'back' = behind home
 export function buildPerimeter() {
@@ -15,7 +14,7 @@ export function buildPerimeter() {
     const d = fenceDistance(a);
     const p = polar(a, d);
     const len = Math.hypot(p.x, p.z);
-    pts.push({ x: p.x, z: p.z, nx: p.x / len, nz: p.z / len, h0: F.fenceHeight, kind: 'of', a });
+    pts.push({ x: p.x, z: p.z, nx: p.x / len, nz: p.z / len, h0: fenceHeightAt(a), kind: 'of', a });
   }
   const pole = (side) => polar(45 * side, fenceDistance(45 * side));
 

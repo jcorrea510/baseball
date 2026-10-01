@@ -360,6 +360,7 @@ export class UI {
         <div class="grp"><span class="label">Level</span>${seg('difficulty', DIFFICULTIES.map((d) => [d, CONFIG.difficulty[d].label]), st.difficulty)}</div>
         <div class="grp"><span class="label">Time</span>${seg('tod', [['day', 'Day'], ['dusk', 'Dusk'], ['night', 'Night']], st.tod)}</div>
         <div class="grp"><span class="label">Bats</span>${seg('hand', [['auto', 'Mixed'], ['R', 'Right'], ['L', 'Left']], st.hand)}</div>
+        <div class="grp"><span class="label">Park</span><div class="cycler"><button data-a="parkPrev" aria-label="Previous park">${icon('chevLeft')}</button><span>${(CONFIG.parks.list[st.park] || CONFIG.parks.list.sandlot).name}</span><button data-a="parkNext" aria-label="Next park">${icon('chevRight')}</button></div></div>
       </div>`;
     s.appendChild(wrap);
     if (prev) wrap.scrollTop = prev.scrollTop;

@@ -6,7 +6,7 @@ import { CONFIG } from '../config.js';
 export const DEFAULT_SAVE = () => ({
   v: 1,
   settings: {
-    difficulty: 'pro', tod: 'dusk', zone: true, pitchGuide: true, landingRing: true, umpire: 'on', hand: 'auto', sound: true, shake: true, howtoSeen: false, aimAssistHint: true,
+    difficulty: 'pro', tod: 'dusk', park: 'sandlot', zone: true, pitchGuide: true, landingRing: true, umpire: 'on', hand: 'auto', sound: true, shake: true, howtoSeen: false, aimAssistHint: true,
     // sound: master volume and the three channels under it (0..1)
     volume: 0.8, sfxVolume: 1, umpireVolume: 1, crowdVolume: 1,
     flashes: true, // white screen flashes on big hits (off = calmer screen)

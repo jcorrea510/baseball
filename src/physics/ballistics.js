@@ -4,7 +4,7 @@
 // picture just replays it - it never depends on frame rate.
 import { CONFIG, MPH } from '../config.js';
 import { DEG } from '../util/math.js';
-import { fenceDistance, sprayOf, standsHeight, isFairXZ, isInsideField, seatsAt, BASE_XZ, FENCE_HEIGHT } from './field.js';
+import { fenceDistance, fenceHeightAt, sprayOf, standsHeight, isFairXZ, isInsideField, seatsAt, BASE_XZ } from './field.js';
 
 const BASE_DEPTH = BASE_XZ[1][1] * -1; // how far from the plate the 1st/3rd base bags are (in -z)
 
@@ -105,7 +105,7 @@ export function simulateBattedBall(p, cfg = CONFIG, opts = {}) {
       if (inFenceArc) {
         const dW = fenceDistance(spray);
         if (!cleared && rho >= dW - r * 0.5) {
-          if (y > FENCE_HEIGHT) {
+          if (y > fenceHeightAt(spray)) {
             cleared = true;
             homerun = { t, x, y, z };
           } else {
@@ -128,7 +128,7 @@ export function simulateBattedBall(p, cfg = CONFIG, opts = {}) {
         }
         if (cleared) {
           const over = rho - dW;
-          if (over > 0 && y <= standsHeight(over) + r) {
+          if (over > 0 && y <= standsHeight(over, spray) + r) {
             standsLanding = { t, x, y, z };
             if (contactTime === null) contactTime = t;
             stopped = true;

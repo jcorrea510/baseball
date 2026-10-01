@@ -19,10 +19,10 @@ When a batter comes up you see the whole field; press **Ready** and the camera z
 | **Move the mouse** (phones: drag a finger anywhere) | Move the see-through bat - its yellow ring (the sweet spot) follows you |
 | **Click** or **Spacebar** (phones: the round **Swing** button, or a tap while the pitch is on its way) | Swing (or press **Ready** when a new batter comes up) |
 | **Arrow keys** | Move the bat without a mouse |
-| **Click a base** on the diamond in the corner, or **2 / 3 / 4** (**H** = home) | Send a runner on to that base during a hit |
-| **B** or the **Bunt** button | Square around to bunt |
+| **Click a base** on the diamond in the corner, or **2 / 3 / 4** (**H** = home) | Send a runner on to that base - click it again (it says **Back**) to call him back |
+| **B** or the **Bunt** button | Square around to bunt - he puts the bunt down by himself when the pitch comes |
 | **S** or the **Steal** button | Send the runners on the next pitch |
-| Tap / click during a play | Fast-forward the play (not while you can still send runners) |
+| **Space** during a play | Fast-forward the play (a click or tap never does, so sending a runner can't skip it by accident) |
 | **Esc** or **P** | Pause (and back out of any menu) |
 | **M** | Mute |
 | **F** | Full screen (there is a button for it, too) |
@@ -33,13 +33,13 @@ When a batter comes up you see the whole field; press **Ready** and the camera z
 **Two skills:** put the bat where the ball will be, and swing so the bat gets there at the same moment.
 
 * **The pitch guide** - the soft circle over the strike zone - appears just after the ball leaves the pitcher's hand and homes in on where the pitch will cross: put the bat's yellow ring on it. (It is less sure on harder levels, and a curveball's drop shows up a moment later.)
-* **Where the bat meets the ball decides where it goes.** The bat a little *under* the middle of the ball sends it up and far - that is where home runs come from. Square on the middle: a line drive. On top of the ball: a ground ball. Way under it: a pop-up. The bat touches the ball anywhere inside its faint outline, but only the middle of it squares the ball up; near the edge you just get a piece of it (a foul tip, a pop-up, a chopper). Miss it by more than the bat's reach and you swing right through (the swing then tells you: *Under it*, *Over it*, *Off the end*, *Jammed*).
+* **Where the bat meets the ball decides where it goes.** The bat a little *under* the middle of the ball sends it up and far - that is where home runs come from. Square on the middle: a line drive. On top of the ball: a ground ball. Way under it: a pop-up. Only the middle of the barrel squares the ball up; off it you just get a piece of it (a foul tip, a pop-up, a chopper). Miss it by more than the bat's reach and you swing right through (the swing then tells you: *Under it*, *Over it*, *Off the end*, *Jammed*).
 * **Timing:** PERFECT is the hardest-hit ball, GOOD is solid; early swings *pull* the ball, late swings push it the other way. A small meter shows exactly how many milliseconds early or late you were.
-* After every swing the see-through bat stays where you swung for a moment, and a ring shows where the ball really was (green: hit, red: miss) - so you can see what went wrong.
+* After every swing the see-through bat stays where you swung for a moment, and the real bat swings through that exact spot.
 
 **Swing or take?** Pitches far outside the strike zone are hard to hit well, and some (way off the plate, in the dirt, high heat) cannot be hit at all. The **pitch guide** (a soft circle over the strike zone) shows where the pitch is heading in time to decide - but you can also just watch the ball: it is drawn big, with a dark rim, a shadow on the ground and a streak behind it; on Rookie and Pro the pitch type is named as it leaves his hand. On harder levels the guide is less sure and curveballs and sliders reveal their break late - but it never tells you anything before the ball is thrown.
 
-**Running the bases:** on their own, runners only ever take **one base** (the batter stops at first; on a ball to the outfield they round the bag and wait just past it). Once a hit is down, a small **diamond** appears in the corner with a dot for every runner: the bases you can send someone to glow - tap one and the runner heading for the base before it keeps going. The fielders see it and throw at whoever they can get, so send him early on a ball in the gap, and not on a routine single (he will be tagged out). The diamond goes away when the fielder is ready to throw.
+**Running the bases:** on their own, runners only ever take **one base** (the batter stops at first; on a ball to the outfield they round the bag and wait just past it). The moment the ball is hit a small **diamond** appears in the corner with a dot for every runner - on every ball, so it never gives away whether a fly ball will be caught. The bases you can send someone to glow: tap one and the runner heading for the base before it goes. Tap it again (it shows **Back**) and he goes back. On a fly ball your runners go part of the way and wait (the man on third goes back to tag up); send one before the catch and he has to get back if it is caught - he can be doubled off. After a catch you can send runners to **tag up**. The fielders throw at whoever they can get: a runner who is beaten slides into the tag and is called out, and the banner says so (*Out at 2nd*). When it is plainly safe - a ball rattling around the corner - a runner takes the extra base by himself. The diamond goes away a moment after the fielder is ready to throw.
 
 **Strategy:** bunt to move a runner up (a sacrifice), steal a base (your runner goes with the pitcher's first move - the catcher's throw decides it), or send the runners and swing for a hit-and-run. Watch out: a runner who is going when a line drive is caught can be doubled off. Fielders make the odd error, too.
 
@@ -47,11 +47,12 @@ Two helpers can be switched on and off: the **pitch guide** and the **landing ri
 
 ## What's in the game
 
-* **League** - pick one of thirty teams (your own club and its stars, with real city and colours). You play your four division rivals and four teams from a neighbouring division: 8 or 16 games of 6 innings, weakest teams first and the best last. The other games are played out for the standings. The top four make the playoffs: a one-game semifinal, then a best-of-three **World Series**. Every game earns **coins** (more for wins, playoff wins and a title); spend them in the **Shop** on better players - now and then a star from another team is on the block. Every player has **Contact** (bigger timing windows), **Power** (the ball comes off harder) and **Speed** (he really runs faster). The **Roster** screen shows ratings and season numbers - tap two players to swap them in the batting order or bring one off the bench. You always bat in the bottom of the inning. A game is saved at every pitch: quit whenever you like and **Resume** puts you back at the same pitch (it cannot be re-rolled). Win it all and the league gets tougher next year; your roster and coins carry over.
+* **League** - pick one of the thirty big-league clubs, with their real names, colours and best hitters (whose Contact / Power / Speed come from last season's average, home runs and steals; the team card shows those numbers). Home games are played in your club's own ballpark. You play your four division rivals and four teams from a neighbouring division: 8 or 16 games of 6 innings, weakest teams first and the best last. The other games - in your race and around both leagues - are played out, and the **Standings** show all thirty clubs in their six divisions. The top four of your race make the playoffs: a one-game semifinal, then a best-of-three **World Series**. Every game earns **coins** (more for wins, playoff wins and a title); spend them in the **Shop** on better players - now and then a star from another team is on the block. Every player has **Contact** (bigger timing windows), **Power** (the ball comes off harder) and **Speed** (he really runs faster). The **Roster** screen shows ratings and season numbers - tap two players to swap them in the batting order or bring one off the bench. You always bat in the bottom of the inning. A game is saved at every pitch: quit whenever you like and **Resume** puts you back at the same pitch (it cannot be re-rolled). Win it all and the league gets tougher next year; your roster and coins carry over.
 * **Quick Game** - 3 innings against the computer, with balls and strikes, outs, runners, runs and a real scoreboard. It is saved at every pitch: the Quick Game tile then shows **Resume** and **New game** (and the pause menu has Restart). The computer's half-innings are played out instantly as a short highlights list. Tied after 3? Extra innings, starting with a runner on second base, and walk-off wins.
 * **Home Run Derby** - 10 outs. Anything that is not a home run costs an out (on Rookie, fouls and misses are free). Taking a pitch is free.
 * **Practice** - pick the pitch type, speed and location. Runners stay on base and the runs of the session are counted, but nobody is ever out for good.
 * **3 levels** - *Rookie* (slow pitches, big timing windows, pitch names shown), *Pro* (real speeds, a mix of pitches), *All-Star* (fast, tricky, tiny windows - watch the pitcher's arm for tells).
+* **31 ballparks** - Sandlot Park and every club's park, with its real shape and wall heights (Fenway's Green Monster, the short porch in Houston, Oracle's tall right-field wall, Wrigley's ivy; Coors Field's thin air carries the ball). Pick one on the Play screen (**Park**) for a Quick Game, the Derby or Practice; League games are at your club's park.
 * **Unlockable bats and uniforms** for milestones (hits, home runs, wins, long bombs) in the *Locker*, and **career stats and records** saved on your device.
 
 ### Settings
@@ -131,13 +132,14 @@ If something feels too hard, too easy, too slow or too fast, open **`src/config.
 | Timing too strict / too forgiving | `timing.perfectMs`, `timing.goodMs`, `timing.earlyMs`, `timing.lateMs`, or `difficulty.<level>.windowScale` |
 | Pitches too fast / too slow | `difficulty.<level>.fastball` (speed range in mph) |
 | Hard to tell whether to swing | `difficulty.<level>.guide` (when the pitch guide shows up and how sure it is), `difficulty.<level>.typeAtRelease` |
-| Home runs too rare / too common | `field.fencePoints` (fence distances), `contact.maxExitVelocity`, `bat.*` (how the bat and ball collide) |
+| Home runs too rare / too common | `field.fencePoints` (Sandlot Park's fence), `parks.scale` (the other parks), `contact.maxExitVelocity`, `bat.*` (how the bat and ball collide) |
 | Bat too hard / too easy to put on the ball | `difficulty.<level>.contactWindow` (how far from the sweet spot still touches the ball), `difficulty.<level>.sweetSpot` (the part that squares it up), `swing.*` |
 | Pitches arrive too fast to react (the speed shown stays the same) | `difficulty.<level>.pitchPace` |
 | The circle shows up too late / is too far off | `difficulty.<level>.guide` (`fadeIn`, `sharpen`, `floor`) |
 | The see-through bat (colour, see-through, how fast it follows) | `batAim.*` |
 | The batting camera | `camera.catcher` |
-| Sending runners too easy / too hard | `runner.sendTag`, `runner.sendReact`, `runner.roundPast`, `runner.sendLead` |
+| Sending runners too easy / too hard | `runner.sendTag`, `runner.sendReact`, `runner.roundPast`, `runner.sendLead`, `runner.sendAfter` (how long the diamond stays up), `runner.halfway`, `runner.autoMargin` |
+| A park too easy / too hard to hit it out of | `parks.list.<park>` (fence distances, wall heights, air), `parks.scale` (all the big-league parks at once) |
 | Bunts too easy / too hard | `bunt.*` |
 | Steals too easy / too hard | `difficulty.<level>.catcherArm`, `steal.jump`, `runner.lead` |
 | Too many / too few errors | `fielding.errors`, `difficulty.<level>.errorScale` |

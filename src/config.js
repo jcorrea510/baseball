@@ -42,6 +42,48 @@ export const CONFIG = {
     stands: { slope: 0.62, depth: 70 },
   },
 
+  // Ballparks. Sandlot Park is the field above. The big-league parks have their real shapes and wall heights - distances
+  // down the left-field line, left-center, center, right-center and the right-field line (ft), wall heights at the same five
+  // places - made `scale` times as big so home runs stay about as common as at Sandlot Park. `extra`: more [spray angle, ft]
+  // points for odd corners (Fenway's triangle, Oracle's Triples Alley). `air`: x the air drag - thinner air at Coors Field carries the ball, the damp night air at Oracle Park holds it up.
+  // `wall`: the padding colour. Each club plays its League home games in its own park.
+  parks: {
+    scale: 0.96,
+    list: {
+      sandlot: { name: 'Sandlot Park', wall: '#0f3d24' },
+      bal: { name: 'Camden Yards', fence: [333, 384, 400, 373, 318], walls: [13, 13, 7, 7, 25], wall: '#123a2a' },
+      bos: { name: 'Fenway Park', fence: [310, 379, 390, 380, 302], walls: [37, 37, 17, 5, 3], extra: [[16, 420]], wall: '#1f5232' },
+      nyy: { name: 'Yankee Stadium', fence: [318, 399, 408, 385, 314], walls: [8, 8, 8, 8, 8], wall: '#14213a' },
+      tb: { name: 'Tropicana Field', fence: [315, 370, 404, 370, 322], walls: [11, 9, 9, 9, 11], wall: '#1b2a49' },
+      tor: { name: 'Rogers Centre', fence: [328, 368, 400, 359, 328], walls: [14, 12, 10, 12, 14], wall: '#163a6b' },
+      cws: { name: 'Rate Field', fence: [330, 377, 400, 372, 335], walls: [8, 8, 8, 8, 8], wall: '#1b1d22' },
+      cle: { name: 'Progressive Field', fence: [325, 370, 400, 375, 325], walls: [19, 19, 9, 9, 9], wall: '#173248' },
+      det: { name: 'Comerica Park', fence: [345, 370, 412, 365, 330], walls: [7, 7, 7, 7, 8], wall: '#14243a' },
+      kc: { name: 'Kauffman Stadium', fence: [330, 387, 410, 387, 330], walls: [9, 9, 9, 9, 9], wall: '#1a3554' },
+      min: { name: 'Target Field', fence: [339, 377, 404, 365, 328], walls: [8, 8, 8, 23, 23], wall: '#1d2633' },
+      hou: { name: 'Daikin Park', fence: [315, 362, 409, 373, 326], walls: [21, 21, 10, 10, 7], wall: '#1f2a3c' },
+      laa: { name: 'Angel Stadium', fence: [330, 387, 396, 370, 330], walls: [5, 8, 8, 18, 18], wall: '#163b2c' },
+      ath: { name: 'Sutter Health Park', fence: [330, 388, 403, 388, 325], walls: [8, 8, 8, 8, 8], wall: '#174233' },
+      sea: { name: 'T-Mobile Park', fence: [331, 378, 401, 381, 326], walls: [8, 8, 8, 8, 8], wall: '#14342e' },
+      tex: { name: 'Globe Life Field', fence: [329, 372, 407, 374, 326], walls: [14, 8, 8, 8, 8], wall: '#152d4f' },
+      atl: { name: 'Truist Park', fence: [335, 385, 400, 375, 325], walls: [6, 6, 8, 16, 16], wall: '#14234a' },
+      mia: { name: 'loanDepot park', fence: [344, 386, 400, 387, 335], walls: [7, 7, 11, 7, 7], wall: '#11303d' },
+      nym: { name: 'Citi Field', fence: [335, 370, 408, 375, 330], walls: [8, 8, 8, 8, 8], wall: '#151a1f' },
+      phi: { name: 'Citizens Bank Park', fence: [329, 374, 401, 369, 330], walls: [11, 11, 6, 13, 13], wall: '#183d2a' },
+      wsh: { name: 'Nationals Park', fence: [337, 377, 402, 370, 335], walls: [8, 8, 8, 14, 14], wall: '#1b2440' },
+      chc: { name: 'Wrigley Field', fence: [355, 368, 400, 368, 353], walls: [11.5, 11.5, 11.5, 11.5, 11.5], wall: '#2c5a24' },
+      cin: { name: 'Great American Ball Park', fence: [328, 379, 404, 370, 325], walls: [12, 12, 8, 8, 8], wall: '#1a1d23' },
+      mil: { name: 'American Family Field', fence: [344, 371, 400, 374, 345], walls: [8, 8, 8, 8, 8], wall: '#1a2a44' },
+      pit: { name: 'PNC Park', fence: [325, 383, 399, 375, 320], walls: [6, 6, 10, 21, 21], wall: '#191c21' },
+      stl: { name: 'Busch Stadium', fence: [336, 375, 400, 375, 335], walls: [8, 8, 8, 8, 8], wall: '#143a28' },
+      ari: { name: 'Chase Field', fence: [330, 374, 407, 374, 334], walls: [8, 8, 25, 8, 8], wall: '#202024' },
+      col: { name: 'Coors Field', fence: [347, 390, 415, 375, 350], walls: [8, 8, 8, 14, 17], wall: '#173326', air: 0.96 },
+      lad: { name: 'Dodger Stadium', fence: [330, 375, 395, 375, 330], walls: [8, 8, 8, 8, 8], wall: '#123a6b' },
+      sd: { name: 'Petco Park', fence: [334, 357, 396, 382, 322], walls: [8, 8, 8, 8, 8], wall: '#12283f' },
+      sf: { name: 'Oracle Park', fence: [339, 364, 399, 415, 309], walls: [8, 8, 8, 20, 25], wall: '#18291f', air: 1.08 },
+    },
+  },
+
   // --------------------------------------------------------------------------
   //  Physics for the batted ball
   // --------------------------------------------------------------------------

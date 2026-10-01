@@ -23,6 +23,8 @@ import { BatAim } from './render/batAim.js';
 import { landingSpot, landingRing } from './game/landing.js';
 import * as SEA from './game/season.js';
 import { runnerState, runnerProfile } from './game/runnerMotion.js';
+import { currentPark } from './physics/field.js';
+const parkName = () => currentPark().name.toUpperCase();
 
 // scorekeeping numbers for the error banner (E6 = an error by the shortstop)
 const POSITION_NUMBER = { P: 1, C: 2, '1B': 3, '2B': 4, '3B': 5, SS: 6, LF: 7, CF: 8, RF: 9 };
@@ -204,6 +206,12 @@ export class App {
           this.ui.show('locker');
         }
         break;
+      case 'parkPrev': case 'parkNext': {
+        const ids = Object.keys(CONFIG.parks.list);
+        const i = Math.max(0, ids.indexOf(this.settings.park || 'sandlot'));
+        this.settings.park = ids[(i + (a === 'parkNext' ? 1 : ids.length - 1)) % ids.length];
+        this.prog.save(); this.audio.uiClick(); this.ui.buildModes(this.prog); break;
+      }
       case 'quickNew': this.audio.uiClick(); this.clearQuickSave(); this.startGame('quick'); break;
       case 'start': this.audio.uiClick(); if (d.mode === 'season') this.openMenu('season'); else this.startGame(d.mode); break;
       // ---- season
@@ -325,7 +333,7 @@ export class App {
     const sea = this.prog.data.season;
     if (this.quickSave && !this.seasonGame) {
       // a Quick Game is saved at every pitch too (not before the first one: a game nobody has started is not worth resuming)
-      if (st.pitchCount > 0) { this.prog.data.quick = { seed: this.quickSave.seed, difficulty: this.quickSave.difficulty, state: st }; this.prog.save(); }
+      if (st.pitchCount > 0) { this.prog.data.quick = { seed: this.quickSave.seed, difficulty: this.quickSave.difficulty, park: this.quickSave.park, state: st }; this.prog.save(); }
       return;
     }
     if (!this.seasonGame || !sea) return;
@@ -410,9 +418,12 @@ export class App {
     let quickResume = null;
     if (mode === 'quick' && !extra && !this.params.get('bot') && !this.params.get('seed')) {
       const q = this.prog.data.quick;
-      if (q && q.state && q.state.game) { quickResume = q.state; this.quickSave = { seed: q.seed, difficulty: q.difficulty }; }
-      else this.quickSave = { seed: (Math.random() * 2 ** 32) >>> 0, difficulty: st.difficulty };
+      if (q && q.state && q.state.game) { quickResume = q.state; this.quickSave = { seed: q.seed, difficulty: q.difficulty, park: q.park }; }
+      else this.quickSave = { seed: (Math.random() * 2 ** 32) >>> 0, difficulty: st.difficulty, park: st.park || 'sandlot' };
     }
+    // the ballpark: a League game in your club's own park, a resumed Quick Game where it started, anything else where you chose
+    const park = extra ? (this.prog.data.season && this.prog.data.season.teamId) || 'sandlot' : (this.quickSave && this.quickSave.park) || st.park || 'sandlot';
+    this.S.setPark(park);
     const eng = new Engine({
       mode, difficulty: this.quickSave ? this.quickSave.difficulty : st.difficulty,
       hand: st.hand, inputDelayMs: st.inputDelayMs,
@@ -838,20 +849,20 @@ export class App {
   updateScoreboard() {
     const e = this.engine;
     const sb = this.S.stadium.scoreboard;
-    if (!e) { sb.set({ mode: 'quick', title: 'SANDLOT PARK', teams: [{ abbr: 'SLG', color: PLAYER_TEAM.color, runs: [], R: 0, H: 0, E: 0 }, { abbr: '---', runs: [], R: 0, H: 0, E: 0 }], count: { b: 0, s: 0, o: 0 }, innings: 3, message: 'PLAY BALL!', flash: 0 }); return; }
+    if (!e) { sb.set({ mode: 'quick', title: parkName(), teams: [{ abbr: 'SLG', color: PLAYER_TEAM.color, runs: [], R: 0, H: 0, E: 0 }, { abbr: '---', runs: [], R: 0, H: 0, E: 0 }], count: { b: 0, s: 0, o: 0 }, innings: 3, message: 'PLAY BALL!', flash: 0 }); return; }
     if (e.mode === 'quick' && e.game) {
       const g = e.game;
       const ls = lineScore(g);
       sb.set({
-        mode: 'quick', title: 'SANDLOT PARK', innings: Math.max(g.innings, g.inning), inning: g.inning, half: g.half,
+        mode: 'quick', title: parkName(), innings: Math.max(g.innings, g.inning), inning: g.inning, half: g.half,
         teams: [{ abbr: e.opponent.abbr, color: e.opponent.color, runs: ls.top, R: g.score.top, H: g.hits.top, E: (g.errors || {}).top || 0 }, { abbr: e.playerTeam.abbr, color: e.playerTeam.color, runs: ls.bottom, R: g.score.bottom, H: g.hits.bottom, E: (g.errors || {}).bottom || 0 }],
         count: { b: g.balls, s: g.strikes, o: g.outs },
       });
     } else if (e.mode === 'derby') {
-      sb.set({ mode: 'derby', title: 'SANDLOT PARK', derby: { hr: e.derby.hr, outsLeft: Math.max(0, e.derby.maxOuts - e.derby.outs), longest: e.derby.longest, streak: e.derby.streak } });
+      sb.set({ mode: 'derby', title: parkName(), derby: { hr: e.derby.hr, outsLeft: Math.max(0, e.derby.maxOuts - e.derby.outs), longest: e.derby.longest, streak: e.derby.streak } });
     } else {
       const ps = e.practiceState();
-      sb.set({ mode: 'practice', title: 'SANDLOT PARK', practice: { runs: ps.runs, hits: ps.hits } });
+      sb.set({ mode: 'practice', title: parkName(), practice: { runs: ps.runs, hits: ps.hits } });
     }
   }
 

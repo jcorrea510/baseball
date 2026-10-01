@@ -206,14 +206,16 @@ export function infieldTexture(dirtHex = '#a9714a') {
 
 // Outfield wall texture: padded green panels, distance numbers, fictional sponsor boards.
 // markers: [{ s: arc-length position in ft, text: '390' }]
-export function wallTexture(lengthFt, heightFt, markers = []) {
+export function wallTexture(lengthFt, heightFt, markers = [], color = '#0f3d24') {
   const w = 4096, h = 256;
   const { canvas, ctx } = makeCanvas(w, h);
   const sx = w / lengthFt, sy = h / heightFt;
-  ctx.fillStyle = '#0f3d24'; ctx.fillRect(0, 0, w, h);
-  // padded panels
+  ctx.fillStyle = color; ctx.fillRect(0, 0, w, h);
+  // padded panels (a touch lighter and darker than the wall colour)
+  const shade = (k) => { const n = parseInt(color.slice(1), 16); const f = (v) => Math.max(0, Math.min(255, Math.round(v * k))).toString(16).padStart(2, '0'); return '#' + f((n >> 16) & 255) + f((n >> 8) & 255) + f(n & 255); };
+  const panelA = shade(1.14), panelB = shade(0.92);
   for (let x = 0; x < lengthFt; x += 8) {
-    ctx.fillStyle = (Math.floor(x / 8) % 2) ? '#124529' : '#0e3a21';
+    ctx.fillStyle = (Math.floor(x / 8) % 2) ? panelA : panelB;
     ctx.fillRect(x * sx, 0, 8 * sx, h);
     ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(x * sx, 0, 1.4, h);
   }

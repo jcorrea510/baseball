@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { createEnvironment } from './environment.js';
 import { buildStadium } from './stadium.js';
+import { setPark } from '../physics/field.js';
 
 export function detectMobile() {
   const ua = navigator.userAgent || '';
@@ -63,10 +64,36 @@ export function createScene(canvas, opts = {}) {
     }
   }
 
-  return {
+  const S = {
     renderer, scene, camera, env, stadium, size, isMobile,
+    /** Play in ballpark `id`: the field's shape changes and the stadium is built again (the old one is thrown away). */
+    setPark(id) {
+      if (!setPark(id)) return false;
+      scene.remove(S.stadium.root);
+      disposeTree(S.stadium.root);
+      S.stadium = buildStadium({ isMobile, crowdCount: isMobile ? Q.crowdCountMobile : Q.crowdCount });
+      scene.add(S.stadium.root);
+      return true;
+    },
     get pixelRatio() { return pixelRatio; },
     resize,
     adapt,
   };
+  return S;
+}
+
+// Free everything a group of meshes holds on the graphics card (geometries, materials, their textures).
+function disposeTree(root) {
+  const mats = new Set();
+  root.traverse((o) => {
+    if (o.geometry) o.geometry.dispose();
+    const m = o.material;
+    if (Array.isArray(m)) m.forEach((x) => mats.add(x)); else if (m) mats.add(m);
+  });
+  for (const m of mats) {
+    for (const k of Object.keys(m)) { const v = m[k]; if (v && v.isTexture) v.dispose(); }
+    if (m.uniforms) for (const u of Object.values(m.uniforms)) if (u && u.value && u.value.isTexture) u.value.dispose();
+    for (const t of (m.userData && m.userData.extraTextures) || []) t.dispose();
+    m.dispose();
+  }
 }
