@@ -71,7 +71,7 @@ describe('how a fly ball is caught', () => {
   it('never above his reach, never asks for a jump higher than he can make, and a catch he can make standing has no leap', () => {
     const rng = createRng(7);
     let leapsSeen = 0;
-    for (let i = 0; i < 800; i++) {
+    for (let i = 0; i < 1600; i++) {
       const { plan: p } = plan(rng.range(62, 106), rng.range(18, 62), rng.range(-42, 42));
       if (!p.caught) continue;
       expect(p.catchPos.y).toBeLessThanOrEqual(F.reachHeight + 1e-9);

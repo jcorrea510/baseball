@@ -56,6 +56,7 @@ export const CONFIG = {
     stopSpeed: 0.8, // ft/s: below this a rolling ball is "stopped"
     wallRestitution: 0.34,
     wallFriction: 0.72,
+    netHeight: 28, // ft: the backstop net behind home plate (a foul ball back over the catcher hits it, or goes over into the crowd)
     dt: 1 / 240, // fixed physics step (do not tie to frame rate)
     maxTime: 16,
   },
@@ -142,32 +143,57 @@ export const CONFIG = {
   //  Contact: how timing + pitch location become exit velocity / angles
   // --------------------------------------------------------------------------
   contact: {
-    maxExitVelocity: 109, // mph on a perfect hit
+    maxExitVelocity: 112, // mph: about the hardest a ball comes off the bat (for the "how well was it hit" readouts)
     exitVelocityFloor: 38,
-    pitchSpeedBonus: 0.16, // extra mph of exit velocity per mph of pitch speed above 85
-    qualityPerfect: [0.93, 1.0], // quality range inside each window
-    qualityGood: [0.66, 0.93],
-    qualityWeak: [0.25, 0.66],
-    qualityCurve: 0.9,
-    launch: {
-      perfect: { center: 26, spread: 5 },
-      good: { center: 18, spread: 9 },
-      weak: { center: 8, spread: 19 },
-      heightEffect: 8.5, // degrees of launch angle per foot of pitch height below the zone center
-    },
     spray: {
-      timingMax: 56, // degrees at the edge of the weak window
+      // Where the barrel faces at contact comes from the timing: right on time it faces centre field; early it is out front and
+      // pulls the ball (this many degrees at the edge of the early / late window), late it is behind and sends it the other way.
+      timingMax: 56,
       timingCurve: 1.15,
-      // Aiming (hold A/D, arrows or the touch buttons): the ball is steered toward `aimTarget` degrees (toward that gap); how much the
-      // aim takes over from timing depends on the contact - a squared-up ball goes where you aim, a weak one mostly does not.
-      aimTarget: 30,
-      aimControl: { perfect: 0.8, good: 0.65, weak: 0.35 },
-      aimPower: { pull: 0.03, oppo: -0.05 }, // exit velocity change for a fully aimed pull / opposite-field swing (a pull is strongest)
-      noise: { perfect: 6, good: 8, weak: 10 },
     },
-    backspin: { base: 900, perLaunchDeg: 55, max: 3400 }, // rpm
-    sidespinMax: 750, // rpm at 45 degrees of spray (ball hooks toward the nearest foul line)
-    locationFalloff: 0.55, // ratio (0..1) of the zone where contact stays full power
+  },
+
+  // --------------------------------------------------------------------------
+  //  The swing (game/contact.js): you aim the sweet spot of the bat with the cursor and time the swing. Timing gives the barrel its
+  //  speed and direction; where the bat meets the ball (under it, square, on top) and where on the barrel decide the rest, through the
+  //  real collision in physics/bat.js.
+  // --------------------------------------------------------------------------
+  swing: {
+    batSpeed: 75, // mph: the barrel's speed at the sweet spot on a perfectly timed swing (a big-league average)
+    q: 0.2, // collision efficiency (exit speed = q x pitch speed + (1 + q) x bat speed, head on): turns extra exit speed into bat speed
+    // fraction of that speed the barrel has when it meets the ball, across each timing window (from its centre to its edge)
+    timingSpeed: { perfect: [1.0, 0.98], good: [0.97, 0.89], weak: [0.85, 0.66] },
+    attack: 10, // degrees: the barrel is moving slightly upward through the zone (an uppercut) at the middle of the zone...
+    attackPerFt: 5, // ...more on a low pitch, less on a high one (degrees per foot below / above the middle)
+    attackRange: [2, 18],
+    // The swing is "on plane": an early swing meets the ball out in front where it is higher, but the barrel is higher there too.
+    // Only this share of the difference in height is left over against where the bat was aimed (counted up to planeEarly / planeLate s off)
+    onPlane: 0.85, planeEarly: 0.1, planeLate: 0.07,
+    maxGraze: 0.97, // (at the very edge of the window the bat just grazes the ball)
+    handleSlow: 0.3, // in on the hands the bat is moving this much slower (at the very end of the window)
+    offBarrel: 0.45, // ...and off the sweet spot it bounces this much less at the edge of the window
+    offBarrelMass: 0.6, // ...and more of the bat recoils
+    pullBias: 13, // degrees: a well-timed swing meets the ball a touch out front and sends it a little toward the pull side (left-centre for a right-handed hitter)
+    endSpray: 7, // degrees: off the end of the bat the ball goes this much more the other way (in on the hands, pulled)
+    chase: { from: 1.15, to: 1.6, speedLoss: 0.22 }, // reaching for a ball out of the zone (zone widths) costs bat speed
+    squared: [-0.3, 0.62], // a ball hit inside this part of the window (and near the sweet spot) counts as squared up for the grade
+    squaredAlong: 0.45,
+    noise: { ev: 0.7, launch: { perfect: 0.8, good: 1.2, weak: 2.2 }, spray: { perfect: 2.5, good: 4, weak: 6.5 } }, // degrees / mph of human scatter
+    // where the bat can be aimed (the cursor is held inside this box over the plate): feet from the middle of the plate, height range
+    reach: { x: 1.9, yMin: 0.85, yMax: 4.5 },
+  },
+
+  // --------------------------------------------------------------------------
+  //  The bat and the collision (physics/bat.js): real sizes and the measured bat-ball numbers
+  // --------------------------------------------------------------------------
+  bat: {
+    barrelRadius: 0.108, // ft (a 2.6 in barrel)
+    cor: 0.5, // coefficient of restitution between a wood bat and a baseball at game speeds
+    massRatio: 0.25, // ball mass / the bat's effective mass at the sweet spot (the bat gives a little)
+    friction: 0.5, // bat-ball friction
+    slipKeep: 0.6, // fraction of its slide across the bat a ball keeps (5/7 if a rigid ball rolled; a real one grips a little more)
+    spinCarry: 0.25, // share of the pitch's own spin that survives the collision
+    spinKeep: 0.35, // a real ball squashes on the bat and leaves with about this share of a rigid ball's spin (measured: ~2,500 rpm for a ball hit 1 in under centre)
   },
 
   // --------------------------------------------------------------------------
@@ -176,6 +202,7 @@ export const CONFIG = {
   bunt: {
     windowMs: [45, 115], // ms of timing error: inside the first, a clean bunt; worse up to the second; beyond it the bunt misses
     reachRatio: 1.3, // (zone widths) pitches further out than this cannot be bunted
+    windowScale: 1.35, // the bat held out square covers more of the ball than a swing: the contact window (above / below, along the bat) x this
     exitVelocity: [24, 42], // mph: a soft, well-placed bunt .. one that got away from you
     goodLaunch: -12, // degrees: a good bunt is pushed down into the grass
     popLaunch: 32, // ...a bad one pops up
@@ -195,6 +222,10 @@ export const CONFIG = {
       label: 'Rookie',
       swingCue: true, // the strike-zone box pulses at the perfect moment to press the button
       windowScale: 1.5,
+      // The bat's contact window (ft): how far the ball's centre can be above / below the sweet spot (`up`) and toward the end of the
+      // bat / the hands and still be hit. The middle of `up` hits a line drive, a little under it a fly ball, above it a grounder.
+      contactWindow: { up: 0.62, tip: 1.0, handle: 0.85 },
+      batBonus: 4, // mph of extra bat speed (slower pitches come off the bat slower: this keeps the easy level from being the weakest)
       fastball: [62, 72],
       mix: { fastball: 0.62, changeup: 0.12, curveball: 0.13, slider: 0.13, heater: 0 },
       // Where the computer pitcher throws (odds before the count changes them): 'heart' = in the zone, 'edge' = on the corners,
@@ -219,6 +250,8 @@ export const CONFIG = {
     pro: {
       label: 'Pro',
       windowScale: 1.0,
+      contactWindow: { up: 0.44, tip: 0.78, handle: 0.66 },
+      batBonus: 1.5,
       fastball: [80, 90],
       mix: { fastball: 0.46, changeup: 0.18, curveball: 0.18, slider: 0.18, heater: 0 },
       locations: { heart: 0.52, edge: 0.08, chase: 0.21, waste: 0.19 },
@@ -239,6 +272,8 @@ export const CONFIG = {
     allstar: {
       label: 'All-Star',
       windowScale: 0.7,
+      contactWindow: { up: 0.4, tip: 0.66, handle: 0.58 },
+      batBonus: 0,
       fastball: [88, 98],
       mix: { fastball: 0.36, changeup: 0.18, curveball: 0.17, slider: 0.19, heater: 0.1 },
       locations: { heart: 0.32, edge: 0.15, chase: 0.29, waste: 0.24 },
@@ -303,7 +338,7 @@ export const CONFIG = {
     },
     outfield: { LF: [-24, 272], CF: [0, 308], RF: [24, 272] },
     speed: { IF: 20, OF: 21, P: 16, C: 16 }, // ft/s, average (effective, includes getting up to speed)
-    reaction: { IF: 0.24, OF: 0.52, P: 0.36, C: 0.36 }, // seconds before a fielder reads the ball (outfielders read a ball off the bat a little slower: well-hit balls drop in more often)
+    reaction: { IF: 0.24, OF: 0.42, P: 0.36, C: 0.36 }, // seconds before a fielder reads the ball (outfielders read a ball off the bat a little slower: well-hit balls drop in more often)
     glove: 2.4, // ft: how far a fielder can reach without diving
     diveExtra: 3.0, // extra ft when diving (dive only on low balls)
     reachHeight: 8.8, // highest catchable point (ft): a leaping catch
@@ -424,13 +459,8 @@ export const CONFIG = {
     derby: {
       outs: 10,
       pitchSpeed: { rookie: 58, pro: 66, allstar: 74 }, // batting-practice fastballs
-      evBonus: 8, // extra exit velocity (mph): batting-practice balls jump off the bat
-      // A "good" (not perfect) swing in the Derby still squares the ball up: the power range (0..1) and the launch angle
-      // (degrees) it gets, in place of the Quick-game numbers above. This is what makes good timing leave the park some of the time.
-      goodQuality: [0.74, 0.95],
-      goodLaunch: { center: 24, spread: 7 },
-      pullBonus: 6, // extra mph on a fully pulled ball (pulling is where a hitter is strongest)
-      pullSpan: 30, // degrees toward the pull side that count as "fully pulled"
+      evBonus: 10, // extra exit velocity (mph) on a squared-up ball: batting-practice balls jump off the bat
+      windowGrow: 1.45, // the bat's contact window is this much bigger (the pitches are meatballs)
       locationSigma: 0.24,
     },
     practice: { speedMin: 45, speedMax: 105, speedDefault: 85 },

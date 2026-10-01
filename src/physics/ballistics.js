@@ -4,7 +4,7 @@
 // picture just replays it - it never depends on frame rate.
 import { CONFIG, MPH } from '../config.js';
 import { DEG } from '../util/math.js';
-import { fenceDistance, sprayOf, standsHeight, isFairXZ, BASE_XZ, FENCE_HEIGHT } from './field.js';
+import { fenceDistance, sprayOf, standsHeight, isFairXZ, isInsideField, BASE_XZ, FENCE_HEIGHT } from './field.js';
 
 const BASE_DEPTH = BASE_XZ[1][1] * -1; // how far from the plate the 1st/3rd base bags are (in -z)
 
@@ -54,6 +54,7 @@ export function simulateBattedBall(p, cfg = CONFIG, opts = {}) {
   let stopped = false;
   let rolling = false;
   let contactTime = null; // first time the ball touches anything (ground / wall / stands)
+  let netHit = null; // a foul ball back over the catcher that hits the backstop net (or flies over it into the crowd)
 
   const accel = (vxx, vyy, vzz, out) => {
     const spd = Math.sqrt(vxx * vxx + vyy * vyy + vzz * vzz);
@@ -134,6 +135,14 @@ export function simulateBattedBall(p, cfg = CONFIG, opts = {}) {
       }
     }
 
+    // A foul ball back behind the plate: the backstop net stops it (it drops straight down the net), or it sails over into the crowd.
+    if (!opts.ideal && !stopped && !netHit && z > 30 && !isInsideField(x, z)) {
+      netHit = { t, x, y, z, over: y > ph.netHeight };
+      if (contactTime === null) contactTime = t;
+      if (netHit.over) stopped = true;
+      else { vx *= -0.12; vz *= -0.12; vy = Math.min(vy, 0) * 0.3; airborne = false; }
+    }
+
     // Ground contact
     if (!stopped && y <= r && !cleared) {
       if (vy < 0) {
@@ -178,6 +187,7 @@ export function simulateBattedBall(p, cfg = CONFIG, opts = {}) {
     wallHit,
     homerun,
     standsLanding,
+    netHit,
     apex,
     contactTime: contactTime ?? t,
     params: { ...p },

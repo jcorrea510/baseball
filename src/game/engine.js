@@ -6,7 +6,7 @@ import { createRng } from '../util/rng.js';
 import { buildPitch, isStrike } from '../physics/pitch.js';
 import { simulateBattedBall, projectDistance } from '../physics/ballistics.js';
 import { resolveSwingTimes, describeError } from './timing.js';
-import { computeContact, computeBunt, derbyBatting } from './contact.js';
+import { computeSwing, computeBunt, derbyBatting, contactWindow, contactPoint } from './contact.js';
 import { choosePitch, pitchWindowScale } from './pitcherAI.js';
 import { createDefense, planPlay, planSteal, fielderBackTime } from './fielding.js';
 import * as rules from './rules.js';
@@ -66,6 +66,7 @@ export class Engine {
     this.fieldersSetAt = 0; // no pitch before this time: the pitcher and catcher are back in place and set (see finishPlay)
     this.listeners = {};
     this.aim = 0;
+    this.batAim = { x: 0, y: cfg.timing.zoneCenterY }; // where the bat's sweet spot is aimed (see setBatAim)
     this.pitch = null;
     this.swing = null;
     this.play = null;
@@ -120,6 +121,20 @@ export class Engine {
 
   setPhase(p) { this.phase = p; this.phaseSince = this.time; }
   setAim(v) { this.aim = Math.max(-1, Math.min(1, v)); }
+  // Where the sweet spot of the bat is aimed (ft, in the plane over the front of the plate). The cursor sets it; it is held inside
+  // the area the batter can reach.
+  setBatAim(x, y) {
+    const R = this.cfg.swing.reach;
+    this.batAim.x = Math.max(-R.x, Math.min(R.x, x));
+    this.batAim.y = Math.max(R.yMin, Math.min(R.yMax, y));
+    return this.batAim;
+  }
+  // The bat's contact window for this batter (the level, his Contact rating, the Derby's batting practice).
+  get contactWindow() {
+    const w = contactWindow(this.difficulty, this.cfg);
+    const k = ratingEffects(this.batter, this.cfg).window * (this.mode === 'derby' ? this.cfg.modes.derby.windowGrow : 1);
+    return { up: w.up * k, tip: w.tip * k, handle: w.handle * k };
+  }
 
   // ------------------------------------------------------------------ lifecycle
   start() {
@@ -320,28 +335,28 @@ export class Engine {
     const pitch = this.pitch;
     const tPress = this.time + Math.max(-0.02, Math.min(0.05, sinceUpdate)) - this.inputDelay;
     const times = resolveSwingTimes(tPress, pitch.tCross, this.cfg);
-    const loc = pitch.target;
     const bunting = this.buntStance;
-    const eff = ratingEffects(this.batter, this.cfg); // (Season players: Contact widens the timing windows, Power adds exit velocity)
+    const eff = ratingEffects(this.batter, this.cfg); // (Season players: Contact widens the timing windows and the bat's contact window, Power adds exit velocity)
     const windowScale = this.windowScale * eff.window;
-    const contact = bunting ? computeBunt({ errorMs: times.errorMs, locX: loc.x, locY: loc.y, windowScale, aim: this.aim, batterHand: this.batterHand, rng: this.rng }, this.cfg) : computeContact({
-      errorMs: times.errorMs,
-      locX: loc.x, locY: loc.y,
-      pitchSpeed: pitch.speedMph,
-      windowScale,
-      speedScale: pitchWindowScale(pitch.type),
-      aim: this.aim,
-      batterHand: this.batterHand,
-      ...(this.mode === 'derby' ? derbyBatting(this.cfg) : { evBonus: eff.ev }),
-      rng: this.rng,
-    }, this.cfg);
+    // where the ball is when the bat gets there (its height there is what the bat has to meet), how it is moving and spinning
+    const { ball, vBall, wBall } = contactPoint(pitch.flight, times.hitTime - pitch.tRelease, times.barrelTime - pitch.tRelease, this.cfg);
+    const aim = { x: this.batAim.x, y: this.batAim.y }; // (the bat is committed where it was aimed when he swung)
+    const window = this.contactWindow;
+    const contact = bunting
+      ? computeBunt({ errorMs: times.errorMs, ball, aim, window, windowScale, batterHand: this.batterHand, rng: this.rng }, this.cfg)
+      : computeSwing({
+        errorMs: times.errorMs, ball, aim, window, vBall, wBall,
+        windowScale, speedScale: pitchWindowScale(pitch.type), batterHand: this.batterHand, batBonus: this.d.batBonus || 0,
+        ...(this.mode === 'derby' ? derbyBatting(this.cfg) : { evBonus: eff.ev }),
+        rng: this.rng,
+      }, this.cfg);
     if (this.contactOverride) { delete contact.reason; Object.assign(contact, { made: true, grade: 'good' }, this.contactOverride(this)); }
     // The bat only meets the ball at the clamped time when contact is made; a miss swings through at the true time.
     const tHit = contact.made ? times.hitTime : times.barrelTime;
     this.swing = {
       tPress, tBarrel: times.barrelTime, tHit, errorMs: times.errorMs,
       grade: contact.grade, made: contact.made, contact, resolved: false,
-      follow: this.cfg.timing.followThrough, bunt: bunting,
+      follow: this.cfg.timing.followThrough, bunt: bunting, aim, ball,
     };
     if (bunting) this.stats.bunts++; else this.stats.swings++;
     this.emit('swing', { swing: this.swing, pitch, errorText: describeError(times.errorMs) });

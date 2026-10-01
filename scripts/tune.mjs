@@ -1,19 +1,26 @@
 // Tuning helper: how often does each kind of batted ball become a hit? (empty bases)
-// usage: node scripts/tune.mjs [samples=4000] [timingSdMs=25] [difficulty=pro]
+// usage: node scripts/tune.mjs [samples=4000] [timingSdMs=25] [difficulty=pro] [aimSdFt=0.1]
+// (each swing is aimed a little under the ball - 30% of the contact window - with `aimSdFt` of aiming error)
 import { CONFIG } from '../src/config.js';
 import { createRng } from '../src/util/rng.js';
-import { computeContact } from '../src/game/contact.js';
+import { computeSwing, contactWindow, contactPoint } from '../src/game/contact.js';
+import { buildPitch } from '../src/physics/pitch.js';
 import { simulateBattedBall, battedBallType } from '../src/physics/ballistics.js';
 import { createDefense, planPlay } from '../src/game/fielding.js';
 
-const N = +(process.argv[2] || 4000), sd = +(process.argv[3] || 25), diff = process.argv[4] || 'pro';
+const N = +(process.argv[2] || 4000), sd = +(process.argv[3] || 25), diff = process.argv[4] || 'pro', aimSd = +(process.argv[5] || 0.1);
+const win = contactWindow(diff);
 const rng = createRng(123);
 const defense = createDefense(CONFIG, createRng(5));
 const tab = {};
 const bump = (k, r) => { const t = (tab[k] ||= { n: 0, hit: 0, hr: 0, out: 0, foul: 0 }); t.n++; t[r]++; };
 let evSum = 0, evN = 0;
 for (let i = 0; i < N; i++) {
-  const c = computeContact({ errorMs: rng.gauss(0, sd), locX: rng.range(-0.6, 0.6), locY: 2.5 + rng.range(-0.7, 0.7), pitchSpeed: 84, windowScale: CONFIG.difficulty[diff].windowScale, aim: 0, batterHand: 'R', rng });
+  const f = buildPitch({ type: 'fastball', speedMph: 84, hand: 'R', target: { x: rng.range(-0.6, 0.6), y: 2.5 + rng.range(-0.7, 0.7) } });
+  const err = rng.gauss(0, sd);
+  const pt = contactPoint(f, f.T + Math.max(-0.03, Math.min(0.012, err / 1000)), f.T + err / 1000);
+  const aim = { x: pt.ball.x + rng.gauss(0, aimSd * 1.5), y: pt.ball.y - 0.3 * win.up + rng.gauss(0, aimSd) };
+  const c = computeSwing({ errorMs: err, aim, ...pt, window: win, windowScale: CONFIG.difficulty[diff].windowScale, batterHand: 'R', batBonus: CONFIG.difficulty[diff].batBonus || 0, rng });
   if (!c.made) continue;
   const sim = simulateBattedBall({ ...c, start: { x: 0, y: 2.6, z: -1 } });
   const plan = planPlay({ sim, contact: c, bases: [null, null, null], outs: 0, defense }, CONFIG);
