@@ -3,7 +3,8 @@
 // (swingPressed) and announces what happens through events. The renderer, HUD and audio listen.
 import { CONFIG } from '../config.js';
 import { createRng } from '../util/rng.js';
-import { buildPitch, isStrike } from '../physics/pitch.js';
+import { buildPitch, isStrike, zoneRatio } from '../physics/pitch.js';
+import { clamp } from '../util/math.js';
 import { simulateBattedBall, projectDistance } from '../physics/ballistics.js';
 import { resolveSwingTimes, describeError } from './timing.js';
 import { computeSwing, computeBunt, derbyBatting, contactWindow, contactPoint, scaleWindow } from './contact.js';
@@ -335,18 +336,39 @@ export class Engine {
   // (so timing does not depend on frame rate). Returns true if the swing was accepted.
   swingPressed(sinceUpdate = 0) {
     if (this.phase !== 'pitch' || this.swing || !this.pitch) return false;
-    const pitch = this.pitch;
+    if (this.buntStance) return false; // (squared around to bunt, he bunts by himself - see autoBunt)
     const tPress = this.time + Math.max(-0.02, Math.min(0.05, sinceUpdate)) - this.inputDelay;
+    return this.commitSwing(tPress, { x: this.batAim.x, y: this.batAim.y }, false);
+  }
+
+  // Squared around to bunt, the batter holds the bat out and meets the pitch by himself - a little before it arrives he pushes the bat
+  // at it (his timing a touch off now and then, the bat mostly on top of the ball: a good bunt, sometimes a pop-up or a foul). A pitch
+  // well out of the zone he pulls the bat back on and takes. The bunt goes up the line that moves the runners (third-base line with
+  // a runner on second, first-base line otherwise).
+  autoBunt() {
+    const pitch = this.pitch, B = this.cfg.bunt;
+    pitch.buntDecided = true;
+    if (zoneRatio(pitch.target.x, pitch.target.y, this.cfg) > B.offerRatio) return false; // (he pulls the bat back)
+    const errorMs = clamp(this.rng.gauss(0, B.autoTimingSd), -B.windowMs[1] * 0.8, B.windowMs[1] * 0.8);
+    const tPress = pitch.tCross + errorMs / 1000 - this.cfg.timing.swingDelay;
+    const win = this.contactWindow, up = win.up * B.windowScale;
+    const aim = { x: pitch.target.x + this.rng.gauss(0, B.autoAimSd), y: pitch.target.y + B.autoOnTop * up + this.rng.gauss(0, B.autoAimSd) };
+    const thirdLine = -1; // (spray: negative = the left-field / third-base side)
+    const side = this.bases[1] && !this.bases[2] ? thirdLine : -thirdLine;
+    return this.commitSwing(tPress, aim, true, side);
+  }
+
+  commitSwing(tPress, aim, bunting, buntSide = 0) {
+    const pitch = this.pitch;
     const times = resolveSwingTimes(tPress, pitch.tCross, this.cfg);
-    const bunting = this.buntStance;
     const eff = ratingEffects(this.batter, this.cfg); // (Season players: Contact widens the timing windows and the bat's contact window, Power adds exit velocity)
     const windowScale = this.windowScale * eff.window;
     // where the ball is when the bat gets there (its height there is what the bat has to meet), how it is moving and spinning
     const { ball, vBall, wBall } = contactPoint(pitch.flight, times.hitTime - pitch.tRelease, times.barrelTime - pitch.tRelease, this.cfg);
-    const aim = { x: this.batAim.x, y: this.batAim.y }; // (the bat is committed where it was aimed when he swung)
+    // (the bat is committed where it was aimed when he swung)
     const window = this.contactWindow;
     const contact = bunting
-      ? computeBunt({ errorMs: times.errorMs, ball, aim, window, windowScale, batterHand: this.batterHand, rng: this.rng }, this.cfg)
+      ? computeBunt({ errorMs: times.errorMs, ball, aim, window, windowScale, batterHand: this.batterHand, side: buntSide, rng: this.rng }, this.cfg)
       : computeSwing({
         errorMs: times.errorMs, ball, aim, window, vBall, wBall,
         windowScale, speedScale: pitchWindowScale(pitch.type), batterHand: this.batterHand, batBonus: this.d.batBonus || 0,
@@ -368,6 +390,7 @@ export class Engine {
 
   updatePitch() {
     const pitch = this.pitch;
+    if (this.buntStance && !this.swing && !pitch.buntDecided && this.time >= pitch.tCross - this.cfg.timing.swingDelay - this.cfg.bunt.autoLead) this.autoBunt();
     const s = this.swing;
     if (s && !s.resolved && this.time >= s.tHit) {
       s.resolved = true;

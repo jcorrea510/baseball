@@ -223,6 +223,14 @@ export const CONFIG = {
     sprayNoise: 6,
     foulChance: 0.45, // chance a poor bunt is pushed foul (scaled down for a good one)
     leadMargin: 0.35, // s: on a bunt the fielder only goes after the lead runner when he would beat him by this much (else the sure out at first)
+    // Squared around, he bunts by himself (B): he decides `autoLead` s before the bat must start, takes a pitch further out than
+    // `offerRatio` zone widths, misses his timing by `autoTimingSd` ms (typically), and holds the bat `autoOnTop` of the contact window
+    // above the ball's middle (on top of it: down into the grass) give or take `autoAimSd` ft.
+    autoLead: 0.05,
+    offerRatio: 1.2,
+    autoTimingSd: 38,
+    autoOnTop: 0.32,
+    autoAimSd: 0.17,
   },
 
   // --------------------------------------------------------------------------

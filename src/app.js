@@ -495,6 +495,7 @@ export class App {
       ui.showPitchInfo(pitch.announce || (e.d.typeAtRelease && e.mode !== 'derby') ? LABEL[pitch.type] : '', pitch.speedMph, false, 1900);
     });
     e.on('swing', ({ swing, pitch, errorText }) => {
+      if (swing.bunt) { ui.hideHint(); return; } // (a bunt is squared up and pushed by itself: no swing, no timing meter)
       audio.swingWhoosh();
       const txtGrade = { perfect: 'PERFECT', good: 'GOOD', early: 'EARLY', late: 'LATE', miss: swing.errorMs < 0 ? 'TOO EARLY' : 'TOO LATE' }[swing.grade];
       const w = classifyTiming(swing.errorMs, { windowScale: e.windowScale }).windows;
@@ -1024,10 +1025,10 @@ export class App {
     const shown = this.bot ? e.batAim : this.aimShown;
     const sw = e.swing && e.pitch && (e.phase === 'pitch' || e.phase === 'play' || e.phase === 'result') ? e.swing : null;
     this.batAim.update({
-      show: batting && this.cam.catcherDist < A.showWithin && (e.phase !== 'result' || !!sw),
+      show: batting && this.cam.catcherDist < A.showWithin && (e.phase !== 'result' || !!sw) && !e.buntStance && !(sw && sw.bunt), // (squared around to bunt: no bat to aim - he bunts by himself)
       aim: shown, hand: e.batterHand, swing: sw, time: e.time,
     }, dt);
-    this.ui.setSwingButton(batting && this.touch && (e.phase === 'windup' || e.phase === 'pitch' || e.phase === 'ready'));
+    this.ui.setSwingButton(batting && this.touch && !e.buntStance && (e.phase === 'windup' || e.phase === 'pitch' || e.phase === 'ready'));
     const hideCursor = batting && this.aimMode === 'mouse' && !this.ui.current;
     if (hideCursor !== this.cursorHidden) { this.cursorHidden = hideCursor; this.canvas.style.cursor = hideCursor ? 'none' : ''; }
   }

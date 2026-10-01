@@ -438,6 +438,24 @@ describe('bunting', () => {
     expect(e.buntStance).toBe(false);
   });
 
+  it('squared around he bunts by himself (no press needed) and lays off a pitch well out of the zone', () => {
+    const e = new Engine({ mode: 'quick', playerSide: 'top', seed: 21 });
+    e.pitchOverride = strikePitch;
+    e.start();
+    e.setBunt(true);
+    while (!(e.phase === 'pitch' && e.time > e.pitch.tCross)) e.update(DT);
+    expect(e.swing && e.swing.bunt).toBe(true); // (nobody pressed anything)
+    const f = new Engine({ mode: 'quick', playerSide: 'top', seed: 22 });
+    f.pitchOverride = () => ({ type: 'fastball', speedMph: 84, target: { x: 1.9, y: 2.5 }, intendedStrike: false });
+    f.start();
+    f.setBunt(true);
+    let call = null;
+    f.on('result', (x) => { call = call || x; });
+    while (!call && f.time < 60) f.update(DT);
+    expect(f.swing).toBe(null);
+    expect(call.call).toBe('ball');
+  });
+
   it('there is no bunting in the Derby', () => {
     const e = new Engine({ mode: 'derby', seed: 2 });
     e.start();

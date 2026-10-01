@@ -153,7 +153,7 @@ function followKey(e, start) {
 // ---------------------------------------------------------------- bunt
 // Squared around to bunt: hips and shoulders turned to face the pitcher, knees bent, the bat held level across the front of the
 // plate at chest height. `push` = { contact:[x,y,z] (ball in pose space), tStart, tHit } when he pushes the bat out to meet the ball.
-const BUNT_DIR = (() => { const yaw = 0.18, p = 0.1; return [Math.sin(yaw) * Math.cos(p), Math.sin(p), Math.cos(yaw) * Math.cos(p)]; })();
+const BUNT_DIR = (() => { const yaw = 0.16, p = 0.05; return [Math.sin(yaw) * Math.cos(p), Math.sin(p), Math.cos(yaw) * Math.cos(p)]; })();
 export function buntPose(P, time, push = null) {
   resetPose(P);
   const breathe = Math.sin(time * 1.6);
@@ -162,7 +162,7 @@ export function buntPose(P, time, push = null) {
   P.headYaw = 0.05; P.headPitch = 0.12;
   set3(P.footL, 0.5, ANK, -0.6); set3(P.footR, 0.15, ANK, 0.62);
   set3(P.kneeL, 1, 0.1, -0.2); set3(P.kneeR, 1, 0.1, 0.3);
-  let knob = [0.95, 3.75, -0.15];
+  let knob = [0.85, 3.42, 0.3]; // (squared around: the bat level at the top of the strike zone, out over the plate)
   if (push && time >= push.tStart) {
     // the sweet spot (1.9 ft up the bat) goes out to where the ball crosses, then the bat gives a little as it "catches" the ball
     const C = push.contact;
@@ -172,7 +172,7 @@ export function buntPose(P, time, push = null) {
     knob = [lerp(knob[0], meet[0], u) - 0.25 * give, lerp(knob[1], meet[1], u), lerp(knob[2], meet[2], u)];
   }
   set3(P.bat, knob[0], knob[1], knob[2]);
-  P.batYaw = 0.18; P.batPitch = 0.1; P.batVis = 1;
+  P.batYaw = 0.16; P.batPitch = 0.05; P.batVis = 1;
   P.poleL = [0.6, -0.8, -0.4]; P.poleR = [0.4, -0.8, 0.6];
   return P;
 }

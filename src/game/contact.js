@@ -185,8 +185,9 @@ export function computeBunt(i, cfg = CONFIG) {
   const launchAngle = clamp(B.goodLaunch + (B.popLaunch - B.goodLaunch) * clamp((off.u + 0.3) / 0.9, 0, 1) + rng.gauss(0, B.launchSpread), -30, 60); // (over the ball: down into the grass; square: low; under it: up)
   const pullSign = hand === 'R' ? -1 : 1;
   const early = -i.errorMs; // an early bunt goes toward the pull-side line
-  const side = Math.abs(early) > 8 ? Math.sign(early) * pullSign : (rng.next() < 0.5 ? -1 : 1);
-  const placed = Math.abs(early) > 8 ? B.aimSpray : B.spray;
+  // (i.side: the line he is bunting toward, -1 = third base, +1 = first base; else early / late decides)
+  const side = i.side ? Math.sign(i.side) : Math.abs(early) > 8 ? Math.sign(early) * pullSign : (rng.next() < 0.5 ? -1 : 1);
+  const placed = i.side || Math.abs(early) > 8 ? B.aimSpray : B.spray;
   let sprayAngle = side * rng.range(placed[0], placed[1]) + rng.gauss(0, B.sprayNoise * (1.4 - q));
   if (rng.next() < B.foulChance * (1 - q)) sprayAngle = side * rng.range(47, 70); // pushed foul
   const backspin = clamp(200 + 40 * Math.max(launchAngle, 0), 150, 1600);
