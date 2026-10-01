@@ -4,6 +4,7 @@ import { UNIFORMS, BATS } from '../game/teams.js';
 import { UNLOCKS, unlockKey } from '../game/progression.js';
 import { logoSVG, wordSVG } from './logo.js';
 import * as SEA from '../game/season.js';
+import { MLB_TEAMS, teamById, teamName, starsOf, leagueFor, lum } from '../game/mlb.js';
 
 function h(tag, cls, html) {
   const e = document.createElement(tag);
@@ -58,6 +59,8 @@ const ICONS = {
   users: '<circle cx="9" cy="8.5" r="3.2"/><path d="M3.5 19.5c.6-3.3 2.8-5 5.5-5s4.9 1.7 5.5 5M15.5 5.6a3.2 3.2 0 0 1 0 6M17.5 14.7c1.6.6 2.7 2.2 3 4.8"/>',
   cart: '<path d="M3.5 4.5h2.2l2.2 10.2h10.4l1.9-7.2H6.6"/><circle cx="9.5" cy="19" r="1.4"/><circle cx="17" cy="19" r="1.4"/>',
   swap: '<path d="M7 4v14M7 18l-3-3M7 18l3-3M17 20V6M17 6l-3 3M17 6l3 3"/>',
+  full: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
+  fullExit: '<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>',
 };
 const icon = (name, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`;
 
@@ -82,12 +85,17 @@ const avgText = (hits, ab) => (ab > 0 ? (hits / ab).toFixed(3).replace(/^0/, '')
 const ordinal = (n) => n + (n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th');
 // a team's strength as 1-5 stars
 const stars = (rating, bare = false) => {
-  const n = Math.max(1, Math.min(5, Math.round(((rating ?? 50) - 25) / 10)));
+  const n = Math.max(1, Math.min(5, Math.round(((rating ?? 50) - 22) / 8)));
   const st = `<span class="stars" aria-label="${n} of 5">${'<b>★</b>'.repeat(n)}${'<i>★</i>'.repeat(5 - n)}</span>`;
   return bare ? st : `<span class="chip">${st}</span>`;
 };
-// a player's Contact / Power / Speed
-const ratingCells = (p) => ['con', 'pow', 'spd'].map((k) => `<span class="rt ${p[k] >= 70 ? 'hi' : p[k] <= 40 ? 'lo' : ''}">${p[k]}<small>${{ con: 'CON', pow: 'POW', spd: 'SPD' }[k]}</small></span>`).join('');
+const tierStars = (tier) => `<span class="stars" aria-label="${tier} of 5">${'<b>★</b>'.repeat(tier)}${'<i>★</i>'.repeat(5 - tier)}</span>`;
+// a team's badge: its colours and its letters
+const crest = (t, size = '') => `<span class="crest ${size} ${lum(t.color) > 0.62 ? 'light' : ''}" style="--c:${t.color};--c2:${t.color2 || '#ffffff'}">${t.abbr}</span>`;
+// a player's Contact / Power / Speed, each with a little bar (the words are spelled out in the column heads)
+const ratingCells = (p) => ['con', 'pow', 'spd'].map((k) => `<span class="rt ${p[k] >= 70 ? 'hi' : p[k] <= 40 ? 'lo' : ''}" title="${{ con: 'Contact', pow: 'Power', spd: 'Speed' }[k]}">${p[k]}<i style="--v:${p[k]}%"></i></span>`).join('');
+const ratingHead = '<span class="rt">Contact</span><span class="rt">Power</span><span class="rt">Speed</span>';
+const artUrl = (name) => { let base = '/'; try { base = (import.meta.env && import.meta.env.BASE_URL) || '/'; } catch (e) { /* tests */ } return `url('${base}art/${name}.jpg')`; };
 // Small screens fold the practice chooser away so it never covers the play.
 const smallScreen = () => typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-height: 520px), (max-width: 900px)').matches;
 
@@ -108,7 +116,8 @@ export class UI {
     const hud = h('div', 'hud');
     hud.innerHTML = `
       <div class="vignette"></div>
-      <div class="hudbtns"><button class="iconbtn" data-a="pause" aria-label="Pause" title="Pause (Esc)">${icon('pause')}</button><button class="iconbtn" data-a="mute" aria-label="Sound" title="Mute (M)">${icon('soundOn')}</button></div>
+      <div class="hudbtns"><button class="iconbtn" data-a="pause" aria-label="Pause" title="Pause (Esc)">${icon('pause')}</button><button class="iconbtn" data-a="mute" aria-label="Sound" title="Mute (M)">${icon('soundOn')}</button><button class="iconbtn" data-a="fullscreen" data-fs aria-label="Full screen" title="Full screen (F)">${icon('full')}</button></div>
+      <div class="lineup"><div class="lh"><span>Batting order</span></div><ol></ol></div>
       <div class="pitchinfo"><span class="type"></span><span class="mph"></span></div>
       <div class="banner"><div class="big"></div><div class="sub"></div></div>
       <div class="callout"></div>
@@ -163,7 +172,7 @@ export class UI {
     this.q = {
       pitchinfo: $(hud, '.pitchinfo'), banner: $(hud, '.banner'), callout: $(hud, '.callout'), meter: $(hud, '.meter'), hint: $(hud, '.hint'),
       derby: $(hud, '.derbybox'), bug: $(hud, '.bug'), tag: $(hud, '.batter-tag'), practice: $(hud, '.practice'), flash: $(hud, '.flash'),
-      aimKnob: $(hud, '.aimgauge .knob'), aimLab: $(hud, '.aimlab'), aimGauge: $(hud, '.aimgauge'), batterUp: $(hud, '.batterup'),
+      lineup: $(hud, '.lineup'), aimKnob: $(hud, '.aimgauge .knob'), aimLab: $(hud, '.aimlab'), aimGauge: $(hud, '.aimgauge'), batterUp: $(hud, '.batterup'),
     };
     hud.addEventListener('click', (e) => {
       const b = e.target.closest('[data-a]');
@@ -211,6 +220,12 @@ export class UI {
     window.addEventListener('resize', this.checkRotate);
     window.addEventListener('orientationchange', () => setTimeout(this.checkRotate, 150));
     this.checkRotate();
+    // full screen (not offered where the browser has none, e.g. an iPhone)
+    this.fsOk = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+    this.syncFullscreen = () => { this.setFullscreenAvailable(this.fsOk); this.setFullscreenIcon(!!(document.fullscreenElement || document.webkitFullscreenElement)); };
+    document.addEventListener('fullscreenchange', this.syncFullscreen);
+    document.addEventListener('webkitfullscreenchange', this.syncFullscreen);
+    this.syncFullscreen();
     // who is driving the menus: the keyboard (focus follows the screens) or a mouse / finger (no focus rings)
     window.addEventListener('keydown', (e) => { if (['Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Escape'].includes(e.key)) this.keyboard = true; }, true);
     window.addEventListener('pointerdown', () => { this.keyboard = false; }, true);
@@ -285,8 +300,8 @@ export class UI {
     }
     return false;
   }
-  backHead(title, extra = '') {
-    return `<div class="head"><button class="iconbtn" data-a="back" aria-label="Back">${icon('back')}</button><h1 class="ttl">${title}</h1><span class="spacer"></span>${extra}</div>`;
+  backHead(title, extra = '', eyebrow = '') {
+    return `<div class="head"><button class="iconbtn" data-a="back" aria-label="Back">${icon('back')}</button><h1 class="ttl">${eyebrow ? `<span class="eyebrow">${eyebrow}</span>` : ''}${title}</h1><span class="spacer"></span>${extra}</div>`;
   }
 
   // ---------------- title
@@ -299,7 +314,10 @@ export class UI {
         <div class="row"><button class="btn small ghost" data-a="howto">${icon('help')}How to play</button><button class="btn small ghost" data-a="locker">${icon('shirt')}Locker</button><button class="btn small ghost" data-a="career">${icon('chart')}Career</button><button class="btn small ghost" data-a="settings">${icon('gear')}Settings</button></div>
       </div>`;
     s.appendChild(stack);
+    const top = h('div', 'title-top', `<button class="iconbtn" data-a="fullscreen" data-fs aria-label="Full screen" title="Full screen (F)">${icon('full')}</button>`);
+    s.appendChild(top);
     s.onclick = (e) => { const b = e.target.closest('[data-a]'); if (b) this.act(b.dataset.a); };
+    this.syncFullscreen();
   }
 
   // ---------------- mode select
@@ -311,22 +329,22 @@ export class UI {
     const q = hs.quick[st.difficulty];
     const derbyBest = hs.derby[st.difficulty] || 0;
     const sea = prog.data.season;
-    const seaBest = sea ? `Year ${sea.year} · ${sea.teams[0].w}–${sea.teams[0].l}` : '';
-    const modes = [
-      { mode: 'season', ic: 'trophy', title: 'Season', chips: [`${CONFIG.season.innings} innings`, 'Playoffs'], best: seaBest },
-      { mode: 'quick', ic: 'ball', title: 'Quick Game', chips: ['3 innings', 'vs CPU'], best: q ? `Best ${q.runs}–${q.against}` : '' },
-      { mode: 'derby', ic: 'bolt', title: 'Home Run Derby', chips: ['10 outs', 'Homers only'], best: derbyBest ? `Best ${derbyBest} HR` : '' },
-      { mode: 'practice', ic: 'target', title: 'Practice', chips: ['Pick the pitch', 'Runners, no outs'], best: c.practiceSwings ? `${c.practiceSwings} swings` : '' },
+    const me = sea ? sea.teams[0] : null;
+    const tiles = [
+      { mode: 'season', cls: 't-league', art: 'league', eyebrow: `${CONFIG.season.innings} innings · Playoffs`, title: 'League', sub: sea ? `Year ${sea.year} · ${me.w}–${me.l}` : 'Pick your team', tag: sea ? (sea.inProgress ? 'Resume' : me.abbr) : 'New', accent: me ? me.color : null, ic: 'trophy' },
+      { mode: 'quick', cls: 't-quick', art: 'quick', eyebrow: '3 innings · vs CPU', title: 'Quick Game', sub: q ? `Best ${q.runs}–${q.against}` : '', tag: q ? '' : 'New', ic: 'ball' },
+      { mode: 'derby', cls: 't-derby', art: 'derby', eyebrow: '10 outs', title: 'Home Run Derby', sub: derbyBest ? `Best ${derbyBest} HR` : '', tag: derbyBest ? '' : 'New', ic: 'bolt' },
+      { mode: 'practice', cls: 't-practice', art: 'practice', eyebrow: 'Pick the pitch', title: 'Practice', sub: c.practiceSwings ? `${c.practiceSwings} swings` : '', tag: c.practiceSwings ? '' : 'New', ic: 'target' },
     ];
     const seg = (key, items, cur) => `<div class="seg" data-set="${key}">${items.map(([v, l]) => `<button data-v="${v}" class="${cur === v ? 'on' : ''}">${l}</button>`).join('')}</div>`;
-    const prev = s.querySelector('.menu-wrap');
-    const wrap = h('div', 'menu-wrap rise');
+    const prev = s.querySelector('.play-wrap');
+    const wrap = h('div', 'play-wrap rise');
     wrap.innerHTML = `
       ${this.backHead('Play', `<button class="iconbtn" data-a="howto" aria-label="How to play" title="How to play">${icon('help')}</button><button class="iconbtn" data-a="settings" aria-label="Settings" title="Settings">${icon('gear')}</button>`)}
-      <div class="cards">
-        ${modes.map((m) => `<button class="card" data-a="start" data-mode="${m.mode}"><span class="go">${icon('chevRight')}</span><span class="ico">${icon(m.ic)}</span><span class="cbody"><h3>${m.title}</h3><span class="chips">${m.chips.map((x) => `<span class="chip">${x}</span>`).join('')}</span></span><span class="best ${m.best ? '' : 'none'}">${m.best || 'New'}</span></button>`).join('')}
+      <div class="tiles">
+        ${tiles.map((m) => `<button class="tile ${m.cls}" data-a="start" data-mode="${m.mode}" style="${m.accent ? `--accent:${m.accent};` : ''}"><span class="art" style="background-image:${artUrl(m.art)}"></span>${m.tag ? `<span class="tag ${m.tag === 'New' ? '' : ''}">${m.tag}</span>` : ''}<span class="eyebrow">${m.eyebrow}</span><h3>${m.title}</h3>${m.sub ? `<span class="sub">${m.sub}</span>` : ''}<span class="go">${icon('chevRight')}</span></button>`).join('')}
       </div>
-      <div class="opts panel">
+      <div class="opts">
         <div class="grp"><span class="label">Level</span>${seg('difficulty', DIFFICULTIES.map((d) => [d, CONFIG.difficulty[d].label]), st.difficulty)}</div>
         <div class="grp"><span class="label">Time</span>${seg('tod', [['day', 'Day'], ['dusk', 'Dusk'], ['night', 'Night']], st.tod)}</div>
         <div class="grp"><span class="label">Bats</span>${seg('hand', [['auto', 'Mixed'], ['R', 'Right'], ['L', 'Left']], st.hand)}</div>
@@ -563,77 +581,114 @@ export class UI {
     };
   }
 
-  // ---------------------------------------------------------------- season
-  // The Season hub: your next game, your record, and the way to the standings, the roster and the shop. With no season yet it
-  // is where one is started (level and length).
+  // ---------------------------------------------------------------- league
+  // The League hub: your next game, your record, and the way to the standings, the roster and the shop. With no league yet it is
+  // where you pick your team, the level and the length.
   buildSeason(sea, st) {
     const s = this.fresh('season');
-    const d = h('div', 'season panel rise');
-    const coins = sea ? `<span class="coins">${icon('coin')}${sea.coins}</span>` : '';
+    const d = h('div', 'league panel rise');
     if (!sea) {
-      const pick = (this.seasonPick ||= { level: st.difficulty, length: 'short' });
+      const pick = (this.pick ||= { team: 'nym', level: st.difficulty, length: 'short', div: null });
+      const team = teamById(pick.team);
+      const div = pick.div || `${team.league} ${team.division}`;
+      pick.div = div;
+      const [lg, dv] = div.split(' ');
+      const inDiv = MLB_TEAMS.filter((t) => t.league === lg && t.division === dv);
+      const divs = ['AL East', 'AL Central', 'AL West', 'NL East', 'NL Central', 'NL West'];
+      const stars5 = starsOf(team).sort((a, b) => SEA.overall(b) - SEA.overall(a));
+      const rivals = MLB_TEAMS.filter((t) => t.league === team.league && t.division === team.division && t.id !== team.id);
       const seg = (key, items, cur) => `<div class="seg" data-pick="${key}">${items.map(([v, l]) => `<button data-v="${v}" class="${cur === v ? 'on' : ''}">${l}</button>`).join('')}</div>`;
       const n = (k) => (CONFIG.season.cycles[k] * 8);
-      d.innerHTML = `${this.backHead('Season')}
+      d.style.setProperty('--accent', team.color);
+      d.innerHTML = `${this.backHead('Pick your team', '', 'League')}
+        <div class="picker">
+          <div>
+            <div class="divtabs">${divs.map((x) => `<button data-div="${x}" class="${x === div ? 'on' : ''}">${x}</button>`).join('')}</div>
+            <div class="teamlist">${inDiv.map((t) => `<button class="teamrow ${t.id === team.id ? 'sel' : ''}" data-team="${t.id}" style="--c:${t.color}">${crest(t)}<span class="nm"><small>${t.city}</small><b>${t.nick}</b></span>${tierStars(t.tier)}</button>`).join('')}</div>
+          </div>
+          <div class="teamcard" style="--c:${team.color}">
+            <div class="top">${crest(team, 'xl')}<div><small>${team.league === 'AL' ? 'American' : 'National'} League · ${team.division}</small><h3>${team.city}<br>${team.nick}</h3>${tierStars(team.tier)}</div></div>
+            <div class="sect split"><span>Stars</span><span class="rate">${ratingHead}</span></div>
+            <div class="starlist">${stars5.map((p) => `<div class="starrow"><span class="pos">${p.pos}</span><span class="nm">${p.name}</span><span class="rate">${ratingCells(p)}</span></div>`).join('')}</div>
+            <div class="sect">Division rivals</div>
+            <div class="rivals">${rivals.map((t) => crest(t, 'sm')).join('')}</div>
+          </div>
+        </div>
         <div class="setup">
           <div class="grp"><span class="label">Level</span>${seg('level', DIFFICULTIES.map((k) => [k, CONFIG.difficulty[k].label]), pick.level)}</div>
           <div class="grp"><span class="label">Length</span>${seg('length', [['short', `${n('short')} games`], ['full', `${n('full')} games`]], pick.length)}</div>
-          <button class="btn wide" data-a="seasonNew">${icon('play')}Start season</button>
+          <button class="btn" data-a="seasonNew">${icon('play')}Start league</button>
         </div>`;
     } else {
       const me = sea.teams[0];
+      const mine = teamById(me.id);
       const g = SEA.nextGame(sea);
       const table = SEA.standings(sea);
       const place = table.findIndex((x) => x.i === 0) + 1;
+      d.style.setProperty('--accent', me.color);
       let hero;
       if (g) {
         const t = sea.teams[g.opp];
         const series = g.kind === 'final' ? `<span class="chip">Series ${g.series[0]}–${g.series[1]}</span>` : '';
-        hero = `<div class="next">
+        const ip = sea.inProgress;
+        hero = `<div class="next" style="--me:${me.color};--them:${t.color}">
           <div class="label">${g.label}</div>
-          <div class="match"><span class="tm"><i style="background:${me.color}"></i>${me.abbr}<small>${me.w}–${me.l}</small></span><span class="vs">at</span><span class="tm"><i style="background:${t.color}"></i>${t.abbr}<small>${t.w}–${t.l}</small></span></div>
+          <div class="match">
+            <div class="side">${crest(me, 'xl')}<b>${me.abbr}</b><small>${me.w}–${me.l}</small></div>
+            <span class="vs">at</span>
+            <div class="side">${crest(t, 'xl')}<b>${t.abbr}</b><small>${t.w}–${t.l}</small></div>
+          </div>
           <div class="oppname">${t.name}${stars(t.rating, true)}${series}</div>
-          <button class="btn wide" data-a="seasonPlay">${icon('play')}${sea.inProgress ? 'Resume' : 'Play'}</button>${sea.inProgress ? `<div class="chips"><span class="chip">${sea.inProgress.state.game.half === 'top' ? 'Top' : 'Bottom'} ${sea.inProgress.state.game.inning}</span><span class="chip">${sea.inProgress.state.game.score.top}–${sea.inProgress.state.game.score.bottom}</span></div>` : ''}
+          <button class="btn wide" data-a="seasonPlay">${icon('play')}${ip ? 'Resume' : 'Play'}</button>${ip ? `<div class="chips"><span class="chip">${ip.state.game.half === 'top' ? 'Top' : 'Bottom'} ${ip.state.game.inning}</span><span class="chip">${ip.state.game.score.top}–${ip.state.game.score.bottom}</span></div>` : ''}
         </div>`;
       } else {
         const fin = SEA.finishOf(sea);
         const champ = sea.champion !== null && sea.champion !== undefined ? sea.teams[sea.champion] : null;
-        hero = `<div class="next done">
-          <div class="label">Season ${sea.year} · ${me.w}–${me.l}</div>
+        hero = `<div class="next done" style="--me:${me.color};--them:#1a2a4a">
+          <div class="label">Year ${sea.year} · ${me.w}–${me.l}</div>
           <div class="result ${fin === 'Champions' ? 'win' : 'loss'}">${headline(fin === 'Champions' ? 'CHAMPIONS' : fin === 'Runner-up' ? 'RUNNER-UP' : 'SEASON OVER', fin === 'Champions' ? 'gold' : 'red')}</div>
           ${champ && sea.champion !== 0 ? `<div class="oppname">${icon('trophy')}${champ.name}</div>` : ''}
-          <button class="btn wide" data-a="seasonNext">${icon('play')}Season ${sea.year + 1}</button>
+          <button class="btn wide" data-a="seasonNext">${icon('play')}Year ${sea.year + 1}</button>
         </div>`;
       }
       const last = sea.games[sea.games.length - 1];
       const lastTxt = last ? `<span class="chip ${last.won ? 'w' : 'l'}">${last.won ? 'W' : 'L'} ${last.rf}–${last.ra} ${sea.teams[last.opp].abbr}</span>` : '';
       const chips = `<span class="summary-row"><span class="chip">${CONFIG.difficulty[sea.level].label}</span><span class="chip">${me.w}–${me.l}</span>${me.w + me.l ? `<span class="chip">${ordinal(place)}</span>` : ''}${lastTxt}</span>`;
-      d.innerHTML = `${this.backHead(`Season ${sea.year}`, chips + coins)}
-        ${hero}
-        <div class="row hubbtns">
-          <button class="btn small ghost" data-a="standings">${icon('list')}Standings</button>
-          <button class="btn small ghost" data-a="roster">${icon('users')}Roster</button>
-          <button class="btn small ghost" data-a="shop">${icon('cart')}Shop</button>
+      const nav = (a, ic, title, small) => `<button class="navtile" data-a="${a}"><span class="ico">${icon(ic)}</span><span><h4>${title}</h4><small>${small}</small></span><span class="go">${icon('chevRight')}</span></button>`;
+      d.innerHTML = `${this.backHead(teamName(mine), chips + `<span class="coins">${icon('coin')}${sea.coins}</span>`, `League · Year ${sea.year}`)}
+        <div class="hubgrid">
+          ${hero}
+          <div class="hubnav">
+            ${nav('standings', 'list', 'Standings', `${ordinal(place)} of ${sea.teams.length}`)}
+            ${nav('roster', 'users', 'Roster', `${sea.roster.length} players`)}
+            ${nav('shop', 'cart', 'Shop', `${sea.coins} coins`)}
+          </div>
         </div>
         <div class="row foot"><button class="btn small ghost warn" data-a="seasonReset" data-confirm="Start over?">${icon('trash')}New league</button></div>`;
     }
     s.appendChild(d);
     this.refocus(s);
     s.onclick = (e) => {
+      const pick = this.pick;
+      const tab = e.target.closest('.divtabs button');
+      if (tab && pick) { pick.div = tab.dataset.div; const [lg, dv] = pick.div.split(' '); const cur = teamById(pick.team); if (!(cur.league === lg && cur.division === dv)) pick.team = MLB_TEAMS.find((t) => t.league === lg && t.division === dv).id; this.act('uiTick'); this.buildSeason(null, { difficulty: pick.level }); return; }
+      const row = e.target.closest('.teamrow');
+      if (row && pick) { pick.team = row.dataset.team; this.act('uiTick'); this.buildSeason(null, { difficulty: pick.level }); return; }
       const pk = e.target.closest('.seg[data-pick] button');
-      if (pk) { this.seasonPick[pk.parentNode.dataset.pick] = pk.dataset.v; for (const b of pk.parentNode.children) b.classList.toggle('on', b === pk); this.act('uiTick'); return; }
+      if (pk) { pick[pk.parentNode.dataset.pick] = pk.dataset.v; for (const b of pk.parentNode.children) b.classList.toggle('on', b === pk); this.act('uiTick'); return; }
       const b = e.target.closest('[data-a]'); if (!b) return;
       if (b.dataset.confirm && !this.confirmed(b)) return;
-      this.act(b.dataset.a, { ...this.seasonPick });
+      this.act(b.dataset.a, pick ? { ...pick } : undefined);
     };
   }
 
   buildStandings(sea) {
     const s = this.fresh('standings');
-    const d = h('div', 'season panel rise');
+    const d = h('div', 'league panel rise');
+    d.style.setProperty('--accent', sea.teams[0].color);
     const rows = SEA.standings(sea);
     const cut = CONFIG.season.playoffTeams;
-    const tr = (x) => `<tr class="${x.i === 0 ? 'me' : ''} ${x.rank === cut ? 'cut' : ''}"><td>${x.rank}</td><td class="tn"><i style="background:${x.team.color}"></i><span class="full">${x.team.name}</span><span class="ab">${x.team.abbr}</span></td><td>${x.team.w}</td><td>${x.team.l}</td><td>${x.gb ? x.gb : '–'}</td><td class="st">${x.i === 0 ? '' : stars(x.team.rating, true)}</td></tr>`;
+    const tr = (x) => `<tr class="${x.i === 0 ? 'me' : ''} ${x.rank === cut ? 'cut' : ''}"><td>${x.rank}</td><td class="tn">${crest(x.team, 'sm')}<span class="full">${x.team.name}</span><span class="ab">${x.team.abbr}</span></td><td>${x.team.w}</td><td>${x.team.l}</td><td>${x.gb ? x.gb : '–'}</td><td class="st">${x.i === 0 ? '' : stars(x.team.rating, true)}</td></tr>`;
     let bracket = '';
     const po = sea.playoffs;
     if (po) {
@@ -643,7 +698,7 @@ export class UI {
       bracket = `<div class="bracket"><div><div class="label">Semifinals</div>${po.semis.map(semi).join('')}</div>
         <div><div class="label">World Series</div>${f ? `<div class="mu"><span class="${sea.champion === f.a ? 'won' : ''}">${nm(f.a)} ${f.wa}</span><span class="${sea.champion === f.b ? 'won' : ''}">${nm(f.b)} ${f.wb}</span></div>` : '<div class="mu"><span>–</span><span>–</span></div>'}</div></div>`;
     }
-    d.innerHTML = `${this.backHead('Standings')}${bracket}
+    d.innerHTML = `${this.backHead('Standings', '', `League · Year ${sea.year}`)}${bracket}
       <table class="standings"><tr><th></th><th></th><th>W</th><th>L</th><th>GB</th><th></th></tr>${rows.map(tr).join('')}</table>`;
     s.appendChild(d);
     s.onclick = (e) => { const b = e.target.closest('[data-a]'); if (b) this.act(b.dataset.a); };
@@ -653,18 +708,20 @@ export class UI {
   // player when the roster is full) tapping a player lets him go and the new man takes his place.
   buildRoster(sea, sel = null, replaceFor = null) {
     const s = this.fresh('roster');
-    const d = h('div', 'season panel rise');
+    const d = h('div', 'league panel rise');
+    d.style.setProperty('--accent', sea.teams[0].color);
     const n = CONFIG.season.roster.lineup;
     const buying = replaceFor ? sea.shop.find((p) => p.id === replaceFor) : null;
     const row = (p, i) => {
       const t = sea.stats[p.id] || {};
       const short = buying && sea.coins + SEA.refund(p) < SEA.price(buying); // (letting him go would not bring in enough)
-      const extra = buying ? `<span class="price">+${SEA.refund(p)}</span>` : `<span class="line">${SEA.avg(t.h || 0, t.ab || 0)}<small>AVG</small></span><span class="line">${t.hr || 0}<small>HR</small></span><span class="line">${t.rbi || 0}<small>RBI</small></span>`;
-      return `${i === n ? '<div class="label benchlab">Bench</div>' : ''}<button class="prow ${sel === p.id ? 'sel' : ''}" data-id="${p.id}" ${short ? 'disabled' : ''}><span class="ord">${i < n ? i + 1 : ''}</span><span class="who"><b>${p.name}</b><small>${p.pos} · #${p.number} · ${p.hand === 'L' ? 'L' : 'R'}</small></span>${ratingCells(p)}${extra}</button>`;
+      const extra = buying ? `<span class="price">+${SEA.refund(p)}</span>` : `<span class="line">${SEA.avg(t.h || 0, t.ab || 0)}</span><span class="line">${t.hr || 0}</span><span class="line">${t.rbi || 0}</span>`;
+      return `${i === n ? '<div class="label benchlab">Bench</div>' : ''}<button class="prow ${p.star ? 'star' : ''} ${sel === p.id ? 'sel' : ''}" data-id="${p.id}" ${short ? 'disabled' : ''}><span class="ord">${i < n ? i + 1 : ''}</span><span class="who"><b>${p.name}</b><small>${p.pos} · #${p.number} · ${p.hand === 'L' ? 'Bats L' : 'Bats R'}${p.team ? ' · ' + p.team : ''}</small></span>${ratingCells(p)}${extra}</button>`;
     };
-    const head = buying ? `Replace who?` : 'Roster';
-    d.innerHTML = `${this.backHead(head, `<span class="coins">${icon('coin')}${sea.coins}</span>`)}
-      ${buying ? `<div class="prow buying">${`<span class="ord">${icon('cart')}</span><span class="who"><b>${buying.name}</b><small>${buying.pos} · ${SEA.price(buying)}</small></span>`}${ratingCells(buying)}</div>` : ''}
+    const head = buying ? 'Replace who?' : 'Roster';
+    d.innerHTML = `${this.backHead(head, `<span class="coins">${icon('coin')}${sea.coins}</span>`, `League · Year ${sea.year}`)}
+      ${buying ? `<div class="prow buying"><span class="ord">${icon('cart')}</span><span class="who"><b>${buying.name}</b><small>${buying.pos} · ${SEA.price(buying)} coins</small></span>${ratingCells(buying)}</div>` : ''}
+      <div class="phead"><span class="ord">#</span><span class="who">Player</span>${ratingHead}${buying ? '<span class="price">Back</span>' : '<span class="line">AVG</span><span class="line">HR</span><span class="line">RBI</span>'}</div>
       <div class="plist">${sea.roster.map(row).join('')}</div>`;
     s.appendChild(d);
     this.refocus(s);
@@ -677,15 +734,17 @@ export class UI {
 
   buildShop(sea) {
     const s = this.fresh('shop');
-    const d = h('div', 'season panel rise');
+    const d = h('div', 'league panel rise');
+    d.style.setProperty('--accent', sea.teams[0].color);
     const full = sea.roster.length >= CONFIG.season.roster.size;
     const back = full ? Math.max(...sea.roster.map((p) => SEA.refund(p))) : 0; // (with a full roster the man he replaces brings a little back)
     const card = (p) => {
       const cost = SEA.price(p);
       const afford = sea.coins + back >= cost;
-      return `<div class="prow shopp"><span class="ord ovr">${SEA.overall(p)}</span><span class="who"><b>${p.name}</b><small>${p.pos} · #${p.number} · ${p.hand}</small></span>${ratingCells(p)}<button class="btn small ${afford ? '' : 'ghost'}" data-a="shopBuy" data-id="${p.id}" ${afford ? '' : 'disabled'}>${icon('coin')}${cost}</button></div>`;
+      return `<div class="prow shopp ${p.star ? 'star' : ''}"><span class="ord ovr">${SEA.overall(p)}</span><span class="who"><b>${p.name}</b><small>${p.pos} · #${p.number} · ${p.hand === 'L' ? 'Bats L' : 'Bats R'}${p.team ? ' · ' + p.team : ''}</small></span>${ratingCells(p)}<button class="btn small ${afford ? '' : 'ghost'}" data-a="shopBuy" data-id="${p.id}" ${afford ? '' : 'disabled'}>${icon('coin')}${cost}</button></div>`;
     };
-    d.innerHTML = `${this.backHead('Shop', `<span class="coins">${icon('coin')}${sea.coins}</span>`)}
+    d.innerHTML = `${this.backHead('Shop', `<span class="coins">${icon('coin')}${sea.coins}</span>`, `League · Year ${sea.year}`)}
+      <div class="phead"><span class="ord">OVR</span><span class="who">Player</span>${ratingHead}<span class="price" style="min-width:96px"></span></div>
       <div class="plist">${sea.shop.map(card).join('')}</div>`;
     s.appendChild(d);
     this.refocus(s);
@@ -726,6 +785,21 @@ export class UI {
     b.querySelectorAll('.dot.b').forEach((d, i) => d.classList.toggle('on', i < balls));
     b.querySelectorAll('.dot.s').forEach((d, i) => d.classList.toggle('on', i < strikes));
     b.querySelectorAll('.dot.o').forEach((d, i) => d.classList.toggle('on', i < outs));
+  }
+  // The batting order on the left: all nine, the one at the plate lit, the ones who have been up dimmed. `today` = { id: { ab, h } } (optional).
+  setLineup(lineup, idx, today = null) {
+    const ol = this.q.lineup.querySelector('ol');
+    if (!lineup) { ol.innerHTML = ''; return; }
+    const key = lineup.map((b) => b.id).join(',');
+    if (this.lineupKey !== key) {
+      this.lineupKey = key;
+      ol.innerHTML = lineup.map((b, i) => `<li data-i="${i}"><b>${i + 1}</b><span>${b.short || b.name}</span><small></small></li>`).join('');
+    }
+    ol.querySelectorAll('li').forEach((li, i) => {
+      li.classList.toggle('on', i === idx);
+      const t = today && today[lineup[i].id];
+      li.querySelector('small').textContent = t && t.ab ? `${t.h}-${t.ab}` : '';
+    });
   }
   setBatter(b) { this.q.tag.innerHTML = b ? `<b>#${b.number}</b>${b.name}` : ''; }
   // The next batter's card and the Ready button (the pitcher waits for it). line = today's { ab, h, hr, rbi, bb }; info = extra chips.
@@ -832,6 +906,8 @@ export class UI {
     f.style.transition = 'none'; f.style.opacity = String(a); void f.offsetWidth;
     f.style.transition = `opacity ${ms * 2}ms ease-out`; f.style.opacity = '0';
   }
+  setFullscreenIcon(on) { for (const b of this.root.querySelectorAll('[data-fs]')) { b.innerHTML = icon(on ? 'fullExit' : 'full'); b.setAttribute('aria-label', on ? 'Exit full screen' : 'Full screen'); } }
+  setFullscreenAvailable(ok) { for (const b of this.root.querySelectorAll('[data-fs]')) b.style.display = ok ? '' : 'none'; }
   setMuteIcon(muted) { const b = this.hud.querySelector('[data-a=mute]'); if (b) b.innerHTML = icon(muted ? 'soundOff' : 'soundOn'); }
   toast(text, ms = 2600, ic = '') {
     this.toastEl.innerHTML = ic ? icon(ic) : '';

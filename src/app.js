@@ -236,6 +236,7 @@ export class App {
       case 'playAgain': this.audio.uiClick(); this.startGame(this.lastMode); break;
       case 'quit': this.audio.uiBack(); this.quitToMenu(); break;
       case 'mute': this.toggleMute(); break;
+      case 'fullscreen': this.toggleFullscreen(); break;
       case 'skipSummary': if (this.engine) this.engine.skipSummary(); break;
       case 'batterReady': if (this.engine) this.engine.batterReady(); break;
       case 'bunt': if (this.engine) this.engine.setBunt(!this.engine.buntStance); break;
@@ -435,6 +436,7 @@ export class App {
     const F = CONFIG.feel;
     e.on('paStart', ({ batter, waiting }) => {
       ui.setBatter(batter);
+      this.refreshLineup();
       if (waiting) ui.showBatterUp(batter, e.lineOf(batter), this.batterChips(batter)); else ui.hideBatterUp();
       this.pitchMarker.visible = false;
       this.actors.loose.spent = false;
@@ -650,6 +652,23 @@ export class App {
     }
   }
 
+  // The batting order panel: who is up, and each man's day so far.
+  refreshLineup() {
+    const e = this.engine;
+    if (!e || e.mode !== 'quick' || !e.lineup) { this.ui.setLineup(null); return; }
+    const today = {};
+    for (const b of e.lineup) today[b.id] = e.lineOf(b);
+    this.ui.setLineup(e.lineup, e.batterIndex ?? 0, today);
+  }
+
+  toggleFullscreen() {
+    const d = document;
+    const on = !!(d.fullscreenElement || d.webkitFullscreenElement);
+    try {
+      if (on) { (d.exitFullscreen || d.webkitExitFullscreen).call(d); } else { const el = d.documentElement; (el.requestFullscreen || el.webkitRequestFullscreen).call(el); }
+    } catch (err) { /* not allowed here: nothing to do */ }
+  }
+
   // Small facts on the next batter's card (bats left / right; season numbers are added in Season mode).
   batterChips(b) {
     const out = [];
@@ -657,7 +676,7 @@ export class App {
     if (b.con !== undefined && sea) {
       // a Season player: his season so far and his ratings
       const t = sea.stats[b.id] || {};
-      out.push(`${SEA.avg(t.h || 0, t.ab || 0)} AVG`, `${t.hr || 0} HR`, `CON ${b.con} · POW ${b.pow} · SPD ${b.spd}`);
+      out.push(`${SEA.avg(t.h || 0, t.ab || 0)} AVG`, `${t.hr || 0} HR`, `Contact ${b.con} · Power ${b.pow} · Speed ${b.spd}`);
       return out;
     }
     if (b.hand) out.push(b.hand === 'L' ? 'Bats left' : 'Bats right');
@@ -690,6 +709,7 @@ export class App {
       if (r.call === 'ball' && e.game && e.game.balls === 3) audio.crowdSwell(0.2, 1.2);
       return;
     }
+    if (r.kind !== 'pitch') this.refreshLineup();
     if (r.kind === 'steal') {
       const safe = r.result !== 'caughtStealing';
       const where = { 2: 'Second', 3: 'Third' }[r.base] || '';
@@ -813,6 +833,7 @@ export class App {
           this.escape();
           break;
         case 'KeyM': this.toggleMute(); break;
+        case 'KeyF': if (!onControl) this.toggleFullscreen(); break;
         case 'KeyB': if (inGame && this.engine) this.engine.setBunt(!this.engine.buntStance); break;
         case 'KeyS': if (inGame && this.engine) this.engine.setSteal(!this.engine.stealArmed); break;
         case 'KeyZ': if (this.engine) { this.changeSetting('zone', !this.settings.zone); } break;

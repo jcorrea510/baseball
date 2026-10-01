@@ -142,10 +142,13 @@ const scenarios = [
       if (await page.waitForSelector('#ui .screen.show button[data-a="howtoDone"]', { timeout: 5000 }).catch(() => null)) await click('#ui .screen.show button[data-a="howtoDone"]');
       await click('#ui .screen.show .seg[data-set="tod"] button[data-v="night"]');
       await waitFor(page, () => document.querySelector('#ui .screen.show .seg[data-set="tod"] button[data-v="night"]')?.classList.contains('on'), 5000, 'the Night setting to stay selected');
-      await click('#ui .screen.show .card[data-mode="quick"]');
+      await click('#ui .screen.show .tile[data-mode="quick"]');
       await waitFor(page, () => document.querySelector('.hud')?.dataset.mode === 'quick' && document.querySelector('.hud').classList.contains('show'), 20000, 'the game HUD');
       if (!(await visible('.hud .bug'))) throw new Error('the score bug is not showing in Quick Game');
       if (await visible('.hud .derbybox')) throw new Error('the Derby scoreboard is showing in Quick Game');
+      // you are the home team: the computer bats first, and its highlights cover the screen until they are skipped
+      if (await page.waitForSelector('#ui .screen.show button[data-a="skipSummary"]', { timeout: 8000 }).catch(() => null)) await click('#ui .screen.show button[data-a="skipSummary"]');
+      await waitFor(page, () => !document.querySelector('#ui .screen.show'), 8000, 'the computer\'s highlights to go');
       await click('.hud .hudbtns [data-a="pause"]');
       await click('#ui .screen.show .switch[data-set="zone"]');
       if (await page.evaluate(() => document.querySelector('#ui .screen.show .switch[data-set="zone"]').classList.contains('on'))) throw new Error('the strike-zone switch did not turn off');
