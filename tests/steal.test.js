@@ -76,6 +76,7 @@ describe('a steal attempt', () => {
     expect(plan.result).toBe('caughtStealing');
     const out = plan.events.find((ev) => ev.type === 'out');
     expect(out.base).toBe(2);
+    expect(out.tag).toBe(true); // (a steal is a tag play: the fielder has to put the glove on him)
     expect(out.t).toBeLessThan(runnerArrival(CONFIG, 1, 2, -1.0));
     expect(auditPlan(plan, defense)).toEqual([]);
   });

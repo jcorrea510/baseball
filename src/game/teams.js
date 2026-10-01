@@ -25,17 +25,6 @@ export const BATS = {
 
 export const PLAYER_TEAM = { id: 'sandlot', name: 'Sandlot Sluggers', abbr: 'SLG', color: '#1d3a7e' };
 
-export const OPPONENTS = [
-  { id: 'foxes', name: 'Cedar Falls Foxes', abbr: 'CFF', color: '#d2691e', uniform: { primary: '#d2691e', secondary: '#1a1a1a', trim: '#ffffff', pants: '#efe9dc', cap: '#1a1a1a', capBill: '#d2691e', socks: '#1a1a1a', helmet: '#1a1a1a', sleeve: '#1a1a1a', text: 'FOXES' } },
-  { id: 'herons', name: 'Harbor City Herons', abbr: 'HCH', color: '#123b6b', uniform: { primary: '#f1f3f5', secondary: '#123b6b', trim: '#5ab0e8', pants: '#f1f3f5', cap: '#123b6b', capBill: '#123b6b', socks: '#123b6b', helmet: '#123b6b', sleeve: '#123b6b', text: 'HERONS', stripe: true } },
-  { id: 'miners', name: 'Ironvale Miners', abbr: 'IRN', color: '#e0a800', uniform: { primary: '#131313', secondary: '#f0b323', trim: '#f0b323', pants: '#131313', cap: '#131313', capBill: '#f0b323', socks: '#f0b323', helmet: '#131313', sleeve: '#131313', text: 'MINERS' } },
-  { id: 'loons', name: 'Lakeshore Loons', abbr: 'LAK', color: '#0f7f8a', uniform: { primary: '#0f7f8a', secondary: '#ffffff', trim: '#0a2f36', pants: '#e9f2f3', cap: '#0a2f36', capBill: '#0f7f8a', socks: '#0f7f8a', helmet: '#0a2f36', sleeve: '#0a2f36', text: 'LOONS' } },
-  { id: 'coyotes', name: 'Dustbowl Coyotes', abbr: 'DBC', color: '#7a1f1f', uniform: { primary: '#d5b981', secondary: '#7a1f1f', trim: '#ffffff', pants: '#d5b981', cap: '#7a1f1f', capBill: '#7a1f1f', socks: '#7a1f1f', helmet: '#7a1f1f', sleeve: '#7a1f1f', text: 'COYOTES' } },
-  { id: 'comets', name: 'Sunport Comets', abbr: 'SPC', color: '#2a52be', uniform: { primary: '#2a52be', secondary: '#ffffff', trim: '#d62828', pants: '#f3f3f0', cap: '#d62828', capBill: '#2a52be', socks: '#d62828', helmet: '#2a52be', sleeve: '#d62828', text: 'COMETS' } },
-  { id: 'ravens', name: 'Redrock Ravens', abbr: 'RRV', color: '#a4161a', uniform: { primary: '#a4161a', secondary: '#111111', trim: '#f4f4f0', pants: '#dedad0', cap: '#111111', capBill: '#a4161a', socks: '#111111', helmet: '#111111', sleeve: '#111111', text: 'RAVENS' } },
-  { id: 'stampede', name: 'Prairie Stampede', abbr: 'PST', color: '#2e6b3a', uniform: { primary: '#2e6b3a', secondary: '#eadcaa', trim: '#eadcaa', pants: '#eee7d0', cap: '#1f4a28', capBill: '#1f4a28', socks: '#2e6b3a', helmet: '#1f4a28', sleeve: '#2e6b3a', text: 'STAMPEDE' } },
-];
-
 export const FIRST = ['J.', 'M.', 'D.', 'T.', 'C.', 'R.', 'A.', 'L.', 'K.', 'B.', 'S.', 'E.', 'N.', 'P.', 'G.', 'H.', 'W.', 'F.'];
 export const LAST = ['Alvarez', 'Bennett', 'Castillo', 'Dawson', 'Ellis', 'Fontaine', 'Grayson', 'Hollis', 'Ishikawa', 'Jimenez', 'Kowalski', 'Lindgren', 'Marlow', 'Nakamura', 'Okafor', 'Pruitt', 'Quinn', 'Rourke', 'Santos', 'Tanaka', 'Underhill', 'Vasquez', 'Whitaker', 'Yoder', 'Zielinski', 'Brennan', 'Delgado', 'Faulkner', 'Haddad', 'Iverson', 'Mercer', 'Novak', 'Ortega', 'Petrov', 'Reyes', 'Sutton', 'Thibodeaux', 'Voss', 'Walsh', 'Abbott'];
 export const SKINS = ['#f2c9a0', '#e0ac82', '#c68642', '#a3683b', '#7b4a2a', '#f7d7b5', '#5d3a22', '#d9a066'];

@@ -11,7 +11,8 @@ import { choosePitch, pitchWindowScale } from './pitcherAI.js';
 import { createDefense, planPlay, planSteal, fielderBackTime } from './fielding.js';
 import * as rules from './rules.js';
 import { simulateHalf } from './aiHalf.js';
-import { makeLineup, makePitcher, OPPONENTS, PLAYER_TEAM } from './teams.js';
+import { makeLineup, makePitcher, PLAYER_TEAM } from './teams.js';
+import { MLB_TEAMS, teamName, uniformFor, teamLineup } from './mlb.js';
 import { ratingEffects } from './season.js';
 
 export class Engine {
@@ -49,11 +50,12 @@ export class Engine {
     this.stealArmed = false; // the runners will go on the next pitch (S)
     this.steal = null; // this pitch's steal attempt: { bases, start: { base: engine time he took off } }
     this.practice = { type: 'fastball', speed: cfg.modes.practice.speedDefault, location: 'random', ...(o.practice || {}) };
-    this.opponent = o.opponent || OPPONENTS[this.rng.int(0, OPPONENTS.length - 1)];
+    const oppTeam = MLB_TEAMS[this.rng.int(0, MLB_TEAMS.length - 1)];
+    this.opponent = o.opponent || { id: oppTeam.id, name: teamName(oppTeam), abbr: oppTeam.abbr, color: oppTeam.color, uniform: uniformFor(oppTeam, 'away') };
     this.playerTeam = o.playerTeam || PLAYER_TEAM; // (League games: your own big-league club, with its own jersey)
 
     this.lineup = o.lineup ? o.lineup.map((b) => ({ ...b })) : makeLineup(this.seed, 'p');
-    this.oppLineup = o.oppLineup || makeLineup(this.seed ^ 0x5bd1e995, 'o');
+    this.oppLineup = o.oppLineup || (o.opponent ? makeLineup(this.seed ^ 0x5bd1e995, 'o') : teamLineup(oppTeam, this.seed, 'o'));
     if (this.handSetting !== 'auto') for (const b of this.lineup) b.hand = this.handSetting;
     this.pitcher = makePitcher(this.seed);
     this.defense = createDefense(cfg, this.rng);

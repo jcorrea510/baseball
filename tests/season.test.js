@@ -37,6 +37,19 @@ describe('the big-league teams', () => {
   });
 });
 
+describe('a Quick Game opponent', () => {
+  it('is one of the thirty clubs, in its road uniform, with its own lineup', () => {
+    for (const seed of [1, 2, 3, 4, 5]) {
+      const e = new Engine({ mode: 'quick', seed });
+      const t = MLB_TEAMS.find((x) => x.id === e.opponent.id);
+      expect(t).toBeTruthy();
+      expect(e.opponent.name).toBe(`${t.city} ${t.nick}`);
+      expect(e.opponent.uniform.primary).toBe(uniformFor(t, 'away').primary);
+      expect(e.oppLineup.length).toBe(9);
+    }
+  });
+});
+
 describe('picking a team', () => {
   it('you start with your own team\'s stars, at their positions', () => {
     const t = MLB_TEAMS.find((x) => x.id === 'lad');

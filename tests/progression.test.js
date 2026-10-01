@@ -27,6 +27,16 @@ describe('saved progress', () => {
     expect(b.data.career.wins).toBe(1);
   });
 
+  it('drops a league saved before the big-league teams (it cannot be carried over) but keeps everything else', () => {
+    const store = memStore();
+    store.set(CONFIG.storageKey, JSON.stringify({ career: { hits: 7 }, season: { v: 1, teams: [{ id: 'sandlot' }] } }));
+    const p = new Progress(store);
+    expect(p.data.season).toBe(null);
+    expect(p.data.career.hits).toBe(7);
+    store.set(CONFIG.storageKey, JSON.stringify({ season: { v: 2, teams: [{ id: 'nym' }] } }));
+    expect(new Progress(store).data.season.v).toBe(2);
+  });
+
   it('survives storage that throws (private windows)', () => {
     const bad = { get() { throw new Error('blocked'); }, set() { throw new Error('blocked'); } };
     const p = new Progress(bad);

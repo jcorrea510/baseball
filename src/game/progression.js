@@ -74,6 +74,7 @@ export class Progress {
       if (raw) {
         const d = merge(DEFAULT_SAVE(), JSON.parse(raw));
         if (d.settings.umpire !== 'off') d.settings.umpire = 'on'; // (older saves had 'synth' / 'speech' voices, now gone)
+        if (d.season && d.season.v !== 2) d.season = null; // (a league from before the big-league teams cannot be carried over)
         this.fresh = false;
         return d;
       }
