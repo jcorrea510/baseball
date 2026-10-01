@@ -32,7 +32,8 @@ When a batter comes up you see the whole field; press **Ready** and the camera z
 
 **Two skills:** put the bat where the ball will be, and swing so the bat gets there at the same moment.
 
-* **Where the bat meets the ball decides where it goes.** The bat a little *under* the middle of the ball sends it up and far - that is where home runs come from. Square on the middle: a line drive. On top of the ball: a ground ball. Way under it: a pop-up. Miss it by more than the bat's reach and you swing right through (the swing then tells you: *Under it*, *Over it*, *Off the end*, *Jammed*).
+* **The pitch guide** - the soft circle over the strike zone - appears just after the ball leaves the pitcher's hand and homes in on where the pitch will cross: put the bat's yellow ring on it. (It is less sure on harder levels, and a curveball's drop shows up a moment later.)
+* **Where the bat meets the ball decides where it goes.** The bat a little *under* the middle of the ball sends it up and far - that is where home runs come from. Square on the middle: a line drive. On top of the ball: a ground ball. Way under it: a pop-up. The bat touches the ball anywhere inside its faint outline, but only the middle of it squares the ball up; near the edge you just get a piece of it (a foul tip, a pop-up, a chopper). Miss it by more than the bat's reach and you swing right through (the swing then tells you: *Under it*, *Over it*, *Off the end*, *Jammed*).
 * **Timing:** PERFECT is the hardest-hit ball, GOOD is solid; early swings *pull* the ball, late swings push it the other way. A small meter shows exactly how many milliseconds early or late you were.
 * After every swing the see-through bat stays where you swung for a moment, and a ring shows where the ball really was (green: hit, red: miss) - so you can see what went wrong.
 
@@ -131,7 +132,9 @@ If something feels too hard, too easy, too slow or too fast, open **`src/config.
 | Pitches too fast / too slow | `difficulty.<level>.fastball` (speed range in mph) |
 | Hard to tell whether to swing | `difficulty.<level>.guide` (when the pitch guide shows up and how sure it is), `difficulty.<level>.typeAtRelease` |
 | Home runs too rare / too common | `field.fencePoints` (fence distances), `contact.maxExitVelocity`, `bat.*` (how the bat and ball collide) |
-| Bat too hard / too easy to put on the ball | `difficulty.<level>.contactWindow` (how far from the sweet spot still counts), `swing.*` |
+| Bat too hard / too easy to put on the ball | `difficulty.<level>.contactWindow` (how far from the sweet spot still touches the ball), `difficulty.<level>.sweetSpot` (the part that squares it up), `swing.*` |
+| Pitches arrive too fast to react (the speed shown stays the same) | `difficulty.<level>.pitchPace` |
+| The circle shows up too late / is too far off | `difficulty.<level>.guide` (`fadeIn`, `sharpen`, `floor`) |
 | The see-through bat (colour, see-through, how fast it follows) | `batAim.*` |
 | The batting camera | `camera.catcher` |
 | Sending runners too easy / too hard | `runner.sendTag`, `runner.sendReact`, `runner.roundPast`, `runner.sendLead` |
