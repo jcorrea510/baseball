@@ -329,10 +329,11 @@ export class UI {
     const q = hs.quick[st.difficulty];
     const derbyBest = hs.derby[st.difficulty] || 0;
     const sea = prog.data.season;
+    const qg = prog.data.quick;
     const me = sea ? sea.teams[0] : null;
     const tiles = [
       { mode: 'season', cls: 't-league', art: 'league', eyebrow: `${CONFIG.season.innings} innings · Playoffs`, title: 'League', sub: sea ? `Year ${sea.year} · ${me.w}–${me.l}` : 'Pick your team', tag: sea ? (sea.inProgress ? 'Resume' : me.abbr) : 'New', accent: me ? me.color : null, ic: 'trophy' },
-      { mode: 'quick', cls: 't-quick', art: 'quick', eyebrow: '3 innings · vs CPU', title: 'Quick Game', sub: q ? `Best ${q.runs}–${q.against}` : '', tag: q ? '' : 'New', ic: 'ball' },
+      { mode: 'quick', cls: 't-quick', art: 'quick', eyebrow: qg ? 'Game in progress' : '3 innings · vs CPU', title: 'Quick Game', sub: qg ? `${qg.state.game.half === 'top' ? 'Top' : 'Bottom'} ${qg.state.game.inning} · ${qg.state.game.score.top}–${qg.state.game.score.bottom}` : q ? `Best ${q.runs}–${q.against}` : '', tag: qg ? 'Resume' : q ? '' : 'New', ic: 'ball', fresh: !!qg },
       { mode: 'derby', cls: 't-derby', art: 'derby', eyebrow: '10 outs', title: 'Home Run Derby', sub: derbyBest ? `Best ${derbyBest} HR` : '', tag: derbyBest ? '' : 'New', ic: 'bolt' },
       { mode: 'practice', cls: 't-practice', art: 'practice', eyebrow: 'Pick the pitch', title: 'Practice', sub: c.practiceSwings ? `${c.practiceSwings} swings` : '', tag: c.practiceSwings ? '' : 'New', ic: 'target' },
     ];
@@ -342,7 +343,7 @@ export class UI {
     wrap.innerHTML = `
       ${this.backHead('Play', `<button class="iconbtn" data-a="howto" aria-label="How to play" title="How to play">${icon('help')}</button><button class="iconbtn" data-a="settings" aria-label="Settings" title="Settings">${icon('gear')}</button>`)}
       <div class="tiles">
-        ${tiles.map((m) => `<button class="tile ${m.cls}" data-a="start" data-mode="${m.mode}" style="${m.accent ? `--accent:${m.accent};` : ''}"><span class="art" style="background-image:${artUrl(m.art)}"></span>${m.tag ? `<span class="tag ${m.tag === 'New' ? '' : ''}">${m.tag}</span>` : ''}<span class="eyebrow">${m.eyebrow}</span><h3>${m.title}</h3>${m.sub ? `<span class="sub">${m.sub}</span>` : ''}<span class="go">${icon('chevRight')}</span></button>`).join('')}
+        ${tiles.map((m) => `<button class="tile ${m.cls}" data-a="start" data-mode="${m.mode}" style="${m.accent ? `--accent:${m.accent};` : ''}"><span class="art" style="background-image:${artUrl(m.art)}"></span>${m.tag ? `<span class="tag ${m.tag === 'New' ? '' : ''}">${m.tag}</span>` : ''}<span class="eyebrow">${m.eyebrow}</span><h3>${m.title}</h3>${m.sub ? `<span class="sub">${m.sub}</span>` : ''}${m.fresh ? `<span class="tilebtn" role="button" tabindex="0" data-a="quickNew">${icon('restart')}New game</span>` : ''}<span class="go">${icon('chevRight')}</span></button>`).join('')}
       </div>
       <div class="opts">
         <div class="grp"><span class="label">Level</span>${seg('difficulty', DIFFICULTIES.map((d) => [d, CONFIG.difficulty[d].label]), st.difficulty)}</div>
@@ -355,8 +356,9 @@ export class UI {
     s.onclick = (e) => {
       if (this.settingClick(e, true)) return;
       const b = e.target.closest('[data-a]');
-      if (b) this.act(b.dataset.a, { mode: b.dataset.mode });
+      if (b) this.act(b.dataset.a, { mode: b.dataset.mode || (b.closest('[data-mode]') || {dataset: {}}).dataset.mode });
     };
+    s.onkeydown = (e) => { const t = e.target; if ((e.key === 'Enter' || e.key === ' ') && t.classList && t.classList.contains('tilebtn')) { e.preventDefault(); e.stopPropagation(); this.act(t.dataset.a); } };
   }
 
   // ---------------- how to play
@@ -379,7 +381,7 @@ export class UI {
   }
 
   // ---------------- pause
-  buildPause(st, season = false) {
+  buildPause(st, season = false, saves = season) { // season: a League game (no restart); saves: quitting keeps the game to resume later
     const s = this.fresh('pause');
     const d = h('div', 'dialog panel pause rise');
     const sw = (key, ic, label, on) => `<div class="setrow"><span class="nm">${icon(ic)}${label}</span><button class="switch ${on ? 'on' : ''}" data-set="${key}" data-bool="1" role="switch" aria-checked="${on ? 'true' : 'false'}" aria-label="${label}"></button></div>`;
@@ -392,7 +394,7 @@ export class UI {
         ${sw('sound', 'soundOn', 'Sound', st.sound)}
       </div>
       <div class="row"><button class="btn small ghost" data-a="settingsPause">${icon('gear')}Settings</button><button class="btn small ghost" data-a="howtoPause">${icon('help')}Help</button></div>
-      <div class="row">${season ? '' : `<button class="btn small ghost" data-a="restart" data-confirm="Restart?">${icon('restart')}Restart</button>`}<button class="btn small ghost warn" data-a="quit" data-confirm="${season ? 'Save & quit?' : 'Quit game?'}">${icon('home')}${season ? 'Save &amp; quit' : 'Quit'}</button></div>`;
+      <div class="row">${season ? '' : `<button class="btn small ghost" data-a="restart" data-confirm="Restart?">${icon('restart')}Restart</button>`}<button class="btn small ghost warn" data-a="quit" data-confirm="${saves ? 'Save & quit?' : 'Quit game?'}">${icon('home')}${saves ? 'Save &amp; quit' : 'Quit'}</button></div>`;
     s.appendChild(d);
     s.onclick = (e) => {
       if (this.settingClick(e, true)) return;
@@ -789,7 +791,7 @@ export class UI {
   // The batting order on the left: all nine, the one at the plate lit, the ones who have been up dimmed. `today` = { id: { ab, h } } (optional).
   setLineup(lineup, idx, today = null) {
     const ol = this.q.lineup.querySelector('ol');
-    if (!lineup) { ol.innerHTML = ''; return; }
+    if (!lineup) { ol.innerHTML = ''; this.lineupKey = null; return; }
     const key = lineup.map((b) => b.id).join(',');
     if (this.lineupKey !== key) {
       this.lineupKey = key;

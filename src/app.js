@@ -195,6 +195,7 @@ export class App {
           this.ui.show('locker');
         }
         break;
+      case 'quickNew': this.audio.uiClick(); this.clearQuickSave(); this.startGame('quick'); break;
       case 'start': this.audio.uiClick(); if (d.mode === 'season') this.openMenu('season'); else this.startGame(d.mode); break;
       // ---- season
       case 'seasonNew': this.audio.uiClick(); this.prog.data.season = SEA.newSeason(null, { level: d.level, length: d.length, team: d.team }); this.prog.save(); this.showMenuScreen('season'); break;
@@ -232,7 +233,7 @@ export class App {
       case 'settingDone': this.prog.save(); this.previewSound(d.key); break;
       case 'pause': this.setPaused(true); break;
       case 'resume': this.setPaused(false); break;
-      case 'restart': this.setPaused(false); if (this.seasonGame) this.startSeasonGame(); else this.startGame(this.mode); break;
+      case 'restart': this.setPaused(false); if (this.seasonGame) this.startSeasonGame(); else { this.clearQuickSave(); this.startGame(this.mode); } break;
       case 'playAgain': this.audio.uiClick(); this.startGame(this.lastMode); break;
       case 'quit': this.audio.uiBack(); this.quitToMenu(); break;
       case 'mute': this.toggleMute(); break;
@@ -264,7 +265,7 @@ export class App {
   }
 
   showMenuScreen(name) {
-    if (name === 'pause') { this.ui.buildPause(this.settings, !!this.seasonGame); this.ui.show('pause'); return; }
+    if (name === 'pause') { this.ui.buildPause(this.settings, !!this.seasonGame, !!this.seasonGame || !!this.quickSave); this.ui.show('pause'); return; }
     if (!(this.engine && !this.engine.over && this.paused)) this.screen = name; // (settings opened from the pause menu: still in the game)
     if (name === 'title') { this.nav = []; this.ui.buildTitle(this.prog); }
     if (name === 'modes') this.ui.buildModes(this.prog);
@@ -312,10 +313,17 @@ export class App {
   // Season: save the game at every pitch, so quitting (or closing the page) never loses it or lets you start it over.
   saveSeasonGame(st) {
     const sea = this.prog.data.season;
+    if (this.quickSave && !this.seasonGame) {
+      // a Quick Game is saved at every pitch too (not before the first one: a game nobody has started is not worth resuming)
+      if (st.pitchCount > 0) { this.prog.data.quick = { seed: this.quickSave.seed, difficulty: this.quickSave.difficulty, state: st }; this.prog.save(); }
+      return;
+    }
     if (!this.seasonGame || !sea) return;
     sea.inProgress = { lineup: this.seasonLineup, seed: this.seasonSeed, state: st };
     this.prog.save();
   }
+
+  clearQuickSave() { this.quickSave = null; if (this.prog.data.quick) { this.prog.data.quick = null; this.prog.save(); } }
 
   goModes() { this.nav = ['title']; this.showMenuScreen('modes'); }
 
@@ -355,7 +363,7 @@ export class App {
     if (!this.engine || this.engine.over) return;
     this.paused = p;
     this.nav = [];
-    if (p) { this.ui.buildPause(this.settings, !!this.seasonGame); this.ui.show('pause'); }
+    if (p) { this.ui.buildPause(this.settings, !!this.seasonGame, !!this.seasonGame || !!this.quickSave); this.ui.show('pause'); }
     else { this.ui.hideAll(); this.lastFrameStamp = performance.now(); blurFocus(); }
   }
 
@@ -386,11 +394,20 @@ export class App {
     this.gameToken++;
     this.playOuts = 0;
     blurFocus(); // a menu button left focused would otherwise catch Space / Enter
+    // a Quick Game carries on from where it was left (saved at every pitch); "New game" / Restart clears the save
+    this.quickSave = null;
+    let quickResume = null;
+    if (mode === 'quick' && !extra && !this.params.get('bot') && !this.params.get('seed')) {
+      const q = this.prog.data.quick;
+      if (q && q.state && q.state.game) { quickResume = q.state; this.quickSave = { seed: q.seed, difficulty: q.difficulty }; }
+      else this.quickSave = { seed: (Math.random() * 2 ** 32) >>> 0, difficulty: st.difficulty };
+    }
     const eng = new Engine({
-      mode, difficulty: st.difficulty, hand: st.hand, inputDelayMs: st.inputDelayMs,
+      mode, difficulty: this.quickSave ? this.quickSave.difficulty : st.difficulty,
+      hand: st.hand, inputDelayMs: st.inputDelayMs,
       waitForBatter: mode === 'quick' && !this.params.get('bot'), // the pitcher waits for Ready before each new batter
       practice: this.engine && this.engine.mode === 'practice' ? { ...this.engine.practice } : undefined,
-      seed: this.params.get('seed') ? +this.params.get('seed') : undefined,
+      seed: this.params.get('seed') ? +this.params.get('seed') : this.quickSave ? this.quickSave.seed : undefined,
       ...(extra ? extra.engine : {}),
     }, extra && extra.cfg ? extra.cfg : CONFIG);
     this.engine = eng;
@@ -420,6 +437,7 @@ export class App {
     if (this.params.get('bot')) this.bot = createBot(eng, { errSd: +(this.params.get('sd') || 20), seed: 5 });
     else this.bot = null;
     if (extra && extra.resume) eng.resume(extra.resume);
+    else if (quickResume) { eng.resume(quickResume); this.ui.toast('Game resumed', 1800, 'play'); }
     else {
       eng.start();
       if (mode === 'quick') this.audio.callUmpire('playball', { delay: 0.6 }); // the plate umpire opens the game
@@ -765,6 +783,7 @@ export class App {
     this.ui.hideHud();
     this.hideOverlays();
     this.audio.applause(2.4, 0.9);
+    this.clearQuickSave(); // (finished: nothing left to resume)
     // a Season game: the standings, your players' season numbers and your coins
     let seasonInfo = null;
     if (this.seasonGame) {

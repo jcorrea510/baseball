@@ -6,7 +6,7 @@ import { CONFIG } from '../config.js';
 export const DEFAULT_SAVE = () => ({
   v: 1,
   settings: {
-    difficulty: 'pro', tod: 'day', zone: true, pitchGuide: true, landingRing: true, umpire: 'on', hand: 'auto', sound: true, shake: true, howtoSeen: false, aimAssistHint: true,
+    difficulty: 'pro', tod: 'dusk', zone: true, pitchGuide: true, landingRing: true, umpire: 'on', hand: 'auto', sound: true, shake: true, howtoSeen: false, aimAssistHint: true,
     // sound: master volume and the three channels under it (0..1)
     volume: 0.8, sfxVolume: 1, umpireVolume: 1, crowdVolume: 1,
     flashes: true, // white screen flashes on big hits (off = calmer screen)
@@ -20,6 +20,8 @@ export const DEFAULT_SAVE = () => ({
   unlocked: { bats: ['ash'], uniforms: ['classic'] },
   equipped: { bat: 'ash', uniform: 'classic' },
   season: null, // Season mode (game/season.js), or null before the first one
+  quick: null, // a Quick Game left half-way: { seed, difficulty, state } (saved at every pitch), or null
+  duskV: 1, // set once the saved time of day has been moved to dusk (the new default)
 });
 
 // Milestones. Each has a test on the saved data (after the latest game has been added).
@@ -72,8 +74,10 @@ export class Progress {
     try {
       const raw = this.store.get(CONFIG.storageKey);
       if (raw) {
-        const d = merge(DEFAULT_SAVE(), JSON.parse(raw));
+        const saved = JSON.parse(raw);
+        const d = merge(DEFAULT_SAVE(), saved);
         if (d.settings.umpire !== 'off') d.settings.umpire = 'on'; // (older saves had 'synth' / 'speech' voices, now gone)
+        if (!saved.duskV) { d.settings.tod = 'dusk'; d.duskV = 1; } // (dusk is the new default: every earlier save moves to it once; a later change sticks)
         if (d.season && d.season.v !== 2) d.season = null; // (a league from before the big-league teams cannot be carried over)
         this.fresh = false;
         return d;

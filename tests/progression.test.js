@@ -37,6 +37,24 @@ describe('saved progress', () => {
     expect(new Progress(store).data.season.v).toBe(2);
   });
 
+  it('dusk is the default time of day; an older save moves to dusk once, and a later choice sticks', () => {
+    expect(new Progress(memStore()).settings.tod).toBe('dusk');
+    const store = memStore();
+    store.set(CONFIG.storageKey, JSON.stringify({ settings: { tod: 'night' }, career: { hits: 2 } }));
+    const p = new Progress(store);
+    expect(p.settings.tod).toBe('dusk');
+    p.updateSettings({ tod: 'day' });
+    expect(new Progress(store).settings.tod).toBe('day');
+  });
+
+  it('a Quick Game in progress is kept in the save', () => {
+    const store = memStore();
+    const p = new Progress(store);
+    p.data.quick = { seed: 5, difficulty: 'pro', state: { game: { inning: 2 } } };
+    p.save();
+    expect(new Progress(store).data.quick.state.game.inning).toBe(2);
+  });
+
   it('survives storage that throws (private windows)', () => {
     const bad = { get() { throw new Error('blocked'); }, set() { throw new Error('blocked'); } };
     const p = new Progress(bad);
