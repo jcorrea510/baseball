@@ -339,7 +339,7 @@ body.touch .swingbtn.show { display: flex; }
 .bpbase.hit::before { transform: rotate(45deg) scale(1.25); background: #fff; }
 .bpbase.home.hit::before { transform: scale(1.2); }
 @keyframes bppulse { to { box-shadow: 0 0 4px rgba(255, 196, 64, .4); filter: brightness(1.12); } }
-.hud.sending .acts { display: none; }
+.hud.sending .acts, .hud.sending .swingbtn { display: none !important; } /* (while a hit is played the diamond has the corner) */
 
 /* bunt and steal: toggles above the aim control (lit while the batter is squared around / the runners are going) */
 .acts { position: absolute; right: calc(var(--safe-r) + 16px); bottom: calc(var(--safe-b) + 66px); display: flex; gap: 8px; pointer-events: none; }
@@ -626,6 +626,7 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
   body.touch .acts { right: auto; left: calc(var(--safe-l) + 12px); bottom: calc(var(--safe-b) + 112px); }
   body.touch .meter { bottom: calc(var(--safe-b) + 196px); }
   .basepad { right: calc(var(--safe-r) + 8px); bottom: calc(var(--safe-b) + 96px); }
+  .hud.sending .meter { opacity: 0; } /* (no room for both: the swing's meter has had its moment by the time the ball is down) */
 }
 @media (max-height: 520px) {
   .logo { width: min(460px, 62vw, 110vh); }
@@ -665,7 +666,7 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
 @media (min-height: 521px) and (min-width: 761px) and (max-width: 1180px) {
   .hud[data-mode="quick"] .meter { bottom: calc(var(--safe-b) + 134px); } /* tablets and small laptops: above the score bug */
 }
-@media (max-height: 520px) and (min-width: 761px) {
+@media (max-height: 520px) {
   .hud[data-mode="quick"] .meter { bottom: calc(var(--safe-b) + 116px); } /* clear of the score bug and its batter tag */
 }
 /* small screens: the folded practice drawer is just an icon button, so it never covers the pitch pill or the readouts */
