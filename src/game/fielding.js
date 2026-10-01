@@ -315,7 +315,10 @@ function coverOptions(o, plan, defense, cfg) {
     const start = Math.max(o.tHave + F.cover.selfStart + (o.dive ? F.dive.throwExtra : 0), last ? last.tStop : 0);
     const d = dist(x0, z0, bx, bz);
     const tOut = start + timeToCover(thrower.speed, d, F.accel);
-    out.push({ recv: thrower, self: true, tOut, t1: tOut, t0: start, tCover: tOut, coverStart: start, speed: thrower.speed, score: tOut - (d <= F.cover.selfDistance ? F.cover.selfBonus : 0) });
+    // a first baseman who has the ball near his bag walks over and steps on it (flipping to the pitcher is for balls he cannot run down)
+    const first = thrower.pos === '1B' && base === 1;
+    const closeEnough = d <= (first ? F.cover.firstSelfDistance : F.cover.selfDistance);
+    out.push({ recv: thrower, self: true, tOut, t1: tOut, t0: start, tCover: tOut, coverStart: start, speed: thrower.speed, score: tOut - (closeEnough ? (first ? F.cover.firstSelfBonus : F.cover.selfBonus) : 0) });
   }
   const runnerT = o.runnerT ?? Infinity;
   return out.filter((c) => c.tOut + F.outMargin <= runnerT).sort((a, b) => a.score - b.score);
@@ -838,7 +841,8 @@ function addSupport(plan, i, cfg) {
     go(ofs[0], bx, bz, tBall + 0.2, 'backup');
     if (ofs[1]) {
       const o = defense[ofs[1]];
-      go(ofs[1], o.x + (c.x - o.x) * 0.3, o.z + (c.z - o.z) * 0.3, tBall + 0.2, 'shade');
+      // the other outfielder runs at the ball too (most of the way), in case it gets past or off the wall
+      go(ofs[1], o.x + (c.x - o.x) * F.chaseShare, o.z + (c.z - o.z) * F.chaseShare, tBall + 0.2, 'chase');
     }
   } else if (c.kind === 'ground' && ofs.length) {
     const [bx, bz] = inside(c.x + ux * (F.backupDepth + 14), c.z + uz * (F.backupDepth + 14), 8);
@@ -914,7 +918,9 @@ function tryInfieldOut({ f, tF, tReady, pf, bases, forced, outs, defense, cfg, p
   const force = options.find((o) => o.kind === 'force');
   const first = options.find((o) => o.kind === 'first');
   // On a bunt the fielder charging in takes the sure out at first, unless the lead runner is clearly beaten.
-  if (force && outs < 2 && (!bunt || !first || force.margin >= cfg.bunt.leadMargin)) choice = force;
+  // (A thin force play is not worth it when the batter can be had easily: take the sure out.)
+  const thin = force && first && force.margin < cfg.fielding.thinForce && first.margin > force.margin + cfg.fielding.thinForceGain;
+  if (force && outs < 2 && !thin && (!bunt || !first || force.margin >= cfg.bunt.leadMargin)) choice = force;
   else choice = options.sort((a, b) => b.margin - a.margin)[0];
   return { choice, force, first, leadForced };
 }

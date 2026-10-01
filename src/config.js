@@ -292,8 +292,8 @@ export const CONFIG = {
       '3B': [-54, -70],
     },
     outfield: { LF: [-24, 272], CF: [0, 308], RF: [24, 272] },
-    speed: { IF: 20, OF: 22, P: 16, C: 16 }, // ft/s, average (effective, includes getting up to speed)
-    reaction: { IF: 0.24, OF: 0.36, P: 0.36, C: 0.36 }, // seconds before a fielder reads the ball
+    speed: { IF: 20, OF: 21, P: 16, C: 16 }, // ft/s, average (effective, includes getting up to speed)
+    reaction: { IF: 0.24, OF: 0.52, P: 0.36, C: 0.36 }, // seconds before a fielder reads the ball (outfielders read a ball off the bat a little slower: well-hit balls drop in more often)
     glove: 2.4, // ft: how far a fielder can reach without diving
     diveExtra: 3.0, // extra ft when diving (dive only on low balls)
     reachHeight: 8.8, // highest catchable point (ft): a leaping catch
@@ -342,8 +342,13 @@ export const CONFIG = {
       selfDistance: 18, // ft: a fielder who picks the ball up this close to the bag steps on it himself (a first baseman near the bag)
       selfStart: 0.12, // s after he fields it before he starts for the bag with the ball
       selfBonus: 0.25, // s: how much a close fielder prefers taking the bag himself over a throw (it is the natural play)
+      firstSelfDistance: 42, // ft: a first baseman who fields it this close to first base takes the bag himself (no flip to the pitcher)
+      firstSelfBonus: 0.9, // s: and strongly prefers that to a throw - the pitcher only covers when the first baseman is pulled far off the bag
       traditionBonus: 0.35, // s: the usual man covers unless someone else is clearly quicker (the pitcher covers first when the first baseman is pulled off)
     },
+    chaseShare: 0.72, // how much of the way to the ball the OTHER outfielder runs on a ball hit to the outfield (he runs at it too)
+    thinForce: 0.1, // s: a force play that beats the runner by less than this is 'thin'...
+    thinForceGain: 0.25, // s: ...and the fielder takes the batter at first instead when that out is this much safer
     tagTime: 0.4, // extra time for the catcher to receive a throw and apply the tag at home
     fastBallPenalty: 0.27, // extra reaction (s) fielders need on the hardest-hit grounders
     closePlay: 0.45, // a runner who beats the throw by less than this many seconds gets a 'Safe!' call
