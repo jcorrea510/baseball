@@ -182,8 +182,8 @@ export function pitcherPose(P, u, post, release, tell = { slot: 0, lag: 0 }) {
   const lag = tell.lag || 0;
   // Arm phase can lag behind the body for a changeup (subtle tell).
   const ua = clamp(u - lag * 0.06 * Math.sin(Math.PI * clamp((u - 0.5) / 0.5, 0, 1)), 0, 1);
-  const fin = clamp(post / 0.36, 0, 1); // follow-through progress
-  const fe = 1 - Math.pow(1 - fin, 2);
+  const fin = clamp(post / 0.4, 0, 1); // follow-through progress
+  const fe = 1 - Math.pow(1 - fin, 3); // starts fast (the arm is still moving at release) and eases to rest
 
   const s = sampleKeys([
     [0, 3.1, 0.3, 0.0, 0.05, 0.0],
@@ -211,7 +211,7 @@ export function pitcherPose(P, u, post, release, tell = { slot: 0, lag: 0 }) {
 
   // glove hand: the glove arm stays bent and leads toward the plate (elbow first), then tucks in as he throws
   setVec(P, 'handL', [
-    [0, 0.12, 4.0, 0.55], [0.4, 0.2, 4.35, 0.75], [0.6, 0.75, 4.55, 1.35], [0.78, 0.95, 4.55, 2.6], [0.9, 0.95, 4.35, 3.6], [1.0, 0.7, 4.1, 4.1],
+    [0, 0.12, 4.0, 0.55], [0.4, 0.2, 4.35, 0.75], [0.6, 0.75, 4.55, 1.35], [0.78, 0.95, 4.55, 2.6], [0.9, 0.9, 4.4, 3.7], [1.0, 0.8, 4.4, 4.2],
   ], u);
   // throwing hand: the hands break, the arm swings down past the hip, back and up into a cocked "L" (elbow at the shoulder,
   // forearm up) as the front foot lands, then whips forward over the top through the release point
@@ -237,6 +237,7 @@ export function pitcherPose(P, u, post, release, tell = { slot: 0, lag: 0 }) {
     set3(P.footR, -0.42, lerp(ANK + 0.25, ANK + 0.5, Math.sin(fe * Math.PI)), lerp(0.1, 4.3, fe));
     P.footRTilt = lerp(-0.9, -0.2, fe);
     P.hipY = lerp(2.46, 2.75, fe);
+    set3(P.pelvis, 0, 0, 4.5 + 0.4 * fe); // the body carries on a little past the release instead of stopping dead
   }
   // elbows: the throwing elbow points back as the arm swings down, out to the side (at shoulder height) when it is cocked;
   // the glove elbow points at the plate

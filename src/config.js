@@ -209,7 +209,8 @@ export const CONFIG = {
       tellStrength: 1.0,
       announcePitch: true, // the pitch type is shown as he winds up
       typeAtRelease: true, // ...and when it leaves his hand
-      windup: 1.05,
+      windup: 1.3,
+      stealBreak: 1.03, // s before the pitch is released that a runner takes off on a steal (the pitcher's first move)
       derbyFoulIsOut: false,
       // Odds for each plate appearance when the computer bats (its half-innings are simulated). error = safe on a misplay by your fielders.
       ai: { k: 0.26, bb: 0.06, groundout: 0.198, flyout: 0.18, error: 0.012, single: 0.15, double: 0.04, triple: 0.005, hr: 0.02 },
@@ -228,7 +229,8 @@ export const CONFIG = {
       tellStrength: 0.6,
       announcePitch: false,
       typeAtRelease: true, // the pitch type shows the moment it leaves his hand (a batter reads the spin): a curveball will drop
-      windup: 0.92,
+      windup: 1.15,
+      stealBreak: 0.9,
       derbyFoulIsOut: true,
       swingCue: false,
       ai: { k: 0.22, bb: 0.08, groundout: 0.178, flyout: 0.16, error: 0.012, single: 0.19, double: 0.06, triple: 0.008, hr: 0.035 },
@@ -247,7 +249,8 @@ export const CONFIG = {
       tellStrength: 0.28,
       announcePitch: false,
       typeAtRelease: false, // All-Star: read it yourself (arm slot tells)
-      windup: 0.85,
+      windup: 1.05,
+      stealBreak: 0.83,
       derbyFoulIsOut: true,
       swingCue: false,
       ai: { k: 0.19, bb: 0.09, groundout: 0.158, flyout: 0.15, error: 0.012, single: 0.21, double: 0.075, triple: 0.01, hr: 0.05 },
@@ -368,7 +371,7 @@ export const CONFIG = {
   // the catcher's exchange and throw race him to the bag, and the man covering needs a moment to put the tag on. Everything is
   // real timing (the same runner and fielder models as every play), with a little seeded luck in the jump and the exchange.
   steal: {
-    jump: { 1: 0.02, 2: 0.03 }, // s after the windup starts that the runner takes off
+    jump: { 1: 0.02, 2: 0.03 }, // how much later a runner going to third breaks than one going to second is the difference (the level's stealBreak sets the rest)
     jumpSd: 0.09, // s: how much a jump varies (a good one, a late one)
     transfer: 0.74, // s: the catcher's exchange (catch to release)
     transferSd: 0.07,

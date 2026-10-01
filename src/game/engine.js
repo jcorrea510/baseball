@@ -289,7 +289,7 @@ export class Engine {
     const S = this.cfg.steal;
     const pitch = this.pitch;
     const start = {};
-    for (const b of going) start[b] = Math.max(this.time, pitch.tWindup + S.jump[b] + this.rng.gauss(0, S.jumpSd));
+    for (const b of going) start[b] = Math.max(this.time, pitch.tRelease - (this.d.stealBreak ?? 1) + (S.jump[b] - S.jump[1]) + this.rng.gauss(0, S.jumpSd));
     // the catcher's exchange is rolled now too (so the whole steal can be planned as the runner goes and the infielder covering
     // the bag is seen breaking for it during the pitch); a pitch in the dirt has to be blocked first
     const dirt = pitch.target.y < 1.1;
