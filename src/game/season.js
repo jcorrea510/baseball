@@ -4,7 +4,8 @@
 import { CONFIG } from '../config.js';
 import { createRng } from '../util/rng.js';
 import { clamp } from '../util/math.js';
-import { OPPONENTS, PLAYER_TEAM, FIRST, LAST, SKINS, makeLineup } from './teams.js';
+import { SKINS } from './teams.js';
+import { FIRST_NAMES, LAST_NAMES, teamById, teamName, leagueFor, starsOf, allStars, uniformFor, teamLineup, shortName } from './mlb.js';
 
 export const POSITIONS9 = ['CF', 'SS', '1B', 'LF', 'RF', '3B', 'C', '2B', 'DH'];
 
@@ -29,13 +30,14 @@ export function makePlayer(s, rng, mean, cfg = CONFIG, o = {}) {
   const sd = o.sd ?? cfg.season.ratingSd;
   const used = new Set((s.roster || []).concat(s.shop || []).map((p) => p.name));
   let name;
-  do { name = rng.pick(FIRST) + ' ' + rng.pick(LAST); } while (used.has(name));
+  do { name = rng.pick(FIRST_NAMES) + ' ' + rng.pick(LAST_NAMES); } while (used.has(name));
   // a player has a style: a slugger, a contact man, a speedster or an all-rounder
   const style = rng.weighted({ slug: 0.3, contact: 0.3, speed: 0.15, all: 0.25 });
   const tilt = { slug: [-4, 7, -6], contact: [7, -5, 1], speed: [2, -8, 12], all: [0, 0, 0] }[style];
   const p = {
     id: 'p' + (s.nextId = (s.nextId || 0) + 1),
     name,
+    short: shortName(name),
     number: rng.int(1, 99),
     pos: o.pos || rng.pick(POSITIONS9),
     hand: rng.chance(0.3) ? 'L' : 'R',
@@ -60,31 +62,54 @@ export function newSeason(prev, o = {}, cfg = CONFIG) {
   const S = cfg.season;
   const seed = o.seed ?? ((Math.random() * 2 ** 31) >>> 0);
   const rng = createRng(seed);
+  const teamId = o.team || (prev && prev.teamId) || 'nym';
   const s = {
-    v: 1, seed, level: o.level || (prev && prev.level) || 'pro', length: o.length || (prev && prev.length) || 'short',
+    v: 2, seed, level: o.level || (prev && prev.level) || 'pro', length: o.length || (prev && prev.length) || 'short', teamId,
     year: prev ? prev.year + 1 : 1,
     boost: prev ? Math.min(S.yearCap, (prev.boost || 0) + nextBoost(prev, cfg)) : 0,
     coins: prev ? prev.coins : S.coins.start,
     nextId: prev ? prev.nextId : 0,
-    roster: prev ? prev.roster : [],
+    roster: prev && prev.teamId === teamId ? prev.roster : [],
     history: prev ? prev.history.slice() : [],
     inProgress: null, // a game that was left half-way (saved at every pitch, see Engine.checkpoint)
     stats: {}, games: [], phase: 'regular', round: 0, playoffs: null, champion: null,
     shop: [],
   };
   if (prev) s.history.push(summaryOf(prev));
-  // your team: nine starters and a bench (first season only; after that you keep who you have)
-  if (!s.roster.length) {
-    POSITIONS9.forEach((pos) => s.roster.push(makePlayer(s, rng, S.starters, cfg, { pos })));
-    for (let i = 0; i < S.roster.size - S.roster.lineup; i++) s.roster.push(makePlayer(s, rng, S.bench, cfg));
-  }
-  // the league: every CPU team gets a strength rating (shuffled each season)
-  const ratings = shuffle(rng, S.teamRatings.slice());
-  s.teams = [{ id: PLAYER_TEAM.id, name: PLAYER_TEAM.name, abbr: PLAYER_TEAM.abbr, color: PLAYER_TEAM.color, rating: null, w: 0, l: 0, rs: 0, ra: 0 }];
-  OPPONENTS.forEach((t, i) => s.teams.push({ id: t.id, name: t.name, abbr: t.abbr, color: t.color, rating: clamp(ratings[i] + rng.int(-S.teamJitter, S.teamJitter) + s.boost, 20, 95), w: 0, l: 0, rs: 0, ra: 0, lineupSeed: rng.int(1, 1e9) }));
+  const mine = teamById(teamId);
+  // your team: its stars at their positions, role players around them and a bench (first season only; after that you keep who you have)
+  if (!s.roster.length) s.roster = startingRoster(s, mine, rng, cfg);
+  // the league: you and eight others (your division and a neighbour), each with a strength from its tier
+  const league = leagueFor(teamId, seed);
+  s.teams = league.map((t, i) => ({
+    id: t.id, name: teamName(t), abbr: t.abbr, color: t.color, color2: t.color2, tier: t.tier,
+    rating: i === 0 ? null : clamp(S.tierRating[t.tier] + rng.int(-S.teamJitter, S.teamJitter) + s.boost, 15, 95),
+    w: 0, l: 0, rs: 0, ra: 0, lineupSeed: rng.int(1, 1e9),
+  }));
   s.schedule = makeSchedule(s, cfg);
   refillShop(s, rng, S.shop.size, cfg);
   return s;
+}
+
+/** Your team's tier decides how good the unnamed players around the stars are. */
+export const roleMean = (tier, cfg = CONFIG) => cfg.season.starters.base + cfg.season.starters.perRating * cfg.season.tierRating[tier];
+
+function startingRoster(s, team, rng, cfg) {
+  const S = cfg.season;
+  const stars = starsOf(team).sort((a, b) => overall(b) - overall(a));
+  const slots = {};
+  const leftovers = [];
+  for (const p of stars) { if (!slots[p.pos]) slots[p.pos] = p; else leftovers.push(p); }
+  for (const p of leftovers) { const free = ['DH', ...POSITIONS9].find((q) => !slots[q]); if (free) { slots[free] = { ...p, pos: free }; } }
+  const mean = roleMean(team.tier, cfg);
+  const lineup = POSITIONS9.map((pos) => slots[pos] || makePlayer(s, rng, mean, cfg, { pos }));
+  // batting order: the best hitters at the top, the fastest of the first four leads off
+  lineup.sort((a, b) => overall(b) - overall(a));
+  const lead = lineup.slice(0, 4).reduce((best, p) => (p.spd + p.con > best.spd + best.con ? p : best), lineup[0]);
+  lineup.splice(lineup.indexOf(lead), 1); lineup.unshift(lead);
+  const bench = [];
+  for (let i = 0; i < S.roster.size - S.roster.lineup; i++) bench.push(makePlayer(s, rng, S.bench, cfg));
+  return lineup.concat(bench);
 }
 
 function shuffle(rng, a) {
@@ -339,6 +364,12 @@ export function swapPlayers(s, idA, idB) {
 function refillShop(s, rng, n, cfg) {
   const S = cfg.season.shop;
   for (let i = 0; i < n; i++) {
+    // now and then a star from another team is on the block
+    if (rng.chance(S.starChance)) {
+      const taken = new Set(s.roster.concat(s.shop).map((p) => p.id));
+      const pool = allStars().filter((p) => !taken.has(p.id) && p.teamId !== s.teamId && overall(p) >= S.min);
+      if (pool.length) { s.shop.push(rng.pick(pool)); continue; }
+    }
     // better players show up as the league gets tougher
     const mean = S.mean + (s.boost || 0) * 0.5;
     let p = makePlayer(s, rng, mean, cfg, { sd: 5 });
@@ -412,11 +443,11 @@ export function gameSetup(s, cfg = CONFIG) {
   const g = nextGame(s);
   if (!g) return null;
   const t = s.teams[g.opp];
-  const base = OPPONENTS.find((o) => o.id === t.id) || OPPONENTS[0];
-  const opp = { ...base, name: t.name, abbr: t.abbr, color: t.color };
-  const oppLineup = makeLineup(t.lineupSeed || 7, 'o');
+  const home = teamById(s.teams[0].id), away = teamById(t.id);
+  const opp = { id: t.id, name: t.name, abbr: t.abbr, color: t.color, uniform: uniformFor(away, 'away') };
+  const mine = { id: home.id, name: s.teams[0].name, abbr: s.teams[0].abbr, color: s.teams[0].color, uniform: uniformFor(home, 'home') };
   return {
-    game: g, opponent: opp, oppLineup, lineup: lineup(s, cfg).map((p, i) => ({ ...p, order: i })),
+    game: g, opponent: opp, playerTeam: mine, oppLineup: teamLineup(away, t.lineupSeed || 7, 'o'), lineup: lineup(s, cfg).map((p, i) => ({ ...p, order: i })),
     cfg: gameConfig(s.level, t.rating, cfg), level: s.level, innings: cfg.season.innings,
     seed: ((s.seed ^ ((s.games.length + 1) * 40503)) >>> 0),
   };

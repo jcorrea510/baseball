@@ -197,7 +197,7 @@ export class App {
         break;
       case 'start': this.audio.uiClick(); if (d.mode === 'season') this.openMenu('season'); else this.startGame(d.mode); break;
       // ---- season
-      case 'seasonNew': this.audio.uiClick(); this.prog.data.season = SEA.newSeason(null, { level: d.level, length: d.length }); this.prog.save(); this.showMenuScreen('season'); break;
+      case 'seasonNew': this.audio.uiClick(); this.prog.data.season = SEA.newSeason(null, { level: d.level, length: d.length, team: d.team }); this.prog.save(); this.showMenuScreen('season'); break;
       case 'seasonReset': this.audio.uiBack(); this.prog.data.season = null; this.prog.save(); this.showMenuScreen('season'); break;
       case 'seasonNext': {
         this.audio.uiClick();
@@ -302,7 +302,7 @@ export class App {
     this.seasonLineup = saved ? saved.lineup : setup.lineup;
     this.seasonSeed = saved ? saved.seed : setup.seed;
     this.startGame('quick', {
-      engine: { difficulty: setup.level, innings: setup.innings, lineup: this.seasonLineup, opponent: setup.opponent, oppLineup: setup.oppLineup, seed: this.seasonSeed },
+      engine: { difficulty: setup.level, innings: setup.innings, lineup: this.seasonLineup, opponent: setup.opponent, playerTeam: setup.playerTeam, oppLineup: setup.oppLineup, seed: this.seasonSeed },
       cfg: setup.cfg,
       resume: saved ? saved.state : null,
     });
@@ -408,7 +408,7 @@ export class App {
     this.ui.showHud(mode);
     this.ui.setBunt(false);
     this.ui.setSteal(false, false);
-    this.ui.setTeams({ abbr: eng.opponent.abbr, color: eng.opponent.color }, { abbr: PLAYER_TEAM.abbr, color: PLAYER_TEAM.color }); // (visitors on top: you are the home team)
+    this.ui.setTeams({ abbr: eng.opponent.abbr, color: eng.opponent.color }, { abbr: eng.playerTeam.abbr, color: eng.playerTeam.color }); // (visitors on top: you are the home team)
     this.ui.setMuteIcon(this.audio.muted);
     if (eng.game) this.ui.setGameState(eng.game);
     if (mode === 'derby') this.ui.setDerby({ ...eng.derby });
@@ -763,7 +763,7 @@ export class App {
     const g = p.game;
     if (g) g.line = lineScore(e.game);
     this.ui.buildTitle(this.prog);
-    const names = { away: e.opponent.name.toUpperCase(), home: PLAYER_TEAM.name.toUpperCase(), awayAbbr: e.opponent.abbr, homeAbbr: PLAYER_TEAM.abbr };
+    const names = { away: e.opponent.name.toUpperCase(), home: e.playerTeam.name.toUpperCase(), awayAbbr: e.opponent.abbr, homeAbbr: e.playerTeam.abbr };
     this.later(() => {
       this.ui.showGameOver(p, records, unlocked, names, seasonInfo); // (new unlocks are listed on it as badges)
       if (unlocked.length) this.audio.unlockChime();
@@ -780,7 +780,7 @@ export class App {
       const ls = lineScore(g);
       sb.set({
         mode: 'quick', title: 'SANDLOT PARK', innings: Math.max(g.innings, g.inning), inning: g.inning, half: g.half,
-        teams: [{ abbr: e.opponent.abbr, color: e.opponent.color, runs: ls.top, R: g.score.top, H: g.hits.top, E: (g.errors || {}).top || 0 }, { abbr: PLAYER_TEAM.abbr, color: PLAYER_TEAM.color, runs: ls.bottom, R: g.score.bottom, H: g.hits.bottom, E: (g.errors || {}).bottom || 0 }],
+        teams: [{ abbr: e.opponent.abbr, color: e.opponent.color, runs: ls.top, R: g.score.top, H: g.hits.top, E: (g.errors || {}).top || 0 }, { abbr: e.playerTeam.abbr, color: e.playerTeam.color, runs: ls.bottom, R: g.score.bottom, H: g.hits.bottom, E: (g.errors || {}).bottom || 0 }],
         count: { b: g.balls, s: g.strikes, o: g.outs },
       });
     } else if (e.mode === 'derby') {

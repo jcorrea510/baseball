@@ -50,7 +50,7 @@ export class Engine {
     this.steal = null; // this pitch's steal attempt: { bases, start: { base: engine time he took off } }
     this.practice = { type: 'fastball', speed: cfg.modes.practice.speedDefault, location: 'random', ...(o.practice || {}) };
     this.opponent = o.opponent || OPPONENTS[this.rng.int(0, OPPONENTS.length - 1)];
-    this.playerTeam = PLAYER_TEAM;
+    this.playerTeam = o.playerTeam || PLAYER_TEAM; // (League games: your own big-league club, with its own jersey)
 
     this.lineup = o.lineup ? o.lineup.map((b) => ({ ...b })) : makeLineup(this.seed, 'p');
     this.oppLineup = o.oppLineup || makeLineup(this.seed ^ 0x5bd1e995, 'o');

@@ -9,11 +9,60 @@ import { createDefense, planPlay } from '../src/game/fielding.js';
 
 const play = (s, won, rf = 5, ra = 3) => S.recordGame(s, { won, runsFor: won ? Math.max(rf, ra + 1) : Math.min(rf, ra - 1), runsAgainst: ra, lines: {} });
 
+import { MLB_TEAMS, leagueFor, uniformFor, starsOf, lum } from '../src/game/mlb.js';
+
+describe('the big-league teams', () => {
+  it('thirty teams, six divisions of five, every nickname and star name different from the real one', () => {
+    expect(MLB_TEAMS.length).toBe(30);
+    for (const lg of ['AL', 'NL']) for (const d of ['East', 'Central', 'West']) expect(MLB_TEAMS.filter((t) => t.league === lg && t.division === d).length).toBe(5);
+    expect(new Set(MLB_TEAMS.map((t) => t.abbr)).size).toBe(30);
+    for (const t of MLB_TEAMS) { expect(t.stars.length).toBeGreaterThanOrEqual(3); for (const st of t.stars) for (const v of st.slice(2, 5)) { expect(v).toBeGreaterThan(20); expect(v).toBeLessThan(99); } }
+  });
+  it('your league: your team, your division and four teams from a neighbouring division', () => {
+    for (const t of MLB_TEAMS) for (const seed of [1, 2, 3]) {
+      const lg = leagueFor(t.id, seed);
+      expect(lg.length).toBe(9);
+      expect(lg[0].id).toBe(t.id);
+      expect(new Set(lg.map((x) => x.id)).size).toBe(9);
+      expect(lg.every((x) => x.league === t.league)).toBe(true);
+      expect(lg.filter((x) => x.division === t.division).length).toBe(5);
+    }
+  });
+  it('a team keeps its colours and the road team never matches the home team on the field', () => {
+    for (const a of MLB_TEAMS) {
+      const home = uniformFor(a, 'home'), away = uniformFor(a, 'away');
+      expect(home.primary.toLowerCase()).toBe(a.color.toLowerCase());
+      expect(Math.abs(lum(home.primary) - lum(away.primary))).toBeGreaterThan(0.02);
+    }
+  });
+});
+
+describe('picking a team', () => {
+  it('you start with your own team\'s stars, at their positions', () => {
+    const t = MLB_TEAMS.find((x) => x.id === 'lad');
+    const s = S.newSeason(null, { team: 'lad', seed: 5 });
+    expect(s.teams[0].abbr).toBe('LAD');
+    const names = s.roster.map((p) => p.name);
+    for (const st of starsOf(t)) expect(names).toContain(st.name);
+    expect(new Set(s.roster.slice(0, 9).map((p) => p.pos)).size).toBe(9);
+    expect(s.teams.length).toBe(9);
+  });
+  it('a stronger team starts with a stronger lineup', () => {
+    const avg = (s) => s.roster.slice(0, 9).reduce((t, p) => t + S.overall(p), 0) / 9;
+    expect(avg(S.newSeason(null, { team: 'lad', seed: 5 }))).toBeGreaterThan(avg(S.newSeason(null, { team: 'col', seed: 5 })));
+  });
+  it('the shop sometimes has a real star from another team, never one of yours', () => {
+    let stars = 0;
+    for (let seed = 1; seed <= 30; seed++) { const s = S.newSeason(null, { team: 'nym', seed }); for (const p of s.shop) if (p.star) { stars++; expect(p.teamId).not.toBe('nym'); } }
+    expect(stars).toBeGreaterThan(10);
+  });
+});
+
 describe('a new season', () => {
   const s = S.newSeason(null, { level: 'pro', length: 'full', seed: 11 });
   it('nine teams, your roster of twelve, coins to start, a shop', () => {
     expect(s.teams.length).toBe(9);
-    expect(s.teams[0].abbr).toBe('SLG');
+    expect(s.teams[0].abbr).toBe('NYM');
     expect(s.roster.length).toBe(CONFIG.season.roster.size);
     expect(new Set(s.roster.map((p) => p.id)).size).toBe(12);
     expect(s.coins).toBe(CONFIG.season.coins.start);
@@ -22,7 +71,7 @@ describe('a new season', () => {
   });
   it('some CPU teams are better than others', () => {
     const r = s.teams.slice(1).map((t) => t.rating);
-    expect(Math.max(...r) - Math.min(...r)).toBeGreaterThan(20);
+    expect(Math.max(...r) - Math.min(...r)).toBeGreaterThan(12);
   });
   it('the schedule: everyone plays everyone once per cycle, your opponents go from weakest to strongest', () => {
     expect(S.myGames(s)).toBe(16);

@@ -57,7 +57,7 @@ export class Actors {
 
   // ---------------------------------------------------------------- setup
   configure({ engine, playerUniformKey = 'classic', batStyle = 'ash' }) {
-    const key = [engine.opponent.id, engine.pitcher.hand, engine.seed, playerUniformKey, batStyle, engine.lineup.map((b) => b.hand + b.id + (b.skin || '')).join(',')].join('|');
+    const key = [engine.opponent.id, engine.playerTeam.id, engine.pitcher.hand, engine.seed, playerUniformKey, batStyle, engine.lineup.map((b) => b.hand + b.id + (b.skin || '')).join(',')].join('|');
     this.batStyle = batStyle;
     if (key === this.cfgKey) return;
     this.cfgKey = key;
@@ -69,7 +69,7 @@ export class Actors {
     if (this.looseBat) { this.group.remove(this.looseBat); disposeBat(this.looseBat); this.looseBat = null; }
 
     const opp = engine.opponent.uniform;
-    this.playerUniform = UNIFORMS[playerUniformKey] || UNIFORMS.classic;
+    this.playerUniform = engine.playerTeam.uniform || UNIFORMS[playerUniformKey] || UNIFORMS.classic;
     this.defenseUniform = opp;
     const skins = ['#f2c9a0', '#e0ac82', '#c68642', '#a3683b', '#7b4a2a', '#f7d7b5', '#5d3a22', '#d9a066'];
     const opts = (pos, i) => ({
