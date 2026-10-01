@@ -183,6 +183,20 @@ export const CONFIG = {
     reach: { x: 1.9, yMin: 0.85, yMax: 4.5 },
   },
 
+  // The see-through bat you aim with (render/batAim.js) and how the cursor / keys / a finger move it
+  batAim: {
+    color: 0xffffff, opacity: 0.4, spotColor: 0xffe08a, spotOpacity: 0.95, windowOpacity: 0.22,
+    tilt: 0.2, tiltRefY: 2.6, tiltPerFt: 0.22, tiltRange: [0.04, 0.6], // radians the barrel dips (more on a low pitch)
+    fadeTime: 0.18, // s to fade in / out
+    holdAfterSwing: 0.35, fadeAfterSwing: 0.5, // after a swing it stays where it was swung this long, then fades
+    markTime: 1.3, markHit: 0x7dffb0, markMiss: 0xff8a80, // the ring that shows where the ball was
+    follow: 0.03, // s: how closely it follows the cursor (a touch of weight, never a lag you can feel)
+    keySpeed: 3.2, // ft/s when moved with the arrow keys / W A S D
+    touchGain: 1.15, // a finger drag moves it this many times the distance the finger moves on the plate (so the finger never covers it)
+    tapPx: 10, // a finger that moves less than this has not dragged
+    showWithin: 9, // the bat shows once the camera is this close to the catcher's view (ft)
+  },
+
   // --------------------------------------------------------------------------
   //  The bat and the collision (physics/bat.js): real sizes and the measured bat-ball numbers
   // --------------------------------------------------------------------------
@@ -488,6 +502,8 @@ export const CONFIG = {
 
   camera: {
     batter: { pos: [0.0, 13.5, 24.0], pitch: -14.5, fov: 36 }, // camera behind the plate; pitch in degrees
+    // the catcher's view you bat from (after Ready): through the catcher's eyes, over his glove (the rest of him is hidden)
+    catcher: { pos: [0, 4.8, 7.0], look: [0, -1.4, -30], fov: 44, zoom: 5, firstPerson: 2.6, clearDist: 6, umpireHead: 4.2, mittY: 1.75, mittReach: 0.16, firstDelay: 0.5 }, // zoom = how quickly it moves in; firstPerson = ft from here at which only the catcher's glove arm shows; clearDist = the catcher and umpire stay hidden until the camera is this far (ft) from them (umpireHead = his head's height); the catcher's mitt waits low at mittY and reaches for the ball in the last mittReach s
     minHorizontalFov: 38, // narrow (portrait) screens widen the view to keep this
     highHome: { up: 36, back: 40 }, // ft the camera climbs / backs up from its spot behind the plate while it follows a deep ball
   },

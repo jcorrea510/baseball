@@ -51,7 +51,7 @@ export function resetPose(P) {
 // The bat handle ("knob") position in the stance.
 const KNOB_STANCE = [-0.72, 4.1, 0.3];
 
-export function batterPose(P, time, swing) {
+export function batterPose(P, time, swing, aimY = null) {
   resetPose(P);
   const wag = Math.sin(time * 3.4);
   const breathe = Math.sin(time * 1.6);
@@ -59,11 +59,15 @@ export function batterPose(P, time, swing) {
   let pelvisYaw = -0.05, torsoYaw = -0.06, torsoPitch = 0.3, pelvisPitch = 0.14;
   let headYawAbs = 1.5, headPitch = 0.16;
   let footLx = 0.95, footLy = ANK, footLz = 0.1, footRx = -0.95, footRz = -0.05, footRTilt = 0;
-  let knob = [KNOB_STANCE[0], KNOB_STANCE[1] + wag * 0.05, KNOB_STANCE[2]];
+  // (aimY: where the bat is aimed - the hands come down a little and he sinks a touch for a low pitch, rise for a high one)
+  const aimK = aimY === null ? 0 : clamp(aimY - 2.5, -1.4, 1.6);
+  hip -= Math.max(0, -aimK) * 0.07;
+  let knob = [KNOB_STANCE[0], KNOB_STANCE[1] + wag * 0.05 + aimK * 0.16, KNOB_STANCE[2]];
   let batYaw = -1.4 + wag * 0.05, batPitch = 0.88 + wag * 0.07;
   let poleL = [0.7, -0.9, -0.1], poleR = [-0.7, -0.1, -0.7];
   let footLTilt = 0;
 
+  const k0 = knob.slice(); // (the swing starts from his stance, wherever his hands were)
   if (swing && time >= swing.tStart) {
     const C = swing.contact; // ball position in pose space
     const early = clamp(swing.early ?? 0, -1, 1);
@@ -87,9 +91,9 @@ export function batterPose(P, time, swing) {
       footRTilt = -0.9 * rot;
       const hs = rot;
       knob = [
-        lerp(KNOB_STANCE[0] - 0.25 * load, cKnob[0], hs),
-        lerp(KNOB_STANCE[1] - 0.05 * load, cKnob[1], hs),
-        lerp(KNOB_STANCE[2] - 0.32 * load, cKnob[2], hs),
+        lerp(k0[0] - 0.25 * load, cKnob[0], hs),
+        lerp(k0[1] - 0.05 * load, cKnob[1], hs),
+        lerp(k0[2] - 0.32 * load, cKnob[2], hs),
       ];
       batYaw = lerp(-1.4, dirYaw, Math.pow(rot, 1.15));
       batPitch = lerp(0.93 + 0.15 * load, cPitch, hs);

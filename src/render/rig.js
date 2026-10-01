@@ -526,6 +526,19 @@ export class Person {
     if (this.bat) { disposeBat(this.bat); this.bat = null; }
   }
 
+  // First person (the camera is behind this player's eyes, e.g. the catcher's view): everything but the glove arm is hidden, so the
+  // pitch still pops into a mitt but nothing else of him is in the way. Off: the whole figure again.
+  setFirstPerson(on) {
+    if (this._firstPerson === !!on) return;
+    this._firstPerson = !!on;
+    const keep = this.arms && this.arms[0] ? this.arms[0].upper : null; // (arms[0] = the left = the glove arm)
+    for (const m of this.meshes) {
+      let o = m, inArm = false;
+      while (o) { if (o === keep) { inArm = true; break; } o = o.parent; }
+      m.visible = !on || inArm;
+    }
+  }
+
   setShadows(on) {
     if (this._shadowsOn === on) return;
     this._shadowsOn = on;

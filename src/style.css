@@ -309,21 +309,16 @@ svg.wordart { display: block; height: 1.08em; width: auto; max-width: 100%; marg
 .meter .txt { text-align: center; margin-top: 12px; font: italic 800 24px/1 var(--cond); letter-spacing: .08em; text-transform: uppercase; text-shadow: 0 2px 10px #000; white-space: nowrap; }
 .meter .lab { display: flex; justify-content: space-between; font: 800 10px/1 var(--cond); letter-spacing: .22em; color: rgba(255, 255, 255, .7); margin-top: 6px; }
 
-/* aim: a small gauge on desktop, two round buttons on touch screens */
-.aimgauge { position: absolute; right: calc(var(--safe-r) + 16px); bottom: calc(var(--safe-b) + 16px); display: flex; align-items: center; gap: 10px; padding: 0 16px; height: 40px; background: var(--glass); border-bottom: 3px solid var(--line-hi); font: 800 11px/1 var(--cond); letter-spacing: .2em; color: var(--ink-3); text-transform: uppercase; clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); }
-.aimgauge .track { position: relative; width: 84px; height: 6px; border-radius: 2px; background: rgba(255, 255, 255, .14); }
-.aimgauge .knob { position: absolute; top: -5px; width: 14px; height: 16px; background: var(--gold); box-shadow: 0 0 10px var(--gold); transform: translateX(-50%) skewX(var(--slant)); left: 50%; transition: left .08s; }
-.aimgauge .aimlab { min-width: 62px; color: var(--ink-2); }
-.touchaim { appearance: none; position: absolute; bottom: max(120px, 30%); display: none; width: 64px; height: 64px; padding: 0; border-radius: 50%; background: rgba(10, 16, 32, .55); border: 2px solid rgba(255, 255, 255, .28); color: #fff; align-items: center; justify-content: center; pointer-events: auto; touch-action: none; transition: background .12s, transform .12s var(--ease); }
-.touchaim svg.i { width: 30px; height: 30px; stroke-width: 3; }
-.touchaim.on { background: rgba(247, 185, 43, .6); border-color: var(--gold); transform: scale(.94); }
-.touchaim.l { left: calc(var(--safe-l) + 14px); } .touchaim.r { right: calc(var(--safe-r) + 14px); }
-body.touch .touchaim { display: flex; }
-body.touch .aimgauge { display: none; }
+/* the Swing button (touch screens, while you are up): big, round, bottom right, under the right thumb */
+.swingbtn { appearance: none; position: absolute; right: calc(var(--safe-r) + 18px); bottom: calc(var(--safe-b) + 22px); display: none; flex-direction: column; align-items: center; justify-content: center; gap: 2px; width: 96px; height: 96px; padding: 0; border-radius: 50%; border: 3px solid rgba(255, 255, 255, .85); background: radial-gradient(circle at 50% 35%, rgba(255, 213, 106, .95), rgba(217, 146, 15, .92)); color: var(--gold-ink); font: 800 13px/1 var(--cond); letter-spacing: .14em; text-transform: uppercase; pointer-events: auto; touch-action: none; box-shadow: 0 8px 24px rgba(0, 0, 0, .45); transition: transform .08s var(--ease), filter .08s; }
+.swingbtn svg.i { width: 30px; height: 30px; stroke-width: 2.4; }
+.swingbtn.on { transform: scale(.92); filter: brightness(1.12); }
+body.touch .swingbtn.show { display: flex; }
 
 /* bunt and steal: toggles above the aim control (lit while the batter is squared around / the runners are going) */
 .acts { position: absolute; right: calc(var(--safe-r) + 16px); bottom: calc(var(--safe-b) + 66px); display: flex; gap: 8px; pointer-events: none; }
-body.touch .acts { bottom: calc(max(120px, 30%) + 76px); right: calc(var(--safe-r) + 12px); } /* just above the right-hand aim button */
+.acts { bottom: calc(var(--safe-b) + 16px); }
+body.touch .acts { bottom: calc(var(--safe-b) + 132px); right: calc(var(--safe-r) + 12px); } /* just above the Swing button */
 /* (small touch screens have no room while the Ready card or the hit readout is up - and neither button is needed then) */
 body.touch .hud:has(.batterup.show) .acts, body.touch .hud:has(.callout.show) .acts { display: none; }
 .buntbtn, .stealbtn { appearance: none; display: none; align-items: center; gap: 8px; height: 40px; padding: 0 18px; border: 0; background: var(--glass); box-shadow: inset 0 0 0 1px var(--line-hi); color: var(--ink-2); font: 800 13px/1 var(--cond); letter-spacing: .16em; text-transform: uppercase; cursor: pointer; pointer-events: auto; clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); transition: background var(--dur), color var(--dur); }
@@ -573,7 +568,7 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
   .meter { width: clamp(200px, 26vw, 300px); }
   .meter .txt { font-size: 20px; margin-top: 8px; }
   .callout .item { padding: 6px 12px 5px; min-width: 60px; }
-  .touchaim { width: 58px; height: 58px; }
+  .swingbtn { width: 84px; height: 84px; }
   .practice { width: 196px; }
   .lineup { width: 146px; }
 }
@@ -593,13 +588,16 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
   .tile.t-league, .tile.t-quick, .tile.t-derby, .tile.t-practice { grid-column: 1; grid-row: auto; }
   .tile h3, .tile.t-league h3 { font-size: 30px; }
   .meter { width: min(300px, 70vw); }
-  .touchaim { bottom: calc(var(--safe-b) + 170px); }
   .bugwrap { left: 50%; transform: translateX(-50%); align-items: center; }
-  .aimgauge { right: 50%; transform: translateX(50%); bottom: calc(var(--safe-b) + 96px); } /* (a narrow window without touch) */
   .derbybox, .practbox { left: 50%; transform: translateX(-50%); }
   .practice { top: calc(var(--safe-t) + 124px); } /* below the pitch pill and the exit-speed readout */
   .lineup { display: none !important; }
   .hud[data-mode="quick"] .batter-tag { display: block; }
+  /* phones held upright: the Swing button and the Bunt / Steal pair sit above the score box (Swing right, the pair left), the
+     timing meter above them */
+  .swingbtn { width: 80px; height: 80px; right: calc(var(--safe-r) + 14px); bottom: calc(var(--safe-b) + 100px); }
+  body.touch .acts { right: auto; left: calc(var(--safe-l) + 12px); bottom: calc(var(--safe-b) + 112px); }
+  body.touch .meter { bottom: calc(var(--safe-b) + 196px); }
 }
 @media (max-height: 520px) {
   .logo { width: min(460px, 62vw, 110vh); }
@@ -619,7 +617,7 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
   .banner { top: 36%; padding: 6px 28px 8px; min-width: 140px; } .banner .big { font-size: clamp(22px, 7vh, 34px); }
   .banner.hr { top: 47%; } .banner.hr .big { font-size: clamp(34px, 14vh, 70px); }
   .pitchinfo { height: 32px; } .hint { height: 30px; top: calc(var(--safe-t) + 52px); } .callout { top: calc(var(--safe-t) + 52px); }
-  .touchaim { bottom: calc(var(--safe-b) + 112px); }
+  body.touch .acts { bottom: calc(var(--safe-b) + 112px); }
   .meter { bottom: calc(var(--safe-b) + 84px); }
   .banner { top: 38%; }
   .tiles { height: clamp(176px, 50vh, 330px); grid-template-rows: repeat(2, minmax(0, 1fr)); }

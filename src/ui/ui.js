@@ -154,9 +154,8 @@ export class UI {
       </div>
       <div class="batterup"><div class="bcard"><div class="who"></div><div class="line"></div></div><div class="bextra"></div><button class="btn" data-a="batterReady">${icon('play')}Ready</button></div>
       <div class="meter"><div class="bar"><div class="tick"></div><div class="mark"></div></div><div class="lab"><span>EARLY</span><span>LATE</span></div><div class="txt"></div></div>
-      <div class="aimgauge"><span>Aim</span><div class="track"><div class="knob"></div></div><span class="aimlab">CENTER</span></div>
+      <button class="swingbtn" data-swing aria-label="Swing">${icon('bat')}<span>Swing</span></button>
       <div class="acts"><button class="stealbtn" data-a="steal" aria-pressed="false" title="Steal (S)">${icon('go')}<span>Steal</span></button><button class="buntbtn" data-a="bunt" aria-pressed="false" title="Bunt (B)">${icon('bat')}<span>Bunt</span></button></div>
-      <button class="touchaim l" data-aim="-1" aria-label="Aim left">${icon('chevLeft')}</button><button class="touchaim r" data-aim="1" aria-label="Aim right">${icon('chevRight')}</button>
       <div class="practice panel collapsed">
         <button class="prhead" aria-label="Pitch settings">${icon('sliders')}<span>Pitch</span>${icon('chevDown', 'chev')}</button>
         <div class="prbody">
@@ -172,18 +171,15 @@ export class UI {
     this.q = {
       pitchinfo: $(hud, '.pitchinfo'), banner: $(hud, '.banner'), callout: $(hud, '.callout'), meter: $(hud, '.meter'), hint: $(hud, '.hint'),
       derby: $(hud, '.derbybox'), bug: $(hud, '.bug'), tag: $(hud, '.batter-tag'), practice: $(hud, '.practice'), flash: $(hud, '.flash'),
-      lineup: $(hud, '.lineup'), aimKnob: $(hud, '.aimgauge .knob'), aimLab: $(hud, '.aimlab'), aimGauge: $(hud, '.aimgauge'), batterUp: $(hud, '.batterup'),
+      lineup: $(hud, '.lineup'), swingBtn: $(hud, '.swingbtn'), batterUp: $(hud, '.batterup'),
     };
     hud.addEventListener('click', (e) => {
       const b = e.target.closest('[data-a]');
       if (b) this.act(b.dataset.a);
     });
-    for (const b of hud.querySelectorAll('.touchaim')) {
-      const v = +b.dataset.aim;
-      const down = (e) => { e.preventDefault(); e.stopPropagation(); b.classList.add('on'); this.act('aim', v); };
-      const up = (e) => { e.preventDefault(); b.classList.remove('on'); this.act('aim', 0); };
-      b.addEventListener('pointerdown', down); b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('pointerleave', up);
-    }
+    // the Swing button (phones): it swings the moment it is touched (timed from the touch, like a key)
+    this.q.swingBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); this.q.swingBtn.classList.add('on'); this.act('swing', e); });
+    for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) this.q.swingBtn.addEventListener(ev, () => this.q.swingBtn.classList.remove('on'));
     // practice panel
     const pt = $(hud, '.practice .pt');
     for (const k of ['fastball', 'changeup', 'curveball', 'slider', 'heater', 'mixed']) {
@@ -204,7 +200,7 @@ export class UI {
       this.act('practice', { location: b.dataset.loc });
     });
     $(hud, '.practice .prhead').addEventListener('click', () => this.q.practice.classList.toggle('collapsed'));
-    for (const el of hud.querySelectorAll('.practice, .hudbtns, .batterup, .acts')) el.addEventListener('pointerdown', (e) => e.stopPropagation());
+    for (const el of hud.querySelectorAll('.practice, .hudbtns, .batterup, .acts, .lineup')) el.addEventListener('pointerdown', (e) => e.stopPropagation());
 
     // ---------------- toast + rotate hint
     this.toastEl = h('div', 'toast');
@@ -370,11 +366,11 @@ export class UI {
     d.innerHTML = `
       <div class="head"><h1 class="ttl">How to play</h1></div>
       <div class="steps">
-        <div class="step"><span class="n">1</span><svg class="pic" viewBox="0 0 120 70"><circle cx="24" cy="30" r="9" fill="#e0ac82"/><rect x="15" y="40" width="18" height="24" rx="7" fill="#e8ecf5"/><path d="M36 30 Q60 12 88 34" stroke="#ffb52e" stroke-width="2" fill="none" stroke-dasharray="4 4"/><circle cx="96" cy="38" r="6" fill="#fff" stroke="#c62828" stroke-width="1.5"/></svg><h4>Watch</h4><p>The pitch</p></div>
-        <div class="step"><span class="n">2</span><svg class="pic" viewBox="0 0 120 70"><rect x="38" y="6" width="44" height="44" rx="6" fill="rgba(255,255,255,.08)" stroke="#fff" stroke-dasharray="4 3"/><circle cx="60" cy="28" r="6" fill="#fff" stroke="#c62828" stroke-width="1.5"/><rect x="32" y="54" width="56" height="12" rx="6" fill="#ffb52e"/><text x="60" y="63" text-anchor="middle" font-size="9" font-weight="800" fill="#1b1204">SWING</text></svg><h4>Swing</h4><p>At the plate</p></div>
-        <div class="step"><span class="n">3</span><svg class="pic" viewBox="0 0 120 70"><path d="M60 64 L12 12 M60 64 L108 12" stroke="#fff" stroke-width="2" opacity=".55"/><path d="M60 62 L40 22" stroke="#ffb52e" stroke-width="4" stroke-linecap="round"/><path d="M60 62 L80 22" stroke="#ffb52e" stroke-width="4" stroke-linecap="round" opacity=".45"/><circle cx="60" cy="64" r="4" fill="#fff"/></svg><h4>Aim</h4><p>${touch ? 'Arrow buttons' : 'Hold A or D'}</p></div>
+        <div class="step"><span class="n">1</span><svg class="pic" viewBox="0 0 120 70"><rect x="40" y="8" width="40" height="50" fill="rgba(255,255,255,.06)" stroke="#fff" stroke-opacity=".5"/><path d="M18 46 L74 34" stroke="#fff" stroke-opacity=".55" stroke-width="7" stroke-linecap="round"/><circle cx="66" cy="36" r="4.5" fill="none" stroke="#ffe08a" stroke-width="2"/><circle cx="67" cy="30" r="5" fill="#fff" stroke="#c62828" stroke-width="1.2"/></svg><h4>Aim</h4><p>${touch ? 'Drag the bat' : 'Bat follows the mouse'}</p></div>
+        <div class="step"><span class="n">2</span><svg class="pic" viewBox="0 0 120 70"><circle cx="26" cy="35" r="11" fill="#fff" stroke="#c62828" stroke-width="1.5"/><path d="M40 30 Q60 8 78 12" stroke="#ffb52e" stroke-width="2.5" fill="none"/><path d="M40 35 L78 35" stroke="#fff" stroke-width="2.5" opacity=".8"/><path d="M40 40 Q58 52 72 60" stroke="#8fb3ff" stroke-width="2.5" fill="none"/><text x="82" y="15" font-size="7.5" font-weight="800" fill="#ffb52e">FLY</text><text x="82" y="38" font-size="7.5" font-weight="800" fill="#fff">LINER</text><text x="76" y="64" font-size="7.5" font-weight="800" fill="#8fb3ff">GROUNDER</text></svg><h4>Contact</h4><p>Under · middle · top</p></div>
+        <div class="step"><span class="n">3</span><svg class="pic" viewBox="0 0 120 70"><rect x="14" y="24" width="92" height="10" rx="2" fill="url(#hg)"/><defs><linearGradient id="hg"><stop offset="0" stop-color="#7a2a2a"/><stop offset=".5" stop-color="#3ddc7c"/><stop offset="1" stop-color="#7a2a2a"/></linearGradient></defs><rect x="58" y="18" width="4" height="22" rx="1" fill="#fff"/><rect x="32" y="48" width="56" height="14" rx="7" fill="#ffb52e"/><text x="60" y="58" text-anchor="middle" font-size="9" font-weight="800" fill="#1b1204">${touch ? 'TAP' : 'CLICK'}</text></svg><h4>Swing</h4><p>On time</p></div>
       </div>
-      <div class="keys">${touch ? key(['Tap'], 'Swing') + key(['◀', '▶'], 'Aim') : key(['Space'], 'Swing') + key(['A', 'D'], 'Aim') + key(['B'], 'Bunt') + key(['S'], 'Steal') + key(['Z'], 'Zone') + key(['M'], 'Mute') + key(['Esc'], 'Pause')}</div>
+      <div class="keys">${touch ? key(['Drag'], 'Aim') + key(['Swing'], 'Swing') : key(['Mouse'], 'Aim') + key(['Click', 'Space'], 'Swing') + key(['Arrows'], 'Aim') + key(['B'], 'Bunt') + key(['S'], 'Steal') + key(['Z'], 'Zone') + key(['M'], 'Mute') + key(['Esc'], 'Pause')}</div>
       <div class="row"><button class="btn" data-a="howtoDone">${icon('check')}Got it</button></div>`;
     s.appendChild(d);
     s.onclick = (e) => { const b = e.target.closest('[data-a]'); if (b) { this.act('howtoDone'); if (onDone) onDone(); } };
@@ -891,10 +887,8 @@ export class UI {
     this.meterTimer = setTimeout(() => m.classList.remove('show'), 2200);
   }
   hideTiming() { this.q.meter.classList.remove('show'); }
-  setAim(v, handLabelPull) {
-    this.q.aimKnob.style.left = 50 + v * 46 + '%';
-    this.q.aimLab.textContent = Math.abs(v) < 0.1 ? 'CENTER' : v < 0 ? (handLabelPull === 'L' ? 'PULL ◀' : 'LEFT ◀') : (handLabelPull === 'R' ? 'PULL ▶' : 'RIGHT ▶');
-  }
+  // the Swing button shows (phones) while you are up
+  setSwingButton(on) { this.q.swingBtn.classList.toggle('show', !!on); }
   hint(text, ms = 2600) {
     const el = this.q.hint;
     el.textContent = text; el.classList.add('show');

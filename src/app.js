@@ -19,6 +19,7 @@ import { zoneRatio } from './physics/pitch.js';
 import { PitchGuide } from './render/pitchGuide.js';
 import { pitchGuide } from './game/pitchGuide.js';
 import { LandingRing } from './render/landingRing.js';
+import { BatAim } from './render/batAim.js';
 import { landingSpot, landingRing } from './game/landing.js';
 import * as SEA from './game/season.js';
 
@@ -75,8 +76,13 @@ export class App {
     this.fast = false;
     this.mode = null;
     this.lastMode = null;
-    this.aimKeys = { left: false, right: false };
+    this.aimKeys = { left: false, right: false, up: false, down: false }; // arrow keys move the bat
     this.aimTouch = 0;
+    this.mouse = null; // { nx, ny } the mouse over the game (normalised screen position), when the mouse is aiming
+    this.aimTarget = { x: 0, y: CONFIG.timing.zoneCenterY }; // where the cursor / keys / finger put the bat's sweet spot
+    this.aimShown = { x: 0, y: CONFIG.timing.zoneCenterY }; // ...and where the bat is (it follows that closely)
+    this.aimMode = 'mouse'; // mouse | keys | touch
+    this.touchAim = null; // a finger dragging the bat
     this.lastFrameStamp = performance.now();
     this.time = 0;
     this.rawDtMs = 16.7;
@@ -158,6 +164,7 @@ export class App {
     this.guide = new PitchGuide(this.S.scene); // the soft circle that guesses where the pitch will cross the plate
     this.landing = null; // where the ball in the air will come down (see onContact)
     this.landRing = new LandingRing(this.S.scene); // ...and the ring on the grass that shows it
+    this.batAim = new BatAim(this.S.scene); // the see-through bat you aim with
   }
 
   get settings() { return this.prog.settings; }
@@ -242,7 +249,7 @@ export class App {
       case 'batterReady': if (this.engine) this.engine.batterReady(); break;
       case 'bunt': if (this.engine) this.engine.setBunt(!this.engine.buntStance); break;
       case 'steal': if (this.engine) this.engine.setSteal(!this.engine.stealArmed); break;
-      case 'aim': this.aimTouch = d; break;
+      case 'swing': this.swingInput(d); break;
       case 'practice': if (this.engine) { Object.assign(this.engine.practice, d); } break;
       default: break;
     }
@@ -443,7 +450,7 @@ export class App {
       if (mode === 'quick') this.audio.callUmpire('playball', { delay: 0.6 }); // the plate umpire opens the game
     }
     if (!this.prog.data.tipShown) {
-      this.ui.hint(this.touch ? 'Tap to swing' : 'Space to swing', 4200);
+      this.ui.hint(this.touch ? 'Drag to aim · tap to swing' : 'Mouse to aim · click to swing', 4600);
       this.prog.data.tipShown = 1; this.prog.save();
     }
   }
@@ -494,8 +501,10 @@ export class App {
       ui.hideHint();
       void pitch;
     });
-    e.on('whiff', ({ swing, reason }) => {
-      if (reason === 'reach') ui.hint('Out of reach', 1600);
+    e.on('whiff', ({ reason }) => {
+      // where the bat missed it (the ring on the plate shows where the ball was)
+      const say = { under: 'Under it', over: 'Over it', end: 'Off the end', hands: 'Jammed' }[reason];
+      if (say) ui.hint(say, 1500);
     });
     e.on('catch', ({ pitch, swung }) => {
       audio.glovePop(clamp((pitch.speedMph - 40) / 60, 0.3, 1.2));
@@ -856,10 +865,13 @@ export class App {
         case 'KeyB': if (inGame && this.engine) this.engine.setBunt(!this.engine.buntStance); break;
         case 'KeyS': if (inGame && this.engine) this.engine.setSteal(!this.engine.stealArmed); break;
         case 'KeyZ': if (this.engine) { this.changeSetting('zone', !this.settings.zone); } break;
-        case 'ArrowLeft': case 'KeyA': if (!inGame) break; e.preventDefault(); this.aimKeys.left = true; break;
-        case 'ArrowRight': case 'KeyD': if (!inGame) break; e.preventDefault(); this.aimKeys.right = true; break;
-        case 'ArrowUp': if (inGame && this.engine.mode === 'practice') { e.preventDefault(); this.practiceSpeed(+2); } break;
-        case 'ArrowDown': if (inGame && this.engine.mode === 'practice') { e.preventDefault(); this.practiceSpeed(-2); } break;
+        // the arrow keys (or A / D across) move the bat
+        case 'ArrowLeft': case 'KeyA': if (!inGame) break; e.preventDefault(); this.aimKeys.left = true; this.aimMode = 'keys'; break;
+        case 'ArrowRight': case 'KeyD': if (!inGame) break; e.preventDefault(); this.aimKeys.right = true; this.aimMode = 'keys'; break;
+        case 'ArrowUp': case 'KeyW': if (!inGame) break; e.preventDefault(); this.aimKeys.up = true; this.aimMode = 'keys'; break;
+        case 'ArrowDown': if (!inGame) break; e.preventDefault(); this.aimKeys.down = true; this.aimMode = 'keys'; break;
+        case 'Equal': case 'NumpadAdd': if (inGame && this.engine.mode === 'practice') this.practiceSpeed(+2); break;
+        case 'Minus': case 'NumpadSubtract': if (inGame && this.engine.mode === 'practice') this.practiceSpeed(-2); break;
         case 'Digit1': case 'Digit2': case 'Digit3': case 'Digit4': case 'Digit5': case 'Digit6':
           if (inGame && this.engine.mode === 'practice') {
             const types = ['fastball', 'changeup', 'curveball', 'slider', 'heater', 'mixed'];
@@ -873,11 +885,52 @@ export class App {
     window.addEventListener('keyup', (e) => {
       if (e.code === 'ArrowLeft' || e.code === 'KeyA') this.aimKeys.left = false;
       if (e.code === 'ArrowRight' || e.code === 'KeyD') this.aimKeys.right = false;
+      if (e.code === 'ArrowUp' || e.code === 'KeyW') this.aimKeys.up = false;
+      if (e.code === 'ArrowDown') this.aimKeys.down = false;
     });
+    // The mouse aims the bat (its sweet spot follows the cursor) and a click swings. A finger drags the bat (it moves with the finger
+    // but a little further, so the finger never covers it) and a quick tap swings - or use the Swing button.
+    const toNorm = (e) => { const r = this.canvas.getBoundingClientRect(); return { nx: ((e.clientX - r.left) / r.width) * 2 - 1, ny: -((e.clientY - r.top) / r.height) * 2 + 1 }; };
+    this.canvas.addEventListener('pointermove', (e) => {
+      if (e.pointerType === 'touch') {
+        const t = this.touchAim;
+        if (!t || t.id !== e.pointerId) return;
+        const dx = e.clientX - t.lx, dy = e.clientY - t.ly;
+        t.lx = e.clientX; t.ly = e.clientY;
+        if (Math.hypot(e.clientX - t.x0, e.clientY - t.y0) > CONFIG.batAim.tapPx) t.moved = true;
+        const k = this.ftPerPx() * CONFIG.batAim.touchGain;
+        this.aimTarget.x += dx * k; this.aimTarget.y -= dy * k;
+        this.clampAimTarget();
+        return;
+      }
+      this.mouse = toNorm(e); this.aimMode = 'mouse';
+    });
+    this.canvas.addEventListener('pointerleave', (e) => { if (e.pointerType !== 'touch') this.mouse = null; });
     this.canvas.addEventListener('pointerdown', (e) => {
       this.audio.unlock();
-      if (this.screen === 'game') { e.preventDefault(); swing(e); }
+      if (this.screen !== 'game') return;
+      e.preventDefault();
+      if (e.pointerType === 'touch') {
+        this.aimMode = 'touch';
+        // While you are batting a finger drags the bat. A finger coming down while the pitch is on its way - or a second finger while one
+        // is dragging - swings, at that very moment (the Swing button does too). Anywhere else (a play, the summary) a tap does what it
+        // always did.
+        if (this.cam.batting && this.engine && ['ready', 'windup', 'pitch'].includes(this.engine.phase) && !this.engine.awaitingBatter) {
+          if (this.touchAim || this.engine.phase === 'pitch') swing(e);
+          if (!this.touchAim) {
+            this.touchAim = { id: e.pointerId, x0: e.clientX, y0: e.clientY, lx: e.clientX, ly: e.clientY, t0: e.timeStamp, moved: false };
+            try { this.canvas.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+          }
+          return;
+        }
+        swing(e);
+        return;
+      }
+      this.mouse = toNorm(e); this.aimMode = 'mouse';
+      swing(e);
     });
+    this.canvas.addEventListener('pointerup', (e) => { if (this.touchAim && this.touchAim.id === e.pointerId) this.touchAim = null; });
+    this.canvas.addEventListener('pointercancel', (e) => { if (this.touchAim && this.touchAim.id === e.pointerId) this.touchAim = null; });
     for (const ev of ['pointerdown', 'touchend', 'click', 'keydown']) window.addEventListener(ev, () => { if (this.audio.hidden && document.hasFocus()) this.audio.setHidden(false); this.audio.unlock(); }, { passive: true });
     this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     document.addEventListener('visibilitychange', () => {
@@ -888,7 +941,7 @@ export class App {
     window.addEventListener('pageshow', () => this.audio.setHidden(document.hidden));
     // switching to another window (the tab stays visible, e.g. alt-tab) pauses too, so no pitch is thrown while you are away
     window.addEventListener('blur', () => {
-      this.aimKeys.left = this.aimKeys.right = false;
+      this.aimKeys.left = this.aimKeys.right = this.aimKeys.up = this.aimKeys.down = false;
       if (this.screen === 'game' && !this.paused && this.engine && !this.engine.over && !this.params.get('bot')) this.setPaused(true);
       this.audio.setHidden(true); // another app has the focus: the ballpark goes quiet (menus included)
     });
@@ -907,6 +960,70 @@ export class App {
     const p = this.engine.practice;
     p.speed = clamp(p.speed + d, CONFIG.modes.practice.speedMin, CONFIG.modes.practice.speedMax);
     this.ui.setPracticeButtons(p);
+  }
+
+  // ---------------------------------------------------------------- batting: the catcher's view and the bat you aim
+  // Are you up? (the catcher's view): from Ready (or the first pitch of a Derby / practice) through the pitches of the at-bat; not
+  // while waiting for Ready, during a play, the computer's half-inning or between innings.
+  isBatting(e) {
+    if (!e || this.screen !== 'game' || e.over) return false;
+    if (e.phase === 'ready') return !e.awaitingBatter && e.time - e.phaseSince > (e.pitchCount ? 0 : CONFIG.camera.catcher.firstDelay);
+    if (e.phase === 'windup' || e.phase === 'pitch') return true;
+    if (e.phase === 'result') return !e.play && !e.paEnded; // (a ball or a strike: the at-bat goes on)
+    return false;
+  }
+
+  // feet on the plane over the plate per screen pixel (for dragging the bat with a finger)
+  ftPerPx() {
+    const cam = this.S.camera;
+    const d = Math.max(1, cam.position.distanceTo(new THREE.Vector3(this.aimShown.x, this.aimShown.y, CONFIG.pitch.contactZ)));
+    return (2 * d * Math.tan((cam.fov * Math.PI) / 360)) / Math.max(1, this.S.size.h);
+  }
+
+  clampAimTarget() {
+    const R = CONFIG.swing.reach;
+    this.aimTarget.x = clamp(this.aimTarget.x, -R.x, R.x);
+    this.aimTarget.y = clamp(this.aimTarget.y, R.yMin, R.yMax);
+  }
+
+  // Every frame: where the bat is aimed (the cursor on the plane over the plate, the arrow keys, a finger), the bat drawn there and
+  // handed to the engine, the camera told whether you are batting, and the mouse pointer hidden while the bat is the cursor.
+  updateBatting(e, dt) {
+    const batting = this.isBatting(e) && !this.paused;
+    this.cam.batting = batting;
+    this.actors.cameraCatcherDist = this.cam.catcherDist;
+    this.actors.cameraPos = this.S.camera.position;
+    const A = CONFIG.batAim;
+    if (this.aimMode === 'mouse' && this.mouse && batting) {
+      // the cursor's ray onto the plane over the front of the plate
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(new THREE.Vector2(this.mouse.nx, this.mouse.ny), this.S.camera);
+      const o = ray.ray.origin, d = ray.ray.direction;
+      if (Math.abs(d.z) > 1e-6) {
+        const t = (CONFIG.pitch.contactZ - o.z) / d.z;
+        if (t > 0) { this.aimTarget.x = o.x + d.x * t; this.aimTarget.y = o.y + d.y * t; }
+      }
+    }
+    if (this.aimMode === 'keys') {
+      const k = A.keySpeed * dt;
+      this.aimTarget.x += ((this.aimKeys.right ? 1 : 0) - (this.aimKeys.left ? 1 : 0)) * k;
+      this.aimTarget.y += ((this.aimKeys.up ? 1 : 0) - (this.aimKeys.down ? 1 : 0)) * k;
+    }
+    this.clampAimTarget();
+    // the bat follows with a touch of weight (never a lag you can feel)
+    const f = 1 - Math.exp(-dt / A.follow);
+    this.aimShown.x += (this.aimTarget.x - this.aimShown.x) * f;
+    this.aimShown.y += (this.aimTarget.y - this.aimShown.y) * f;
+    if (!this.bot) e.setBatAim(this.aimShown.x, this.aimShown.y);
+    const shown = this.bot ? e.batAim : this.aimShown;
+    const sw = e.swing && e.pitch && (e.phase === 'pitch' || e.phase === 'play' || e.phase === 'result') ? e.swing : null;
+    this.batAim.update({
+      show: batting && this.cam.catcherDist < A.showWithin && (e.phase !== 'result' || !!sw),
+      aim: shown, hand: e.batterHand, window: e.contactWindow, swing: sw, time: e.time,
+    }, dt);
+    this.ui.setSwingButton(batting && this.touch && (e.phase === 'windup' || e.phase === 'pitch' || e.phase === 'ready'));
+    const hideCursor = batting && this.aimMode === 'mouse' && !this.ui.current;
+    if (hideCursor !== this.cursorHidden) { this.cursorHidden = hideCursor; this.canvas.style.cursor = hideCursor ? 'none' : ''; }
   }
 
   swingInput(ev) {
@@ -963,9 +1080,7 @@ export class App {
     let simDt = 0;
     // aim
     if (e) {
-      const aim = clamp((this.aimKeys.right ? 1 : 0) - (this.aimKeys.left ? 1 : 0) + this.aimTouch, -1, 1);
-      e.setAim(aim);
-      this.ui.setAim(aim, e.batterHand);
+      this.updateBatting(e, realDt);
       // the Steal button is only there while a runner could go
       const can = e.canSteal && !this.paused, on = e.stealArmed || !!(e.steal && (e.phase === 'windup' || e.phase === 'pitch'));
       if (can !== this.stealShown || on !== this.stealOn) { this.stealShown = can; this.stealOn = on; this.ui.setSteal(can, on); }

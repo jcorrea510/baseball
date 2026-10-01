@@ -25,6 +25,8 @@ export class CameraRig {
     this.title = false;
     this.titleT = 0;
     this.override = null; // { pos:[x,y,z], look:[x,y,z], fov } - used by automated screenshots
+    this.batting = false; // the batting (catcher's) view: set by the app while you are up
+    this.catcherDist = Infinity;
   }
 
   shake(amount) { this.shakeAmt = Math.min(1.6, Math.max(this.shakeAmt, amount)); }
@@ -57,6 +59,8 @@ export class CameraRig {
       if (tgt) cam.lookAt(tgt.x, tgt.y, tgt.z); else cam.lookAt(...o.look);
       cam.fov = o.fov || 40;
       cam.updateProjectionMatrix();
+      const Cp = CONFIG.camera.catcher.pos;
+      this.catcherDist = Math.hypot(o.pos[0] - Cp[0], o.pos[1] - Cp[1], o.pos[2] - Cp[2]);
       return;
     }
     const cfg = CONFIG.camera;
@@ -67,7 +71,13 @@ export class CameraRig {
     const look = this.batterLook(_look).clone();
 
     const phase = E ? E.phase : 'title';
-    if (this.title) {
+    if (this.batting && E && !this.title) {
+      // batting: the catcher's view (it eases in from wherever the camera was - the broadcast view after Ready, or the field after a play)
+      const C = cfg.catcher;
+      tPos = _tmp.set(C.pos[0], C.pos[1], C.pos[2]).clone();
+      look.set(C.look[0], C.look[1], C.look[2]);
+      tFov = C.fov; posL = C.zoom; lookL = C.zoom * 1.4; fovL = C.zoom;
+    } else if (this.title) {
       // slow orbit around the ballpark for the title screen
       this.titleT += dt;
       const a = this.titleT * 0.09;
@@ -160,6 +170,8 @@ export class CameraRig {
       cam.position.y += (Math.sin(this.shakeT * 2.3) + Math.cos(this.shakeT * 3.7)) * 0.1 * s;
     }
     cam.lookAt(this.look);
+    const Cp = cfg.catcher.pos;
+    this.catcherDist = Math.hypot(this.pos.x - Cp[0], this.pos.y - Cp[1], this.pos.z - Cp[2]); // (the actors hide the catcher when we are in his eyes)
     if (s > 0) cam.rotateZ(Math.sin(this.shakeT * 2.9) * 0.008 * s);
     cam.fov = Math.max(this.fov, this.minVFov(aspect));
     cam.updateProjectionMatrix();

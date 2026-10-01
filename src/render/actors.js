@@ -161,6 +161,20 @@ export class Actors {
     const pre = !inPlay && E.steal && E.steal.plan && pitch && (phase === 'windup' || phase === 'pitch');
     this.updateFielders(E, dt, time, pitch, pre ? E.steal.plan : plan, pre ? time - pitch.tCatch : playT);
 
+    // ---- in the catcher's view we look through the catcher's eyes: only his glove arm shows, and the umpire (right behind) is hidden
+    // (while the camera pulls back out of his eyes after a swing, he - and the umpire - stay hidden until the camera is clear of them,
+    // so no giant helmet fills the screen for a moment)
+    const Cc = E.cfg.camera.catcher;
+    const dC = this.cameraCatcherDist ?? Infinity;
+    const fp = dC < Cc.firstPerson;
+    this.catcherHidden = !fp && dC < Cc.clearDist;
+    if (this.fielders.C) this.fielders.C.setFirstPerson(fp);
+    if (this.umpire) {
+      const cp = this.cameraPos, u = this.umpire.root.position;
+      const dU = cp ? Math.hypot(cp.x - u.x, cp.y - Cc.umpireHead, cp.z - u.z) : Infinity;
+      this.umpire.root.visible = !fp && dU > Cc.clearDist;
+    }
+
     // ---- plate umpire
     if (this.umpire) {
       const since = this.umpCall.t > -5 ? time - this.umpCall.t : -1;
@@ -175,6 +189,7 @@ export class Actors {
     this.updateBall(E, dt, time, pitch, play, plan, playT);
 
     for (const p of this.players.values()) p.root.visible = !!p.active;
+    if (this.catcherHidden && this.fielders.C) this.fielders.C.root.visible = false;
     this.lastPhase = phase;
   }
 
@@ -328,7 +343,11 @@ export class Actors {
     const cfg = E.cfg;
     let mx = 0, my = 2.4, mz = cfg.pitch.catchZ;
     if (pitch) {
-      mx = pitch.target.x; my = Math.max(0.9, pitch.target.y);
+      // He sets up a low, neutral target and only reaches for the ball as it arrives (in the catcher's view his glove is right there: it
+      // must never tell you where the pitch is going before the ball does)
+      const C = cfg.camera.catcher;
+      const reach = (E.phase === 'pitch' || E.phase === 'result' || E.phase === 'play') ? smoothstep(pitch.flight.tCatch - C.mittReach, pitch.flight.tCatch - 0.02, time - pitch.tRelease) : 0;
+      mx = pitch.target.x * reach; my = lerp(C.mittY, Math.max(0.9, pitch.target.y), reach);
       if (E.phase === 'pitch' || E.phase === 'result' || E.phase === 'play') {
         const pt = time - pitch.tRelease;
         if (pt > pitch.flight.tCatch && !E.swing?.made) {
@@ -548,12 +567,12 @@ export class Actors {
       const bp = pitch.flight.at(swing.made ? tt : clamp(swing.tHit - pitch.tRelease, 0, pitch.flight.T));
       let c;
       if (swing.made) c = bp;
-      else c = { x: pitch.target.x, y: pitch.target.y, z: E.cfg.pitch.contactZ };
+      else c = { x: swing.aim ? swing.aim.x : pitch.target.x, y: swing.aim ? swing.aim.y : pitch.target.y, z: E.cfg.pitch.contactZ }; // (a miss: the bat goes where he aimed it)
       const local = person.root.worldToLocal(this.tmpV.set(c.x, c.y, c.z).clone());
       sw = { tStart: swing.tPress, tHit: swing.tHit, follow: swing.follow, contact: [local.x, local.y, local.z], early: clamp(-swing.errorMs / 60, -1, 1) };
       if (!swing.made) sw.early = clamp(-swing.errorMs / 100, -0.6, 0.6);
     }
-    batterPose(P, time, sw);
+    batterPose(P, time, sw, E.batAim ? E.batAim.y : null); // (in his stance his hands follow where the bat is aimed, a little)
     // squared around to bunt: blend into the bunt stance (and push the bat out if he bunts at this pitch)
     const st = this.state.get(person);
     const bunting = E.buntStance || (swing && swing.bunt && phase !== 'ready');
