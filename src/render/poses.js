@@ -211,7 +211,7 @@ export function pitcherPose(P, u, post, release, tell = { slot: 0, lag: 0 }) {
 
   // glove hand: the glove arm stays bent and leads toward the plate (elbow first), then tucks in as he throws
   setVec(P, 'handL', [
-    [0, 0.12, 4.0, 0.55], [0.4, 0.2, 4.35, 0.75], [0.6, 0.75, 4.55, 1.35], [0.78, 0.95, 4.55, 2.6], [0.9, 0.9, 4.4, 3.7], [1.0, 0.8, 4.4, 4.2],
+    [0, 0.12, 4.0, 0.55], [0.4, 0.2, 4.15, 0.8], [0.6, 0.55, 4.05, 1.4], [0.78, 0.7, 3.95, 2.5], [0.9, 0.75, 4.05, 3.5], [1.0, 0.7, 4.25, 4.0],
   ], u);
   // throwing hand: the hands break, the arm swings down past the hip, back and up into a cocked "L" (elbow at the shoulder,
   // forearm up) as the front foot lands, then whips forward over the top through the release point
@@ -219,9 +219,9 @@ export function pitcherPose(P, u, post, release, tell = { slot: 0, lag: 0 }) {
   setVec(P, 'handR', [
     [0, -0.12, 4.0, 0.55],
     [0.4, -0.2, 4.35, 0.75],
-    [0.55, -0.55, 3.75, 0.2],
-    [0.64, -0.95, 3.45, -0.6],
-    [0.72, -1.2, 3.65, -1.05],
+    [0.55, -0.75, 3.7, 0.15],
+    [0.64, -1.3, 3.55, -0.35],
+    [0.72, -1.55, 3.95, -0.7],
     [0.8, -1.35, 5.7 + sh * 0.5, -0.85],
     [0.92, -1.2 - slot * 0.3, 6.15 + sh * 0.5, 1.5 + release[2] * 0.1],
     [1.0, release[0], release[1], release[2]],
@@ -249,7 +249,7 @@ export function pitcherPose(P, u, post, release, tell = { slot: 0, lag: 0 }) {
 }
 
 // Where the ball is while the pitcher still holds it: in the glove/hands until the arm cocks.
-export function pitcherBallInGlove(u) { return u < 0.5; }
+export function pitcherBallInGlove(u) { return u < 0.42; }
 
 // ---------------------------------------------------------------- catcher
 export function catcherPose(P, time, mittLocal) {

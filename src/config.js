@@ -85,6 +85,7 @@ export const CONFIG = {
     // ...and on screen at least this many pixels across (or this fraction of the screen height, whichever is bigger) while it still
     // grows as it comes in: at release a real-size ball is only ~2.5 px on a phone held sideways. Only the picture: timing is unchanged.
     minScreenPx: 5,
+    handMinScreenPx: 3.5, // the ball in the pitcher's throwing hand is drawn at least this big, so you can see which hand it is in
     minScreenFrac: 0.009,
     // Movement is measured at the plate. breakArm: feet toward the pitcher's
     // throwing-arm side (negative = glove side). hop: feet of "extra rise"
@@ -349,6 +350,9 @@ export const CONFIG = {
       minSpeed: 20, // ft/s: a fielder sprinting to a bag runs at least this fast (a pitcher covering first is not slow, he is hustling)
       selfDistance: 18, // ft: a fielder who picks the ball up this close to the bag steps on it himself (a first baseman near the bag)
       selfStart: 0.12, // s after he fields it before he starts for the bag with the ball
+      carrySpeed: 24, // ft/s: a fielder taking the ball to the bag himself sprints there...
+      carryAccel: 0.24, // ...getting up to speed quickly (s), turning for the bag the moment he has the ball
+      maxCarry: 45, // ft: farther from the bag than this he throws to whoever is covering instead of running it over
       selfBonus: 0.25, // s: how much a close fielder prefers taking the bag himself over a throw (it is the natural play)
       firstSelfDistance: 42, // ft: a first baseman who fields it this close to first base takes the bag himself (no flip to the pitcher)
       firstSelfBonus: 0.9, // s: and strongly prefers that to a throw - the pitcher only covers when the first baseman is pulled far off the bag

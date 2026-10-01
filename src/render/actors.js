@@ -800,10 +800,10 @@ export class Actors {
       const u = pitch && phase === 'windup' ? clamp((time - pitch.tWindup) / pitch.windupDur, 0, 1) : 0;
       pitcherP.root.updateMatrixWorld(true);
       const rh = pitcherP.handWorld('R', this.tmpV);
-      if (u < 0.5) {
-        const lh = pitcherP.handWorld('L', this.tmpV2);
-        bp.copy(rh).add(lh).multiplyScalar(0.5);
-      } else bp.copy(rh);
+      // hands together: the ball is in the glove; as the hands break it goes with the throwing hand (smoothly - it never jumps)
+      const lh = pitcherP.handWorld('L', this.tmpV2);
+      const g = 0.5 * (1 - smoothstep(0.34, 0.46, u));
+      bp.copy(rh).lerp(lh, g);
       bp.y += 0.05;
       kind = 'hand';
     } else if (phase === 'pitch' || (phase === 'result' && pitch && !play)) {
@@ -843,7 +843,7 @@ export class Actors {
     }
     // after a take the next windup places the ball in the pitcher's hands again
     ball.setVisible(kind !== 'hidden');
-    ball.setScale(kind === 'pitch' ? cfg.pitch.ballScale : 1, kind === 'pitch' ? Math.max(cfg.pitch.minScreenPx, this.viewH * cfg.pitch.minScreenFrac) : 0);
+    ball.setScale(kind === 'pitch' ? cfg.pitch.ballScale : 1, kind === 'pitch' ? Math.max(cfg.pitch.minScreenPx, this.viewH * cfg.pitch.minScreenFrac) : kind === 'hand' ? cfg.pitch.handMinScreenPx : 0); // (the ball in the pitcher's hand stays visible, so you see which hand throws)
     ball.setPosition(bp.x, bp.y, bp.z);
     if (spinRate) ball.spin(this.spinAxis || new THREE.Vector3(1, 0, 0), spinRate, dt);
     ball.setTrail(trail, kind === 'pitch');
