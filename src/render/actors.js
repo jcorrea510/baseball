@@ -193,7 +193,7 @@ export class Actors {
     this.updateBall(E, dt, time, pitch, play, plan, playT);
 
     for (const p of this.players.values()) p.root.visible = !!p.active;
-    if (this.catcherHidden && this.fielders.C) this.fielders.C.root.visible = false;
+    if (this.fielders.C) this.fielders.C.root.visible = !this.catcherHidden; // (hidden only while the camera pulls back out of his eyes)
     this.lastPhase = phase;
   }
 
@@ -356,7 +356,7 @@ export class Actors {
   }
 
   catcherPoseUpdate(E, person, P, time, pitch, plan, playT, move, moving, speed, st, dt) {
-    if (move && playT >= 0 && moving) return false;
+    if (move && playT >= 0) return false; // (he has a job in this play - a pop-up, covering the plate: he is up and a fielder until it is over)
     // he comes up out of his crouch to throw (a runner stealing, a bunt he has fielded)
     if (plan && playT >= 0 && plan.throws.some((th) => th.from === 'C' && playT >= th.t0 - 0.45 && playT <= th.t0 + 0.7)) return false;
     if (speed > 1.5) return false; // jogging back to the plate
