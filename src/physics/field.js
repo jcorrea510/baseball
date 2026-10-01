@@ -128,6 +128,20 @@ export function isInsideField(x, z, margin = 0) {
   return margin > 0 ? inside && n.d >= margin : inside || n.d <= -margin;
 }
 
+/**
+ * Foul territory beyond the side walls and the backstop: the seats. Returns null inside the ballpark, else { over (ft past the wall),
+ * wall (the wall's height there), seat (the seating surface's height here), nx, nz (outward) } - the same rake the stands are drawn
+ * with (render/perimeter.js + stadium.js: the wall is 5 ft by the plate rising to 10 ft at the poles, the seats rise `stands.slope`).
+ */
+export function seatsAt(x, z) {
+  if (pointInPolygon(x, z, PLAYABLE)) return null;
+  const n = nearestEdge(x, z);
+  const wall = 5 + 5 * Math.min(1, Math.abs(n.px) / 180);
+  const s = CONFIG.field.stands;
+  const l = n.d || 1;
+  return { over: n.d, wall, seat: wall + Math.min(n.d, s.depth) * s.slope, nx: (x - n.px) / l, nz: (z - n.pz) / l };
+}
+
 /** Signed distance to the nearest wall: positive = inside the ballpark, negative = outside. */
 export function wallClearance(x, z) {
   const d = nearestEdge(x, z).d;

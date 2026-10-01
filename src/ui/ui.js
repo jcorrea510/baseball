@@ -728,14 +728,13 @@ export class UI {
     const buying = replaceFor ? sea.shop.find((p) => p.id === replaceFor) : null;
     const row = (p, i) => {
       const t = sea.stats[p.id] || {};
-      const short = buying && sea.coins + SEA.refund(p) < SEA.price(buying); // (letting him go would not bring in enough)
-      const extra = buying ? `<span class="price">+${SEA.refund(p)}</span>` : `<span class="line">${SEA.avg(t.h || 0, t.ab || 0)}</span><span class="line">${t.hr || 0}</span><span class="line">${t.rbi || 0}</span>`;
-      return `${i === n ? '<div class="label benchlab">Bench</div>' : ''}<button class="prow ${p.star ? 'star' : ''} ${sel === p.id ? 'sel' : ''}" data-id="${p.id}" ${short ? 'disabled' : ''}><span class="ord">${i < n ? i + 1 : ''}</span><span class="who"><b>${p.name}</b><small>${p.pos} · #${p.number} · ${p.hand === 'L' ? 'Bats L' : 'Bats R'}${p.team ? ' · ' + p.team : ''}</small></span>${ratingCells(p)}${extra}</button>`;
+      const extra = buying ? '' : `<span class="line">${SEA.avg(t.h || 0, t.ab || 0)}</span><span class="line">${t.hr || 0}</span><span class="line">${t.rbi || 0}</span>`;
+      return `${i === n ? '<div class="label benchlab">Bench</div>' : ''}<button class="prow ${p.star ? 'star' : ''} ${sel === p.id ? 'sel' : ''}" data-id="${p.id}"><span class="ord">${i < n ? i + 1 : ''}</span><span class="who"><b>${p.name}</b><small>${p.pos} · #${p.number} · ${p.hand === 'L' ? 'Bats L' : 'Bats R'}${p.team ? ' · ' + p.team : ''}</small></span>${ratingCells(p)}${extra}</button>`;
     };
     const head = buying ? 'Replace who?' : 'Roster';
     d.innerHTML = `${this.backHead(head, `<span class="coins">${icon('coin')}${sea.coins}</span>`, `League · Year ${sea.year}`)}
       ${buying ? `<div class="prow buying"><span class="ord">${icon('cart')}</span><span class="who"><b>${buying.name}</b><small>${buying.pos} · ${SEA.price(buying)} coins</small></span>${ratingCells(buying)}</div>` : ''}
-      <div class="phead"><span class="ord">#</span><span class="who">Player</span>${ratingHead}${buying ? '<span class="price">Back</span>' : '<span class="line">AVG</span><span class="line">HR</span><span class="line">RBI</span>'}</div>
+      <div class="phead"><span class="ord">#</span><span class="who">Player</span>${ratingHead}${buying ? '' : '<span class="line">AVG</span><span class="line">HR</span><span class="line">RBI</span>'}</div>
       <div class="plist">${sea.roster.map(row).join('')}</div>`;
     s.appendChild(d);
     this.refocus(s);
@@ -750,11 +749,9 @@ export class UI {
     const s = this.fresh('shop');
     const d = h('div', 'league panel rise');
     d.style.setProperty('--accent', sea.teams[0].color);
-    const full = sea.roster.length >= CONFIG.season.roster.size;
-    const back = full ? Math.max(...sea.roster.map((p) => SEA.refund(p))) : 0; // (with a full roster the man he replaces brings a little back)
     const card = (p) => {
       const cost = SEA.price(p);
-      const afford = sea.coins + back >= cost;
+      const afford = sea.coins >= cost; // (he costs exactly his price, out of the coins you have)
       return `<div class="prow shopp ${p.star ? 'star' : ''}"><span class="ord ovr">${SEA.overall(p)}</span><span class="who"><b>${p.name}</b><small>${p.pos} · #${p.number} · ${p.hand === 'L' ? 'Bats L' : 'Bats R'}${p.team ? ' · ' + p.team : ''}</small></span>${ratingCells(p)}<button class="btn small ${afford ? '' : 'ghost'}" data-a="shopBuy" data-id="${p.id}" ${afford ? '' : 'disabled'}>${icon('coin')}${cost}</button></div>`;
     };
     d.innerHTML = `${this.backHead('Shop', `<span class="coins">${icon('coin')}${sea.coins}</span>`, `League · Year ${sea.year}`)}

@@ -21,7 +21,6 @@ export function price(p, cfg = CONFIG) {
   const raw = P.base + P.scale * Math.pow(Math.max(0, overall(p) - P.over), P.power);
   return Math.max(P.round, Math.round(raw / P.round) * P.round);
 }
-export const refund = (p, cfg = CONFIG) => Math.round((price(p, cfg) * cfg.season.price.refund) / 5) * 5;
 
 function rating(rng, mean, sd, lo = 20, hi = 99) { return clamp(Math.round(rng.gauss(mean, sd)), lo, hi); }
 
@@ -397,12 +396,11 @@ export function buyPlayer(s, shopId, replaceId, cfg = CONFIG) {
   const full = s.roster.length >= cfg.season.roster.size;
   const out = full ? s.roster.findIndex((q) => q.id === replaceId) : -1;
   if (full && out < 0) return { ok: false, reason: 'pick' };
-  const back = out >= 0 ? refund(s.roster[out], cfg) : 0;
-  if (s.coins + back < cost) return { ok: false, reason: 'coins' };
-  s.coins += back - cost;
+  if (s.coins < cost) return { ok: false, reason: 'coins' }; // (he costs exactly his price, out of the coins you have - a player you let go brings nothing back)
+  s.coins -= cost;
   s.shop.splice(k, 1);
   if (out >= 0) s.roster[out] = p; else s.roster.push(p);
-  return { ok: true, cost, back };
+  return { ok: true, cost };
 }
 
 // ---------------------------------------------------------------------------------------------------------------

@@ -1033,12 +1033,6 @@ export class App {
   }
 
   // ---------------------------------------------------------------- sending runners (the base diamond)
-  // Is this play one where runners can still be sent (now or in a moment, once the ball is down)?
-  sendPending(e) {
-    const p = e.play;
-    return !!(p && p.plan.send && e.time - p.t0 <= p.plan.send.by);
-  }
-
   sendRunner(base) {
     const e = this.engine;
     if (!e || this.paused || this.bot) return;
@@ -1074,7 +1068,7 @@ export class App {
         e.swingPressed(since);
         break;
       }
-      case 'play': if (!this.sendPending(e)) this.fast = true; break; // (a tap speeds the play up - not while you can still send runners)
+      case 'play': if (ev && ev.type === 'keydown') this.fast = true; break; // (only the Space bar speeds a play up: a stray click or tap never does)
       case 'aiSummary': e.skipSummary(); break;
       case 'result': if (e.time - e.phaseSince > 0.12) { e.resultUntil = Math.min(e.resultUntil, e.time); } break;
       default: break;

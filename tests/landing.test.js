@@ -39,10 +39,13 @@ describe('when there is a ring', () => {
     expect(wall).toBeGreaterThan(3);
   });
 
-  it('foul fly balls get a ring too (it shows where the ball will come down, fair or not)', () => {
-    const r = hit(80, 45, -60);
+  it('foul fly balls get a ring too (it shows where the ball will come down, fair or not) - unless they land in the seats', () => {
+    const r = hit(70, 60, -50);
     expect(r.plan.fair).toBe(false);
     expect(r.spot).not.toBe(null);
+    const seats = hit(80, 45, -60);
+    expect(seats.sim.seatHit).toBeTruthy(); // (it comes down in the stands down the line and stays there)
+    expect(seats.spot).toBe(null);
   });
 });
 

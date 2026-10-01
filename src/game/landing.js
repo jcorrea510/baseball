@@ -15,6 +15,7 @@ export function landingSpot(sim, plan, cfg = CONFIG) {
   if (!sim || !sim.firstBounce || sim.homerun || (plan && plan.homer)) return null;
   const fb = sim.firstBounce;
   if (sim.standsLanding && sim.standsLanding.t < fb.t) return null;
+  if (sim.seatHit && sim.seatHit.t < fb.t) return null;
   // A ball that hits the wall on the fly never reaches the grass: the ring marks the spot on the warning track under where it hits.
   const wall = sim.wallHit && sim.wallHit.t < fb.t ? sim.wallHit : null;
   const endT = wall ? wall.t : fb.t;

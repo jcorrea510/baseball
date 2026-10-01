@@ -4,7 +4,7 @@
 // picture just replays it - it never depends on frame rate.
 import { CONFIG, MPH } from '../config.js';
 import { DEG } from '../util/math.js';
-import { fenceDistance, sprayOf, standsHeight, isFairXZ, isInsideField, BASE_XZ, FENCE_HEIGHT } from './field.js';
+import { fenceDistance, sprayOf, standsHeight, isFairXZ, isInsideField, seatsAt, BASE_XZ, FENCE_HEIGHT } from './field.js';
 
 const BASE_DEPTH = BASE_XZ[1][1] * -1; // how far from the plate the 1st/3rd base bags are (in -z)
 
@@ -55,6 +55,8 @@ export function simulateBattedBall(p, cfg = CONFIG, opts = {}) {
   let rolling = false;
   let contactTime = null; // first time the ball touches anything (ground / wall / stands)
   let netHit = null; // a foul ball back over the catcher that hits the backstop net (or flies over it into the crowd)
+  let seatHit = null; // a foul ball that comes down in the seats along the lines (it stays there)
+  let sideWall = false; // (it has bounced off a side wall once)
 
   const accel = (vxx, vyy, vzz, out) => {
     const spd = Math.sqrt(vxx * vxx + vyy * vyy + vzz * vzz);
@@ -143,6 +145,26 @@ export function simulateBattedBall(p, cfg = CONFIG, opts = {}) {
       else { vx *= -0.12; vz *= -0.12; vy = Math.min(vy, 0) * 0.3; airborne = false; }
     }
 
+    // Foul territory beyond the side walls: a ball coming down on the seats stays there; a low one off the side wall bounces back.
+    if (!opts.ideal && !stopped && !cleared && !netHit && z <= 30 && Math.abs(sprayOf(x, z)) > 44) {
+      const st = seatsAt(x, z);
+      if (st) {
+        if (st.over < 2.5 && y < st.wall && !sideWall) {
+          const vn = vx * st.nx + vz * st.nz;
+          if (vn > 0) { vx -= (1 + ph.wallRestitution) * vn * st.nx; vz -= (1 + ph.wallRestitution) * vn * st.nz; vx *= ph.wallFriction; vz *= ph.wallFriction; }
+          x -= st.nx * (st.over + r); z -= st.nz * (st.over + r);
+          sideWall = true;
+          if (contactTime === null) contactTime = t;
+          airborne = false;
+        } else if (y <= st.seat + r) {
+          y = st.seat + r;
+          seatHit = { t, x, y, z };
+          if (contactTime === null) contactTime = t;
+          stopped = true;
+        }
+      }
+    }
+
     // Ground contact
     if (!stopped && y <= r && !cleared) {
       if (vy < 0) {
@@ -188,6 +210,7 @@ export function simulateBattedBall(p, cfg = CONFIG, opts = {}) {
     homerun,
     standsLanding,
     netHit,
+    seatHit,
     apex,
     contactTime: contactTime ?? t,
     params: { ...p },

@@ -589,7 +589,7 @@ export const CONFIG = {
     finalGames: 3,
     // Coins: what a game is worth, and the price of players (by overall rating)
     coins: { start: 200, win: 25, marginBonus: 2, marginCap: 10, loss: 10, playoffWin: 50, playoffLoss: 20, title: 150 },
-    price: { base: 30, over: 40, power: 1.6, scale: 1.25, round: 5, refund: 0.3 }, // price = base + scale * (ovr - over)^power
+    price: { base: 30, over: 40, power: 1.6, scale: 1.25, round: 5 }, // price = base + scale * (ovr - over)^power
     roster: { size: 12, lineup: 9 },
     starters: { base: 40, perRating: 0.36 }, // the unnamed starters on your team are rated base + perRating x the team's strength (a strong team has better role players)
     bench: 44,

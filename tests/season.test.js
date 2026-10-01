@@ -173,17 +173,19 @@ describe('roster and shop', () => {
     expect(s.roster[0].id).toBe(b);
     expect(s.roster[10].id).toBe(a);
   });
-  it('buying: costs coins, replaces the player you pick (who brings a little back), cannot overspend', () => {
+  it('buying: costs exactly its price out of your coins, replaces the player you pick, cannot overspend', () => {
     const s = S.newSeason(null, { seed: 10 });
     const target = s.shop[0];
     const out = s.roster[3];
     expect(S.buyPlayer(s, target.id, null).reason).toBe('pick'); // the roster is full
     s.coins = 0;
     expect(S.buyPlayer(s, target.id, out.id).reason).toBe('coins');
+    s.coins = S.price(target) - 5; // (a player you let go brings nothing back: 5 short is short)
+    expect(S.buyPlayer(s, target.id, out.id).reason).toBe('coins');
     s.coins = 1000;
     const r = S.buyPlayer(s, target.id, out.id);
     expect(r.ok).toBe(true);
-    expect(s.coins).toBe(1000 - S.price(target) + S.refund(out));
+    expect(s.coins).toBe(1000 - S.price(target));
     expect(s.roster[3].id).toBe(target.id); // he takes the same spot in the order
     expect(s.shop.some((p) => p.id === target.id)).toBe(false);
   });
