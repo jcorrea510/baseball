@@ -1,8 +1,10 @@
-// Runners read the ball, gamble for extra bases (and are tagged out or just safe), and hold on caught balls.
+// Runners read the ball, take one base on their own, go further only when you send them (and are tagged out or just safe), and
+// hold on caught balls.
 import { describe, it, expect } from 'vitest';
 import { CONFIG } from '../src/config.js';
 import { simulateBattedBall } from '../src/physics/ballistics.js';
 import { createDefense, planPlay } from '../src/game/fielding.js';
+import { runnerState } from '../src/game/runnerMotion.js';
 import { auditPlan } from '../src/game/playAudit.js';
 import * as rules from '../src/game/rules.js';
 import { createRng } from '../src/util/rng.js';
@@ -10,41 +12,151 @@ import { createRng } from '../src/util/rng.js';
 const plan = (c, o = {}) => {
   const sim = simulateBattedBall({ ...c, start: { x: 0, y: 2.6, z: -1 } });
   const defense = createDefense();
-  return { plan: planPlay({ sim, contact: c, bases: o.bases || [null, null, null], outs: o.outs ?? 0, defense, advRoll: o.roll }, CONFIG), defense };
+  const i = { sim, contact: c, bases: o.bases || [null, null, null], outs: o.outs ?? 0, defense, orders: o.orders || [] };
+  return { plan: planPlay(i, CONFIG), defense, i };
 };
 const C = (ev, la, spray) => ({ exitVelocity: ev, launchAngle: la, sprayAngle: spray, backspin: 900, hook: 0 });
 
-describe('gambling for an extra base', () => {
-  it('no roll, no gamble (the old, careful runners)', () => {
+// Where every runner of a plan is at time t (the batter is 0).
+const spots = (p, t) => Object.fromEntries(p.moves.map((m) => { const q = runnerState(m, t, CONFIG, {}); return [m.from, [q.x, q.z]]; }));
+
+describe('sending runners', () => {
+  it('on their own runners take one base at most: the batter stops at first, a runner on first at second', () => {
     const rng = createRng(2);
-    for (let k = 0; k < 400; k++) {
-      const { plan: p } = plan(C(rng.range(55, 100), rng.range(-4, 30), rng.range(-40, 40)), { bases: [1, null, 3] });
-      expect(p.gambleOut).toBeFalsy();
+    let hits = 0, gap = 0;
+    for (let k = 0; k < 600; k++) {
+      const { plan: p } = plan(C(rng.range(55, 105), rng.range(-4, 30), rng.range(-40, 40)), { bases: [1, rng.chance(0.4) ? 2 : null, rng.chance(0.3) ? 3 : null] });
+      if (!['single', 'double', 'triple', 'insideParkHomer', 'error'].includes(p.result)) continue;
+      hits++;
+      for (const m of p.moves) if (!m.back && !m.out) expect(m.to - m.from).toBeLessThanOrEqual(1);
+      expect(p.batterDest).toBeLessThanOrEqual(1);
+      if (p.send && p.fielder && ['LF', 'CF', 'RF'].includes(p.fielder)) gap++;
     }
+    expect(hits).toBeGreaterThan(100);
+    expect(gap).toBeGreaterThan(30); // (balls to the outfield leave time to send runners)
   });
 
-  it('across thousands of plays: some runners are tagged out, many are just safe, and the referee finds nothing wrong', () => {
+  it('a send is only taken while the ball is down and before the fielder is ready to throw', () => {
+    const rng = createRng(5);
+    let n = 0;
+    for (let k = 0; k < 400 && n < 40; k++) {
+      const c = C(rng.range(80, 100), rng.range(8, 22), rng.range(-30, 30));
+      const base = plan(c);
+      if (!base.plan.send || base.plan.result !== 'single') continue;
+      n++;
+      const early = plan(c, { orders: [{ base: 2, t: base.plan.send.from - 0.3 }] }).plan;
+      const late = plan(c, { orders: [{ base: 2, t: base.plan.send.by + 0.3 }] }).plan;
+      expect(early.batterDest).toBe(1);
+      expect(late.batterDest).toBe(1);
+      const ok = plan(c, { orders: [{ base: 2, t: base.plan.send.from + 0.05 }] }).plan;
+      expect(ok.moves.find((m) => m.from === 0).sent).toBe(true);
+    }
+    expect(n).toBeGreaterThan(20);
+  });
+
+  it('nothing changes before the tap: every runner is exactly where he was until he reacts', () => {
+    const rng = createRng(7);
+    let n = 0;
+    for (let k = 0; k < 1500 && n < 120; k++) {
+      const c = C(rng.range(70, 105), rng.range(0, 28), rng.range(-42, 42));
+      const bases = [rng.chance(0.5) ? 1 : null, rng.chance(0.4) ? 2 : null, rng.chance(0.3) ? 3 : null];
+      const a = plan(c, { bases }).plan;
+      if (!a.send) continue;
+      const tap = a.send.from + rng.next() * (a.send.by - a.send.from);
+      const target = Math.min(4, Math.max(...a.moves.filter((m) => !m.back && !m.out).map((m) => m.to)) + 1);
+      const b = plan(c, { bases, orders: [{ base: target, t: tap }] }).plan;
+      if (!b.moves.some((m) => m.sent)) continue;
+      n++;
+      for (let t = 0; t <= tap + CONFIG.runner.sendReact; t += 0.05) {
+        const sa = spots(a, t), sb = spots(b, t);
+        for (const k2 in sa) expect(Math.hypot(sa[k2][0] - sb[k2][0], sa[k2][1] - sb[k2][1])).toBeLessThan(0.05);
+      }
+      // ...and after it he never jumps: at most top speed between frames
+      for (const m of b.moves) {
+        let prev = null;
+        for (let t = 0; t < b.endTime; t += 1 / 60) {
+          const q = runnerState(m, t, CONFIG, {});
+          if (prev) expect(Math.hypot(q.x - prev[0], q.z - prev[1])).toBeLessThan(CONFIG.runner.speed * 1.25 / 60 + 0.02);
+          prev = [q.x, q.z];
+        }
+      }
+    }
+    expect(n).toBeGreaterThan(60);
+  }, 60000);
+
+  it('across thousands of plays: runners sent too far are tagged out, the others are safe, and the referee finds nothing wrong', () => {
     const rng = createRng(9);
-    let outs = 0, safes = 0;
+    let outs = 0, safe = 0, sent = 0, scored = 0;
     const problems = [];
     for (let k = 0; k < 3000; k++) {
       const c = C(rng.range(50, 105), rng.range(-6, 40), rng.range(-44, 44));
       const bases = [rng.chance(0.4) ? 1 : null, rng.chance(0.3) ? 2 : null, rng.chance(0.25) ? 3 : null];
-      const { plan: p, defense } = plan(c, { bases, outs: Math.floor(rng.next() * 3), roll: rng.next() });
-      if (p.gambleOut) {
-        outs++;
-        const e = p.events.find((x) => x.tag);
-        expect(e.type).toBe('out');
-        expect(p.moves.some((m) => m.out && m.outBase === e.base)).toBe(true);
+      const outsNow = Math.floor(rng.next() * 3);
+      const first = plan(c, { bases, outs: outsNow }).plan;
+      if (!first.send) continue;
+      // one or two taps somewhere in the window, on bases that are open to a send
+      const orders = [];
+      const taps = rng.chance(0.3) ? 2 : 1;
+      let cur = first;
+      for (let q = 0; q < taps; q++) {
+        const t = Math.max(orders.length ? orders[orders.length - 1].t : 0, cur.send.from + rng.next() * (cur.send.by - cur.send.from));
+        const targets = cur.moves.filter((m) => !m.back && !m.out && m.to < 4).map((m) => m.to + 1);
+        if (!targets.length) break;
+        orders.push({ base: targets[Math.floor(rng.next() * targets.length)], t });
+        cur = plan(c, { bases, outs: outsNow, orders }).plan;
       }
-      if (p.events.some((x) => x.type === 'safe')) safes++;
+      const { plan: p, defense } = plan(c, { bases, outs: outsNow, orders });
+      if (!p.moves.some((m) => m.sent)) continue;
+      sent++;
+      if (p.sentOut) {
+        outs++;
+        const e = p.events.find((x) => x.type === 'out' && x.tag);
+        expect(e).toBeTruthy();
+        expect(p.moves.some((m) => m.out && m.sent && m.outBase === e.base)).toBe(true);
+      } else safe++;
+      if (p.moves.some((m) => m.sent && m.to === 4)) scored++;
       problems.push(...auditPlan(p, defense));
       if (!(p.endTime > 0 && p.endTime < 25)) problems.push('bad end time');
+      // nobody shares a base, nobody passes anybody
+      const ends = p.moves.filter((m) => !m.out && !m.back && m.to < 4).map((m) => m.to);
+      if (new Set(ends).size !== ends.length) problems.push('two runners on one base');
     }
     expect(problems).toEqual([]);
-    expect(outs).toBeGreaterThan(10);
-    expect(safes).toBeGreaterThan(outs);
+    expect(sent).toBeGreaterThan(300);
+    expect(outs).toBeGreaterThan(20); // (most random sends are too greedy - a routine single is a single)
+    expect(safe).toBeGreaterThan(100);
+    expect(scored).toBeGreaterThan(10);
+  }, 120000);
+
+  it('a ball in the gap or off the wall: send the batter as soon as it is down and he makes second', () => {
+    const rng = createRng(17);
+    let n = 0, made = 0;
+    for (let k = 0; k < 3000 && n < 80; k++) {
+      const c = C(rng.range(88, 108), rng.range(12, 30), rng.range(-40, 40));
+      const base = plan(c).plan;
+      if (base.result !== 'single' || !base.send || base.ballLandDistance < 300) continue;
+      n++;
+      const p = plan(c, { orders: [{ base: 2, t: base.send.from }] }).plan;
+      if (p.batterDest === 2) made++;
+    }
+    expect(n).toBeGreaterThan(30);
+    expect(made / n).toBeGreaterThan(0.7);
   }, 60000);
+
+  it('the throw goes after the runner you sent when it can get him', () => {
+    // a single to left-centre with a runner on second: send him home late and the throw beats him
+    const rng = createRng(13);
+    let tested = 0;
+    for (let k = 0; k < 800 && tested < 15; k++) {
+      const c = C(rng.range(85, 100), rng.range(6, 16), rng.range(-25, 5));
+      const base = plan(c, { bases: [null, 2, null] }).plan;
+      if (base.result !== 'single' || !base.send || base.moves.find((m) => m.from === 2).to !== 3) continue;
+      const p = plan(c, { bases: [null, 2, null], orders: [{ base: 4, t: base.send.by }] }).plan;
+      const th = p.throws[p.throws.length - 1];
+      if (p.sentOut) { tested++; expect(th.toBase).toBe(4); expect(p.events.some((e) => e.type === 'out' && e.base === 4)).toBe(true); }
+    }
+    expect(tested).toBeGreaterThan(3);
+  });
 
   it('a time play: a run that crossed the plate before the third-out tag still counts', () => {
     const g = rules.createGame();

@@ -59,9 +59,9 @@ function corner(prev, V, next, R, LtMax) {
  * `through`: he runs on through the last base (batter at first) and stops after it.
  * Returns { x[], z[], s[], heading[], kappa[], sBase{ k: arc length where he touches base k }, sEnd }.
  */
-export function buildRoute(from, to, { through = false } = {}, cfg = CONFIG) {
+export function buildRoute(from, to, { through = false, fromBag = false } = {}, cfg = CONFIG) {
   const R = cfg.runner;
-  const start = from === 0 ? [0, 0] : leadSpot(from, cfg);
+  const start = from === 0 ? [0, 0] : fromBag ? BASE_XZ[from].slice() : leadSpot(from, cfg); // (fromBag: he stopped on the bag and was sent on)
   const pts = [start.slice()];
   const baseAt = {}; // sample index of each base
   const lineTo = (p) => { // straight, sampled
@@ -252,13 +252,13 @@ const cache = new Map();
  * The (cached) profile for a runner going from base `from` to base `to`.
  * kind: 'run' (top speed, stops on the last base) | 'through' (batter running through first) | 'trot' (home-run trot) | 'jog' (walk to first).
  */
-export function runnerProfile(from, to, kind = 'run', cfg = CONFIG, spd = 1) {
+export function runnerProfile(from, to, kind = 'run', cfg = CONFIG, spd = 1, fromBag = false) {
   const R = cfg.runner;
   if (to <= from) return stationary(from, cfg); // a runner who stays where he is
-  const key = `${from}>${to}|${kind}|${spd}|${R.speed}|${R.accelTime}|${R.brake}|${R.latAccel}|${R.turnBrake}|${R.turnLen}|${R.turnRadius}|${R.lead}|${R.leadSecond}|${R.overrun}|${R.trotSpeed}`;
+  const key = `${from}>${to}|${kind}|${spd}|${fromBag ? 'bag' : ''}|${R.speed}|${R.accelTime}|${R.brake}|${R.latAccel}|${R.turnBrake}|${R.turnLen}|${R.turnRadius}|${R.lead}|${R.leadSecond}|${R.overrun}|${R.trotSpeed}`;
   let p = cache.get(key);
   if (!p) {
-    const route = buildRoute(from, to, { through: kind === 'through' }, cfg);
+    const route = buildRoute(from, to, { through: kind === 'through', fromBag }, cfg);
     const vmax = kind === 'trot' ? R.trotSpeed : kind === 'jog' ? R.jogSpeed : R.speed * spd; // (spd: a fast or slow runner, Season ratings)
     p = buildProfile(route, { vmax, accelTime: kind === 'trot' ? R.accelTime * 1.4 : R.accelTime, brake: kind === 'trot' ? R.brake * 0.6 : R.brake, turnBrake: R.turnBrake, latAccel: R.latAccel });
     cache.set(key, p);
@@ -287,6 +287,99 @@ export function moveKind(move) {
   return move.from === 0 && move.out && toBase === 1 ? 'through' : 'run';
 }
 
+// A runner ROUNDING a base on a ball to the outfield: he takes the turn exactly as if he were going on (the route toward the next
+// base), pulls up `roundPast` ft beyond the bag and waits there, ready to be sent on (see fielding.js, runner orders).
+export function roundProfile(from, to, cfg = CONFIG, spd = 1, fromBag = false) {
+  const R = cfg.runner;
+  const key = `round|${from}>${to}|${spd}|${fromBag}|${R.speed}|${R.accelTime}|${R.brake}|${R.latAccel}|${R.turnBrake}|${R.turnLen}|${R.turnRadius}|${R.lead}|${R.leadSecond}|${R.roundPast}`;
+  let p = cache.get(key);
+  if (!p) {
+    const full = buildRoute(from, to + 1, { fromBag }, cfg);
+    const route = sliceRoute(full, 0, full.sBase[to] + R.roundPast);
+    p = buildProfile(route, { vmax: R.speed * spd, accelTime: R.accelTime, brake: R.roundBrake, turnBrake: R.turnBrake, latAccel: R.latAccel });
+    cache.set(key, p);
+  }
+  return p;
+}
+
+// The rest of the way after he pulled up past a bag he rounded: from where he stands (`s0` ft along the route he was on) on to
+// base `to`, from a standstill.
+export function resumeProfile(from, to, s0, cfg = CONFIG, spd = 1, fromBag = false) {
+  const R = cfg.runner;
+  const key = `resume|${from}>${to}|${s0.toFixed(3)}|${spd}|${fromBag}|${R.speed}|${R.accelTime}|${R.brake}|${R.latAccel}|${R.turnBrake}|${R.turnLen}|${R.turnRadius}|${R.lead}|${R.leadSecond}`;
+  let p = cache.get(key);
+  if (!p) {
+    const full = buildRoute(from, to, { fromBag }, cfg);
+    p = buildProfile(sliceRoute(full, s0, full.sEnd), { vmax: R.speed * spd, accelTime: R.accelTime, brake: R.brake, turnBrake: R.turnBrake, latAccel: R.latAccel });
+    cache.set(key, p);
+  }
+  return p;
+}
+
+// Part of a route, from arc length s0 to s1 (arc lengths re-measured from the new start; bases outside it are dropped).
+function sliceRoute(r, s0, s1) {
+  let i0 = 0; while (i0 < r.n - 2 && r.s[i0 + 1] <= s0) i0++;
+  let i1 = r.n - 1; while (i1 > i0 + 1 && r.s[i1 - 1] >= s1) i1--;
+  const n = i1 - i0 + 1;
+  const x = new Float64Array(n), z = new Float64Array(n), s = new Float64Array(n), heading = new Float64Array(n), kappa = new Float64Array(n);
+  for (let k = 0; k < n; k++) { x[k] = r.x[i0 + k]; z[k] = r.z[i0 + k]; heading[k] = r.heading[i0 + k]; kappa[k] = r.kappa[i0 + k]; s[k] = r.s[i0 + k] - r.s[i0]; }
+  const sBase = {};
+  for (const k in r.sBase) { const v = r.sBase[k] - r.s[i0]; if (v >= 0 && v <= s[n - 1] + 1e-6) sBase[k] = v; }
+  return { x, z, s, heading, kappa, sBase, sEnd: s[n - 1], n, to: r.to };
+}
+
+/**
+ * The legs of a move. Most moves are one run (from -> to), or one rounding of a base (`move.round`). A runner who is SENT on
+ * (fielding.js, runner orders) after he had started to pull up gets explicit `legs`:
+ *   { kind: 'run', from, to, t0, fromBag }   a run (fromBag: from the bag itself, after he had stopped on it)
+ *   { kind: 'round', from, to, t0, fromBag }  he rounds base `to` and pulls up just past it
+ *   { kind: 'resume', from, to, s0, t0, fromBag }  on from where he pulled up (s0 ft along the route from `from`) to base `to`
+ * Returns them with `last` set on the final one (t0 = seconds after contact when that leg starts).
+ */
+export function moveLegs(move, cfg = CONFIG) {
+  const R = cfg.runner;
+  const toBase = move.out && move.to === 0 ? move.outBase : move.to;
+  const t0 = move.tStart ?? (move.from === 0 ? R.batterStart : R.startDelay);
+  if (move.legs && move.legs.length) {
+    const legs = move.legs.map((L) => ({ ...L, last: false }));
+    legs[0].t0 = t0; // (the renderer may re-time the batter's start: the first leg follows the move)
+    const L = legs[legs.length - 1];
+    L.last = true;
+    if (move.out && move.to === 0) L.to = move.outBase;
+    return legs;
+  }
+  const to = Math.max(toBase, move.from);
+  if (move.round && !move.out && to < 4) return [{ kind: 'round', from: move.from, to, t0, fromBag: false, last: true }];
+  return [{ kind: 'run', from: move.from, to, t0, fromBag: false, last: true }];
+}
+
+/** The speed profile of one leg (see moveLegs). */
+export function legProfile(L, move, cfg = CONFIG) {
+  const spd = move.spd || 1;
+  if (L.kind === 'round') return roundProfile(L.from, L.to, cfg, spd, L.fromBag);
+  if (L.kind === 'resume') return resumeProfile(L.from, L.to, L.s0, cfg, spd, L.fromBag);
+  return runnerProfile(L.from, L.to, L.last ? moveKind(move) : 'run', cfg, spd, L.fromBag);
+}
+
+/** When (seconds after contact) does the runner of this move touch `base`? (undefined if his run does not reach it) */
+export function moveArrival(cfg, move, base) {
+  for (const L of moveLegs(move, cfg)) {
+    const kind = L.kind === 'run' && L.last ? moveKind(move) : L.kind;
+    if (kind === 'through' && base === 1) return L.t0 + runnerProfile(0, 1, 'run', cfg, move.spd || 1).tBase[1]; // (timed as if he stopped on it: see runnerState)
+    if (base > L.to || (L.kind !== 'resume' && base <= L.from)) continue;
+    const tb = legProfile(L, move, cfg).tBase[base];
+    if (tb !== undefined) return L.t0 + tb;
+  }
+  return undefined;
+}
+
+/** When has the runner of this move stopped for good? */
+export function moveFinish(cfg, move) {
+  const legs = moveLegs(move, cfg);
+  const L = legs[legs.length - 1];
+  return L.t0 + legProfile(L, move, cfg).duration;
+}
+
 /**
  * Where is the runner of this move `t` seconds after contact, how fast, how hard is he accelerating or turning?
  * A batter who is out at first runs THROUGH the bag; his start is delayed a touch so that he touches it at exactly the time
@@ -295,17 +388,19 @@ export function moveKind(move) {
 export function runnerState(move, t, cfg = CONFIG, out = {}) {
   if (move.back) return retreatState(move, t, cfg, out);
   const R = cfg.runner;
-  const toBase = move.out && move.to === 0 ? move.outBase : move.to;
-  const kind = moveKind(move);
   const spd = move.spd || 1;
-  let t0 = move.tStart ?? (move.from === 0 ? R.batterStart : R.startDelay);
+  const legs = moveLegs(move, cfg);
+  let L = legs[0];
+  for (const q of legs) if (t >= q.t0 && !(move.stopAt !== undefined && q.t0 > move.stopAt)) L = q; // (the inning ended before he set off again: he stays)
+  const kind = L.kind === 'run' ? (L.last ? moveKind(move) : 'run') : L.kind;
+  let t0 = L.t0;
   if (kind === 'through') t0 += runnerProfile(0, 1, 'run', cfg, spd).tBase[1] - runnerProfile(0, 1, 'through', cfg, spd).tBase[1];
-  const p = runnerProfile(move.from, Math.max(toBase, move.from), kind, cfg, spd);
+  const p = legProfile(L, move, cfg);
   const tt = t - t0;
   p.at(tt, out);
   // The inning ended while he was still running (move.stopAt, seconds after contact): he eases up and coasts to a stop
   // along his route instead of running on to the next bag.
-  if (move.stopAt !== undefined && t > move.stopAt && p.route && move.stopAt - t0 < p.duration) {
+  if (move.stopAt !== undefined && t > move.stopAt && p.route && move.stopAt - t0 < p.duration && move.stopAt >= t0) {
     const s0 = p.at(Math.max(0, move.stopAt - t0), out);
     const v0 = s0.speed, sStop = s0.s, after = t - move.stopAt, tau = R.easeUp;
     const extra = v0 * tau * (1 - Math.exp(-after / tau));
@@ -316,12 +411,34 @@ export function runnerState(move, t, cfg = CONFIG, out = {}) {
     if (out.speed < 0.3) { out.speed = 0; out.done = true; }
   }
   out.kind = kind;
-  out.waiting = tt <= 0;
+  out.waiting = t <= legs[0].t0;
   out.running = tt > 0 && !out.done && out.speed > 0.05;
-  out.tStart = t0;
+  out.tStart = legs[0].t0;
   out.total = p.sEnd;
   out.profile = p;
+  out.leg = legs.indexOf(L);
   return out;
+}
+
+/**
+ * Until when (seconds after the leg's start) do two speed profiles put the runner on the same spot at the same speed? Up to then a
+ * runner who is sent on simply keeps going on the new route - after it he has already started to pull up, and he finishes doing
+ * so before he goes again.
+ */
+const sameCache = new WeakMap();
+export function sameUntil(a, b) {
+  let m = sameCache.get(a);
+  if (!m) sameCache.set(a, (m = new Map()));
+  if (m.has(b)) return m.get(b);
+  const qa = {}, qb = {};
+  let t = 0;
+  for (; t < a.duration; t += 1 / 120) {
+    a.at(t, qa); b.at(t, qb);
+    if (Math.hypot(qa.x - qb.x, qa.z - qb.z) > 0.08 || Math.abs(qa.speed - qb.speed) > 0.25) break;
+  }
+  const res = Math.max(0, t - 1 / 120);
+  m.set(b, res);
+  return res;
 }
 
 // ---------------------------------------------------------------------------------------------------------------

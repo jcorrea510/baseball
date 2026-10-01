@@ -341,6 +341,7 @@ export const CONFIG = {
   //  Fielding and baserunning (used to decide hit / out / extra bases)
   // --------------------------------------------------------------------------
   fielding: {
+    replanBlend: 0.22, // s: when you send a runner and the play is planned again, a fielder whose job changed eases onto his new run over about this long
     // Where each defender stands. Outfielders are given as [spray degrees, feet from home].
     positions: {
       P: [0, -60.5],
@@ -446,9 +447,17 @@ export const CONFIG = {
     // might be caught; a grounder he goes on at once).
     read: { ground: 0, line: 0.12, fly: 0.5, pop: 0.7 },
     holdStep: 0.22, // s a runner who was not sent keeps drifting toward the next base after a caught ball is hit, before he gets back to the bag
-    // A gamble: the lead man tries for one more base than is safe when the throw only just beats him. window = how close (s) the
-    // play may be, p = the chance he goes (less when it is closer to hopeless), twoOuts = x that with two outs (he is more careful).
-    gamble: { window: 0.4, p: 0.6, twoOuts: 0.7 },
+    // Sending runners (you tap a base): on their own runners only ever take ONE base. On a ball to the outfield they round their
+    // base, pull up `roundPast` ft beyond it (braking at `roundBrake` ft/s^2) and wait, ready to be sent on. A runner reacts to being
+    // sent `sendReact` s after the tap. You can send runners from the moment the ball is down (it bounced, or a fielder dropped it)
+    // until `sendLead` s before the fielder is ready to throw (the defense sees where everybody is going and throws accordingly);
+    // a window shorter than `sendMin` s is not offered (an infield single).
+    roundPast: 14,
+    roundBrake: 30,
+    sendReact: 0.12,
+    sendLead: 0.1,
+    sendMin: 0.35,
+    sendTag: 0.15, // s for the fielder to catch the throw and put the tag on a runner you sent (he is out if that beats him)
     leadSecond: 18, // ft: the lead off second base (nobody holds him on there, so he takes a much bigger one)
     // Rounding a base he keeps running through: he drifts out from the baseline over `turnLen` ft, goes round an arc of radius
     // `turnRadius` ft that touches the bag, and drifts back onto the next baseline over `turnLen` ft. (A smaller radius = a
@@ -474,7 +483,7 @@ export const CONFIG = {
       outs: 10,
       pitchSpeed: { rookie: 58, pro: 66, allstar: 74 }, // batting-practice fastballs
       evBonus: 10, // extra exit velocity (mph) on a squared-up ball: batting-practice balls jump off the bat
-      windowGrow: 1.45, // the bat's contact window is this much bigger (the pitches are meatballs)
+      windowGrow: 1.75, // the bat's contact window is this much bigger (the pitches are meatballs)
       locationSigma: 0.24,
     },
     practice: { speedMin: 45, speedMax: 105, speedDefault: 85 },

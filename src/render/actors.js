@@ -158,6 +158,10 @@ export class Actors {
 
     // ---- pitcher & catcher & fielders
     // (a steal is planned the moment the runners go: during the pitch the infielder covering the bag is already on his way)
+    // (you sent a runner: the play was planned again - fielders whose job changed glide over to their new runs, see updateFielders)
+    if (inPlay && this.swapPlay === play && this.swapPlan !== plan) this.planSwap = { old: this.swapPlan, t: playT };
+    else if (!inPlay) this.planSwap = null;
+    this.swapPlay = inPlay ? play : null; this.swapPlan = inPlay ? plan : null;
     const pre = !inPlay && E.steal && E.steal.plan && pitch && (phase === 'windup' || phase === 'pitch');
     this.updateFielders(E, dt, time, pitch, pre ? E.steal.plan : plan, pre ? time - pitch.tCatch : playT);
 
@@ -254,7 +258,22 @@ export class Actors {
         st.cx = st.mover.x; st.cz = st.mover.z; vx = st.mover.vx; vz = st.mover.vz; speed = st.mover.speed;
       }
       st.vx = vx; st.vz = vz;
-      const x = st.cx + st.fx, z = st.cz + st.fz;
+      // the play was planned again (a runner was sent): start from where the old plan had him and ease onto the new one
+      const sw = this.planSwap;
+      if (sw && live) {
+        const oldRuns = sw.old.paths[pos];
+        const was = oldRuns && sw.t < fielderFreeTime(sw.old, pos) ? samplePath(oldRuns, sw.t) : null;
+        st.offX = was && p ? was.x - p.x : 0; st.offZ = was && p ? was.z - p.z : 0;
+        if (!was && p && runs) { st.offX = st.mover.x - p.x; st.offZ = st.mover.z - p.z; }
+        st.offT = sw.t;
+      }
+      let ox = 0, oz = 0;
+      if (st.offT !== undefined && live) {
+        const k = Math.exp(-(playT - st.offT) / F.replanBlend);
+        ox = (st.offX || 0) * k; oz = (st.offZ || 0) * k;
+        if (k < 0.01) st.offT = undefined;
+      } else st.offT = undefined;
+      const x = st.cx + st.fx + ox, z = st.cz + st.fz + oz;
       let y = pos === 'P' ? moundY(x, z) : 0;
       // a ball above his standing reach is taken with a leap: he is in the air at the catch and comes down after it
       if (plan && plan.leap && plan.fielder === pos && (plan.caught || plan.dropped) && playT >= 0) y += leapHeight(plan.leap.height, playT - plan.catchT, E.cfg.physics.gravity);
@@ -302,6 +321,7 @@ export class Actors {
       person.setShadows(Math.hypot(x, z + 62) < 120);
       person.apply();
     }
+    if (this.planSwap) this.planSwap = null; // (handled: every fielder has his offset)
   }
 
   pitcherPoseUpdate(E, person, P, time, pitch, plan, playT, move, moving, speed, st, dt) {
@@ -633,8 +653,9 @@ export class Actors {
       accel = after > 0 ? -speed / tau : q.accel; side = q.side; heading = q.heading; d = q.s + extra;
       if (speed < 0.8) speed = 0;
     } else {
-      const mv = st.mv || (st.mv = {});
-      Object.assign(mv, move || { from: 0, to: 4, out: false });
+      const src = move || null;
+      if (!st.mv || st.mvSrc !== src) { st.mv = { ...(move || { from: 0, to: 4, out: false }) }; st.mvSrc = src; } // (a new plan: start from its move afresh)
+      const mv = st.mv;
       mv.trot = trot; mv.tStart = tRun;
       r = runnerState(mv, playT, cfg, st.rs || (st.rs = {}));
       x = r.x; z = r.z; speed = r.speed; accel = r.accel; side = r.side; heading = r.heading; d = r.s;

@@ -6,6 +6,7 @@
 import { createRng } from '../util/rng.js';
 import { zoneRatio } from '../physics/pitch.js';
 import { pitchGuide } from './pitchGuide.js';
+import { planPlay } from './fielding.js';
 
 export function createBot(engine, o = {}) {
   const rng = o.rng || createRng(o.seed ?? 99);
@@ -14,11 +15,13 @@ export function createBot(engine, o = {}) {
   const aimSd = o.aimSd ?? 0.05; // ft of hand error moving the bat (up / down)
   const aimSdX = o.aimSdX ?? 0.08; // ft of hand error (in / out)
   const read = o.read ?? 0.7; // how much of the pitch guide's error its read of the pitch has (a person watching the ball reads a bit better than the circle)
-  const under = o.under ?? 0.3; // how far under the ball it tries to get, as a share of the contact window (0 = square: line drives)
+  const under = o.under ?? (engine.mode === 'derby' ? 0.4 : 0.3); // how far under the ball it tries to get, as a share of the contact window (0 = square: line drives; the Derby: right in the home-run band)
   const underSd = o.underSd ?? 0.1;
   const swingStrike = o.swingStrike ?? 0.85;
   const swingBall = o.swingBall ?? 0.06;
+  const sendGamble = o.sendGamble ?? 0.04; // the chance it sends a runner it should not have (people misjudge too)
   let plan = null;
+  let sendPlay = null, sendAt = 0;
   engine.on('windup', ({ pitch }) => {
     const r = zoneRatio(pitch.target.x, pitch.target.y, engine.cfg);
     const inZone = pitch.isStrike || r < 1.15;
@@ -32,6 +35,21 @@ export function createBot(engine, o = {}) {
   return {
     update() {
       if (engine.awaitingBatter) engine.batterReady(); // (a new batter: the bot is always ready)
+      // sending runners: a moment after the ball is down it looks at each base it could send a runner to and sends him when he would
+      // make it (it peeks at the planner: a well-judged send)
+      if (engine.phase === 'play' && engine.sendOpen) {
+        const p = engine.play;
+        if (sendPlay !== p) { sendPlay = p; sendAt = engine.time + rng.range(0.15, 0.6); }
+        if (engine.time >= sendAt) {
+          sendAt = engine.time + 0.4;
+          const t = engine.time - p.t0;
+          for (const tg of engine.sendTargets().reverse()) {
+            const hyp = planPlay({ ...p.planIn, orders: [...p.planIn.orders, { base: tg.base, t }] }, engine.cfg);
+            if (!hyp.sentOut || rng.chance(sendGamble)) { engine.sendRunner(tg.base); break; }
+          }
+        }
+        return;
+      }
       const pitch = engine.pitch;
       if (!pitch || !plan) return;
       if (engine.phase === 'windup' || engine.phase === 'pitch') {

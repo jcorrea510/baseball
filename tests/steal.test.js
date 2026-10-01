@@ -6,7 +6,7 @@ import * as rules from '../src/game/rules.js';
 import { simulateBattedBall } from '../src/physics/ballistics.js';
 import { createDefense, planPlay, planSteal } from '../src/game/fielding.js';
 import { auditPlan } from '../src/game/playAudit.js';
-import { runnerState, retreatArrival, leadSpot, runnerArrival } from '../src/game/runnerMotion.js';
+import { runnerState, retreatArrival, leadSpot, runnerArrival, moveArrival } from '../src/game/runnerMotion.js';
 import { BASE_XZ } from '../src/physics/field.js';
 import { createRng } from '../src/util/rng.js';
 
@@ -116,7 +116,7 @@ describe('a steal attempt', () => {
 });
 
 describe('going with the pitch and the ball is hit', () => {
-  it('hit-and-run: the head start takes the runner further, and every out is still legal', () => {
+  it('hit-and-run: the head start gets the runner there sooner (still one base on his own), and every out is still legal', () => {
     const rng = createRng(21);
     const problems = [];
     let further = 0, n = 0;
@@ -129,7 +129,11 @@ describe('going with the pitch and the ball is hit', () => {
       problems.push(...auditPlan(a.plan, a.defense));
       if (!a.plan.fair || a.plan.homer) continue;
       const mA = a.plan.moves.find((m) => m.from === 1), mB = b.plan.moves.find((m) => m.from === 1);
-      if (mA && mB && !mA.out && !mB.out && !mA.back) { n++; if (mA.to > mB.to) further++; }
+      if (mA && mB && !mA.out && !mB.out && !mA.back && mA.to === mB.to && mA.to > 1) {
+        n++;
+        expect(mA.to).toBeLessThanOrEqual(2);
+        if (moveArrival(CONFIG, mA, mA.to) < moveArrival(CONFIG, mB, mB.to) - 0.3) further++;
+      }
       for (const m of a.plan.moves) if (m.from >= 1 && !m.trot) expect(m.tStart).toBeLessThan(0);
     }
     expect(problems).toEqual([]);

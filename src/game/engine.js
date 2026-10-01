@@ -513,8 +513,9 @@ export class Engine {
     // fielding errors: one roll per ball in play (only in real games)
     const errorRoll = simple ? undefined : this.errorRollOverride ?? this.rng.next(); // (errorRollOverride: QA hook, 0 = always an error)
     const running = this.steal && !simple ? Object.fromEntries(this.steal.bases.map((b) => [b, this.steal.start[b] - s.tHit])) : null; // runners going with the pitch
-    const advRoll = simple ? undefined : this.rng.next(); // (a baserunning gamble: a stretch for an extra base)
-    const plan = planPlay({ sim, contact: c, bases: this.bases, outs: this.outs, defense: this.defense, simple, errorRoll, advRoll, errorScale: this.d.errorScale, running, speeds: this.runnerSpeeds() }, this.cfg);
+    this.rng.next(); // (kept so a game's random numbers stay in step with older saves)
+    const planIn = { sim, contact: c, bases: this.bases.slice(), outs: this.outs, defense: this.defense, simple, errorRoll, errorScale: this.d.errorScale, running, speeds: this.runnerSpeeds(), orders: [] };
+    const plan = planPlay(planIn, this.cfg);
     const proj = projectDistance(params, this.cfg);
     const fb = sim.firstBounce;
     const distance = plan.homer ? proj.distance : fb ? Math.hypot(fb.x, fb.z) : proj.distance;
@@ -526,7 +527,7 @@ export class Engine {
     this.stats.evSum += c.exitVelocity; this.stats.evN++;
     this.stats.maxEV = Math.max(this.stats.maxEV, c.exitVelocity);
     this.play = {
-      t0: s.tHit, sim, plan, contact: c, pitch, distance, projected: proj, start,
+      t0: s.tHit, sim, plan, planIn, contact: c, pitch, distance, projected: proj, start,
       events: buildEventList(sim, plan), nextEvent: 0, prevT: 0, landedReported: false,
     };
     this.setPhase('play');
@@ -548,6 +549,45 @@ export class Engine {
     }
     p.prevT = t;
     if (t >= Math.min(p.plan.endTime, 30)) this.finishPlay();
+  }
+
+  // ------------------------------------------------------------------ sending runners
+  // On a hit, runners take one base on their own; you send them further by tapping a base. You can do it from the moment the ball
+  // is down until just before the fielder is ready to throw (plan.send). The play is planned again with your orders - everything
+  // up to the tap stays exactly as it was (see fielding.js sendRunner), and the defense throws at whoever it can get.
+  get sendOpen() {
+    const p = this.play;
+    if (this.phase !== 'play' || !p || p.steal || !p.plan.send || this.paused) return false;
+    const t = this.time - p.t0;
+    return t >= p.plan.send.from && t <= p.plan.send.by;
+  }
+
+  // The bases you can send a runner to right now: [{ base, from }] (from = the runner's starting base, 0 = the batter).
+  sendTargets() {
+    if (!this.sendOpen) return [];
+    const out = [];
+    for (const m of this.play.plan.moves) {
+      if (m.out || m.back || m.trot) continue;
+      const at = m.to; // where he is headed (or holding)
+      if (at >= 1 && at < 4) out.push({ base: at + 1, from: m.from });
+    }
+    return out.sort((a, b) => a.base - b.base);
+  }
+
+  // Send the runner on his way to the base before `base` on to it. Returns true when taken.
+  sendRunner(base) {
+    if (!this.sendTargets().some((q) => q.base === base)) return false;
+    const p = this.play;
+    const t = this.time - p.t0;
+    p.planIn.orders.push({ base, t });
+    const plan = planPlay(p.planIn, this.cfg);
+    p.plan = plan;
+    p.events = buildEventList(p.sim, plan);
+    p.nextEvent = p.events.findIndex((e) => e.t > t + 1e-9);
+    if (p.nextEvent < 0) p.nextEvent = p.events.length;
+    this.stats.sends = (this.stats.sends || 0) + 1;
+    this.emit('send', { base, t, plan });
+    return true;
   }
 
   finishPlay() {

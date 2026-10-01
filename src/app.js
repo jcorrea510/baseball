@@ -22,6 +22,7 @@ import { LandingRing } from './render/landingRing.js';
 import { BatAim } from './render/batAim.js';
 import { landingSpot, landingRing } from './game/landing.js';
 import * as SEA from './game/season.js';
+import { runnerState } from './game/runnerMotion.js';
 
 // scorekeeping numbers for the error banner (E6 = an error by the shortstop)
 const POSITION_NUMBER = { P: 1, C: 2, '1B': 3, '2B': 4, '3B': 5, SS: 6, LF: 7, CF: 8, RF: 9 };
@@ -249,6 +250,7 @@ export class App {
       case 'batterReady': if (this.engine) this.engine.batterReady(); break;
       case 'bunt': if (this.engine) this.engine.setBunt(!this.engine.buntStance); break;
       case 'steal': if (this.engine) this.engine.setSteal(!this.engine.stealArmed); break;
+      case 'send': this.sendRunner(d); break;
       case 'swing': this.swingInput(d); break;
       case 'practice': if (this.engine) { Object.assign(this.engine.practice, d); } break;
       default: break;
@@ -378,6 +380,7 @@ export class App {
     const toSeason = this.returnTo === 'season';
     this.gameToken++;
     this.engine = null; this.bot = null; this.paused = false; this.fast = false; this.slowMo = null; this.hitStop = 0;
+    if (this.padShown) { this.padShown = false; this.ui.setBasePad(null); }
     this.ui.hideHud(); this.hideOverlays();
     this.cam.title = true;
     this.actors.configure({ engine: this.demo, playerUniformKey: this.prog.data.equipped.uniform, batStyle: this.prog.data.equipped.bat });
@@ -872,7 +875,10 @@ export class App {
         case 'ArrowDown': if (!inGame) break; e.preventDefault(); this.aimKeys.down = true; this.aimMode = 'keys'; break;
         case 'Equal': case 'NumpadAdd': if (inGame && this.engine.mode === 'practice') this.practiceSpeed(+2); break;
         case 'Minus': case 'NumpadSubtract': if (inGame && this.engine.mode === 'practice') this.practiceSpeed(-2); break;
-        case 'Digit1': case 'Digit2': case 'Digit3': case 'Digit4': case 'Digit5': case 'Digit6':
+        case 'Digit1': case 'Digit2': case 'Digit3': case 'Digit4': case 'Digit5': case 'Digit6': case 'KeyH':
+          // while a hit is being played: 2 / 3 / 4 (or H) send a runner to that base
+          if (inGame && this.engine.sendOpen) { const b = e.code === 'KeyH' ? 4 : +e.code.slice(5); if (b >= 2 && b <= 4) this.sendRunner(b); break; }
+          if (e.code === 'KeyH') break;
           if (inGame && this.engine.mode === 'practice') {
             const types = ['fastball', 'changeup', 'curveball', 'slider', 'heater', 'mixed'];
             this.engine.practice.type = types[+e.code.slice(5) - 1];
@@ -1026,6 +1032,35 @@ export class App {
     if (hideCursor !== this.cursorHidden) { this.cursorHidden = hideCursor; this.canvas.style.cursor = hideCursor ? 'none' : ''; }
   }
 
+  // ---------------------------------------------------------------- sending runners (the base diamond)
+  // Is this play one where runners can still be sent (now or in a moment, once the ball is down)?
+  sendPending(e) {
+    const p = e.play;
+    return !!(p && p.plan.send && e.time - p.t0 <= p.plan.send.by);
+  }
+
+  sendRunner(base) {
+    const e = this.engine;
+    if (!e || this.paused || this.bot) return;
+    if (e.sendRunner(base)) this.audio.uiClick();
+  }
+
+  // Every frame: the base diamond is up while you can send runners - the bases you can send someone to glow, and a dot shows every
+  // runner where he is right now.
+  updateBasePad(e) {
+    const open = !this.paused && !this.ui.current && e.sendOpen;
+    if (!open) { if (this.padShown) { this.padShown = false; this.ui.setBasePad(null); } return; }
+    this.padShown = true;
+    const p = e.play, t = e.time - p.t0;
+    const dots = [];
+    for (const m of p.plan.moves) {
+      if (m.back && m.from === 0) continue;
+      const q = runnerState(m, t, e.cfg, this.padQ || (this.padQ = {}));
+      dots.push({ x: q.x, z: q.z, sent: !!m.sent });
+    }
+    this.ui.setBasePad({ targets: e.sendTargets().map((q) => q.base), dots });
+  }
+
   swingInput(ev) {
     const e = this.engine;
     if (!e || this.paused || e.over) return;
@@ -1039,7 +1074,7 @@ export class App {
         e.swingPressed(since);
         break;
       }
-      case 'play': this.fast = true; break;
+      case 'play': if (!this.sendPending(e)) this.fast = true; break; // (a tap speeds the play up - not while you can still send runners)
       case 'aiSummary': e.skipSummary(); break;
       case 'result': if (e.time - e.phaseSince > 0.12) { e.resultUntil = Math.min(e.resultUntil, e.time); } break;
       default: break;
@@ -1081,6 +1116,7 @@ export class App {
     // aim
     if (e) {
       this.updateBatting(e, realDt);
+      this.updateBasePad(e);
       // the Steal button is only there while a runner could go
       const can = e.canSteal && !this.paused, on = e.stealArmed || !!(e.steal && (e.phase === 'windup' || e.phase === 'pitch'));
       if (can !== this.stealShown || on !== this.stealOn) { this.stealShown = can; this.stealOn = on; this.ui.setSteal(can, on); }
