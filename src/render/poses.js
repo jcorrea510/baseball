@@ -49,7 +49,7 @@ export function resetPose(P) {
 
 // ---------------------------------------------------------------- batter (right-handed pose space)
 // The bat handle ("knob") position in the stance.
-const KNOB_STANCE = [-0.5, 4.5, 0.42];
+const KNOB_STANCE = [-0.72, 4.1, 0.3];
 
 export function batterPose(P, time, swing) {
   resetPose(P);
@@ -60,8 +60,8 @@ export function batterPose(P, time, swing) {
   let headYawAbs = 1.5, headPitch = 0.16;
   let footLx = 0.95, footLy = ANK, footLz = 0.1, footRx = -0.95, footRz = -0.05, footRTilt = 0;
   let knob = [KNOB_STANCE[0], KNOB_STANCE[1] + wag * 0.05, KNOB_STANCE[2]];
-  let batYaw = -1.4 + wag * 0.05, batPitch = 1.0 + wag * 0.07;
-  let poleL = [0.8, -0.8, -0.2], poleR = [-0.6, 0.1, -0.8];
+  let batYaw = -1.4 + wag * 0.05, batPitch = 0.88 + wag * 0.07;
+  let poleL = [0.7, -0.9, -0.1], poleR = [-0.7, -0.1, -0.7];
   let footLTilt = 0;
 
   if (swing && time >= swing.tStart) {
@@ -92,7 +92,7 @@ export function batterPose(P, time, swing) {
         lerp(KNOB_STANCE[2] - 0.32 * load, cKnob[2], hs),
       ];
       batYaw = lerp(-1.4, dirYaw, Math.pow(rot, 1.15));
-      batPitch = lerp(1.05 + 0.15 * load, cPitch, hs);
+      batPitch = lerp(0.93 + 0.15 * load, cPitch, hs);
       headYawAbs = 1.5 - 0.15 * rot;
       headPitch = 0.16 + 0.1 * rot;
       poleL = [0.9, -0.5, -0.4]; poleR = [-0.8, -0.2, -0.6];
@@ -110,7 +110,7 @@ export function batterPose(P, time, swing) {
       const k = followKey(e, [cKnob, dirYaw, cPitch]);
       knob = k[0]; batYaw = k[1]; batPitch = k[2];
       headYawAbs = 1.5; headPitch = 0.24;
-      poleL = [1.0, -0.4, -0.4]; poleR = [-0.6, 0.2, -0.8];
+      poleL = [lerp(1.0, 0.6, e), lerp(-0.4, -1, e), lerp(-0.4, 0.3, e)]; poleR = [-0.6, lerp(0.2, -0.3, e), -0.8];
     }
   }
   P.hipY = hip;
@@ -131,7 +131,7 @@ export function batterPose(P, time, swing) {
 export const FOLLOW = [
   [0.3, [1.15, 3.5, 0.53], 1.67, 0.29], // arms extended toward the pitcher
   [0.59, [1.04, 4.8, -0.25], 2.5, 0.84], // the bat climbs past the lead shoulder
-  [1, [0.25, 4.93, -0.58], 4.02, 0.99], // finish: hands high by the lead shoulder, bat up behind the head
+  [1, [0.15, 4.25, -0.85], 4.02, 0.9], // finish: hands high by the lead shoulder, bat up behind the head
 ];
 function followKey(e, start) {
   let prev = [0, start[0], start[1], start[2]];
