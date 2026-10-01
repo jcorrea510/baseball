@@ -26,11 +26,15 @@ describe('when there is a ring', () => {
     expect(hit(105, 30, 0).spot).toBe(null); // home run: it lands in the stands
   });
 
-  it('a ball that hits the wall on the fly never lands on the grass, so no ring', () => {
+  it('a ball that hits the wall on the fly gets a ring on the warning track, under where it hits', () => {
     let wall = 0;
     for (const spray of [-30, -20, -10, 0, 10, 20, 30]) for (let la = 12; la <= 30; la += 3) for (let ev = 88; ev <= 104; ev += 4) {
       const { sim, spot, plan } = hit(ev, la, spray);
-      if (sim.wallHit && !plan.homer && sim.wallHit.t < (sim.firstBounce ? sim.firstBounce.t : Infinity)) { wall++; expect(spot).toBe(null); }
+      if (sim.wallHit && !plan.homer && sim.wallHit.t < (sim.firstBounce ? sim.firstBounce.t : Infinity) && sim.apex.y >= CONFIG.landing.minApex) {
+        wall++;
+        expect(spot).not.toBe(null);
+        if (!spot.caught) { expect(spot.x).toBe(sim.wallHit.x); expect(spot.z).toBe(sim.wallHit.z); expect(spot.tEnd).toBe(sim.wallHit.t); }
+      }
     }
     expect(wall).toBeGreaterThan(3);
   });
@@ -56,6 +60,7 @@ describe('where the ring is', () => {
         expect(Math.hypot(b.x - spot.x, b.z - spot.z)).toBeLessThan(0.6);
         continue;
       }
+      if (sim.wallHit && sim.wallHit.t < sim.firstBounce.t) { expect(spot.x).toBe(sim.wallHit.x); continue; } // (the wall, not the grass: tested above)
       landed++;
       expect(spot.x).toBe(sim.firstBounce.x); expect(spot.z).toBe(sim.firstBounce.z);
       // walking the flight ball by ball: the last moment it is in the air is right before tLand, and it is at the ring

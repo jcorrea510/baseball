@@ -76,6 +76,12 @@ export const CONFIG = {
     locations: { edge: [0.9, 1.3], chase: [1.3, 1.9], waste: [1.9, 2.9] },
     wasteMinRatio: 1.75, // a 'waste' pitch is never wilder in the wrong direction than this: it stays out of reach
     ballScale: 1.35, // pitches are drawn a bit bigger so they are easy to track
+    // Seeing the ball (all of it is picture only): a thin dark rim keeps a white ball visible against clouds, dirt and crowd; a soft
+    // shadow right under it on the ground shows where it is and when it passes the plate; a short streak behind it shows its curve and
+    // speed. No glow.
+    rimColor: 0x0b1230, rimOpacity: 0.78, rimScale: 1.16,
+    shadowOpacity: 0.6, shadowRadius: 0.5,
+    trailColor: 0xdfe9ff, trailSize: 0.34, trailSeconds: 0.075, trailStrength: 0.5,
     // ...and on screen at least this many pixels across (or this fraction of the screen height, whichever is bigger) while it still
     // grows as it comes in: at release a real-size ball is only ~2.5 px on a phone held sideways. Only the picture: timing is unchanged.
     minScreenPx: 5,
@@ -435,6 +441,7 @@ export const CONFIG = {
     minFlight: 1.0, // s: ...and only if they stay up at least this long
     delay: 0.45, // s after contact before the ring appears (the ball has left the bat)
     fadeIn: 0.3, // s the ring takes to fade in
+    fadeOut: 0.18, // s it takes to fade away at the end of the flight (no pop)
     radiusStart: 18, // ft: how big the ring starts
     radiusEnd: 4.0, // ft: how small it is when the flight ends (a little more than a fielder's reach)
     minScreen: 0.02, // the ring is never smaller than this fraction of its distance from the camera, so it stays visible far away

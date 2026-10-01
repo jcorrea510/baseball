@@ -801,6 +801,11 @@ export class Actors {
         const q = f.at(pt);
         bp.set(q.x, q.y, q.z);
         kind = 'pitch';
+        // a short streak behind the ball: the curve it has flown (a curveball's bends down) and how fast it is coming
+        const T = cfg.pitch.trailSeconds, pts = [];
+        for (let k = 0; k < 30; k++) { const w = f.at(Math.max(0, pt - (k * T) / 29)); pts.push(new THREE.Vector3(w.x, w.y, w.z)); }
+        this.trailPts = pts;
+        trail = pt > 0.02 ? cfg.pitch.trailStrength : 0;
         spinRate = pitch.flight.spin.rpm * 0.0105 * (pitch.type === 'changeup' ? 0.6 : 1);
         this.ballSpinAxis(pitch.flight.spin.axis);
       } else {
@@ -829,7 +834,7 @@ export class Actors {
     ball.setScale(kind === 'pitch' ? cfg.pitch.ballScale : 1, kind === 'pitch' ? Math.max(cfg.pitch.minScreenPx, this.viewH * cfg.pitch.minScreenFrac) : 0);
     ball.setPosition(bp.x, bp.y, bp.z);
     if (spinRate) ball.spin(this.spinAxis || new THREE.Vector3(1, 0, 0), spinRate, dt);
-    ball.setTrail(trail);
+    ball.setTrail(trail, kind === 'pitch');
     this.ballKind = kind;
     this.updateLooseBat(dt);
   }
@@ -851,6 +856,15 @@ export class Actors {
     if (seg.kind === 'hit') {
       const q = sampleBall(sim, t);
       out.set(q.x, q.y, q.z);
+      // A home run comes down in the seats: it hits, bounces a couple of times, and is gone (it never hangs there or keeps falling).
+      const sl = plan.homer ? sim.standsLanding : null;
+      if (sl && t > sl.t) {
+        const u = t - sl.t;
+        if (u > 1.1) return { kind: 'hidden', trail: 0 };
+        const hop = u < 0.5 ? 2.6 * 4 * (u / 0.5) * (1 - u / 0.5) : u < 0.8 ? 0.8 * 4 * ((u - 0.5) / 0.3) * (1 - (u - 0.5) / 0.3) : 0;
+        out.set(sl.x, sl.y + hop + 0.15, sl.z + Math.min(u, 0.8) * 3);
+        return { kind: 'hit', trail: 0, pts: null, spin: 6 };
+      }
       // the last instant before a catch: the ball settles into his glove (the glove may be a little short of where the ball is)
       if ((plan.caught || plan.dropped) && plan.fielder && t > plan.catchT - CATCH_SETTLE && t <= plan.catchT) {
         const catcher = this.fielders[plan.fielder];

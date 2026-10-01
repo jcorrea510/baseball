@@ -780,6 +780,14 @@ export class UI {
     void el.offsetWidth;
     el.classList.add('show');
   }
+  // Change what a banner that is already showing says, without playing its entrance again (so the home-run celebration never repeats).
+  bannerUpdate(big, sub = '') {
+    const el = this.q.banner;
+    if (!el.classList.contains('show')) return;
+    const art = el.classList.contains('hr') ? wordSVG(big, { id: 'hr' + (this.artN = (this.artN || 0) + 1) }) : null;
+    if (art) el.querySelector('.big').innerHTML = art; else el.querySelector('.big').textContent = big;
+    el.querySelector('.sub').textContent = sub;
+  }
   hideBanner() { this.q.banner.classList.remove('show'); }
   callout(items, ms = 3200) {
     const el = this.q.callout;

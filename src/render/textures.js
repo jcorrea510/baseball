@@ -326,7 +326,7 @@ export function ballTexture() {
   g.addColorStop(0, '#f6f3ea'); g.addColorStop(1, '#e6e0d0');
   ctx.fillStyle = g; ctx.fillRect(0, 0, 512, 256);
   // Two seam curves (approximation of the baseball seam) and stitches.
-  ctx.strokeStyle = '#c62828'; ctx.lineWidth = 2;
+  ctx.strokeStyle = '#d02424'; ctx.lineWidth = 4; // (bold seams and stitches: the spin is easy to read - a curveball tumbles, a fastball's seams stream)
   const seam = (phase) => {
     const pts = [];
     for (let i = 0; i <= 200; i++) {
@@ -347,8 +347,8 @@ export function ballTexture() {
       const nx = -(b[1] - a[1]), ny = b[0] - a[0];
       const l = Math.hypot(nx, ny) || 1;
       ctx.beginPath();
-      ctx.moveTo(a[0] - (nx / l) * 5, a[1] - (ny / l) * 5);
-      ctx.lineTo(a[0] + (nx / l) * 5, a[1] + (ny / l) * 5);
+      ctx.moveTo(a[0] - (nx / l) * 8, a[1] - (ny / l) * 8);
+      ctx.lineTo(a[0] + (nx / l) * 8, a[1] + (ny / l) * 8);
       ctx.stroke();
     }
   }

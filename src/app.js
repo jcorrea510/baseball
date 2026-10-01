@@ -452,6 +452,7 @@ export class App {
     e.on('stealGo', () => audio.crowdSwell(0.3, 1.4)); // the crowd sees him go
     e.on('stealPlay', () => { this.landing = null; this.landRing.hide(); this.playOuts = 0; });
     e.on('windup', ({ pitch }) => {
+      this.hrShown = false;
       this.pitchMarker.visible = false;
       ui.hideBanner();
       ui.hideCallout();
@@ -570,8 +571,8 @@ export class App {
     switch (ev.type) {
       case 'landed':
         if (c && c.plan.result === 'foul') this.umpireCall('foul');
-        this.fx.dustPuff(ev.x, ev.z, 0.7, [0.6, 0.72, 0.42]);
-        this.fx.grassBits(ev.x, ev.z, 1);
+        this.fx.dustPuff(ev.x, ev.z, 0.42, [0.42, 0.42, 0.27]); // (a small, dull puff of dirt and grass - nothing bright)
+        this.fx.grassBits(ev.x, ev.z, 0.5);
         audio.dirtThud(0.6);
         if (c && c.plan.result !== 'foul' && !c.homer && (c.big || c.distance > 200)) this.showDistanceCallout(c, false);
         break;
@@ -588,6 +589,7 @@ export class App {
         this.celebrateHomer(ev, dist);
         this.showDistanceCallout(c, true);
         ui.banner('HOME RUN!', `${dist} ft`, 'hr', true);
+        this.hrShown = true; // (the result banner at the end of the play only updates this one - the celebration never plays twice)
         if (this.settings.shake) this.cam.shake(F_HR());
         break;
       }
@@ -646,7 +648,6 @@ export class App {
         this.fx.firework(Math.sin(a) * r, 70 + Math.random() * 70, -Math.cos(a) * r, null, 1 + Math.random() * 0.6);
       }, 150 + i * 230);
     }
-    this.ui.flash(0.3, 160);
   }
 
   // Small facts on the next batter's card (bats left / right; season numbers are added in Season mode).
@@ -719,8 +720,23 @@ export class App {
       if (res === 'homer') { cls = 'hr'; big = 'HOME RUN'; sub = `${r.distanceFt} ft${r.streak > 1 ? ` · streak ${r.streak}` : ''}`; }
       else { cls = 'bad'; big = r.text.includes('FREE') ? r.text : 'OUT'; sub = r.detail || ''; }
     }
-    if (res === 'homer' || res === 'insideParkHomer') { if (e.mode !== 'derby') ui.banner(big, sub, cls, true); else ui.banner(big, sub, cls, true); }
-    else ui.banner(big, sub, cls);
+    if (res === 'homer' || res === 'insideParkHomer') {
+      if (this.hrShown) {
+        // the celebration is already on screen: only say what it was worth (a grand slam, a 3-run homer, a walk-off)
+        const label = r.runs === 4 ? 'GRAND SLAM' : r.runs > 1 ? `${r.runs}-RUN HOMER` : null;
+        if (label || r.walkOff) ui.bannerUpdate(label || 'HOME RUN!', sub);
+      } else ui.banner(big, sub, cls, true);
+    } else {
+      // a play that drove in runs says the RUNS in big letters and the hit in smaller ones
+      if (r.runs > 0 && e.mode !== 'derby') {
+        const hit = big; // (SINGLE, DOUBLE, SAC FLY, WALK, ERROR ...)
+        const mph = r.exitVelocity ? `${Math.round(r.exitVelocity)} mph` : '';
+        big = `${r.runs} RUN${r.runs > 1 ? 'S' : ''}`;
+        sub = [hit, mph].filter(Boolean).join(' · ');
+        cls = 'good';
+      }
+      ui.banner(big, sub, cls);
+    }
     if (r.runs > 0 && res !== 'homer') audio.applause(1.6, 0.8);
   }
 

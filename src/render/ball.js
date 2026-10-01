@@ -33,11 +33,17 @@ export function createBall(scene) {
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(r, 20, 14), mat);
   mesh.castShadow = true;
   group.add(mesh);
+  // A thin dark rim round the ball (an inverted shell a touch bigger than the ball): the white ball never melts into a white cloud,
+  // the dirt or the crowd, and it is easy to follow - without any glow.
+  const rimMat = new THREE.MeshBasicMaterial({ color: CONFIG.pitch.rimColor, side: THREE.BackSide, transparent: true, opacity: CONFIG.pitch.rimOpacity, depthWrite: false, fog: false });
+  const rim = new THREE.Mesh(new THREE.SphereGeometry(r * CONFIG.pitch.rimScale, 20, 14), rimMat);
+  rim.castShadow = false;
+  mesh.add(rim);
   scene.add(group);
 
   // soft shadow on the ground
-  const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -5, polygonOffsetUnits: -5 });
-  const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.36, 20), shadowMat);
+  const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: CONFIG.pitch.shadowOpacity, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -5, polygonOffsetUnits: -5 });
+  const shadow = new THREE.Mesh(new THREE.CircleGeometry(CONFIG.pitch.shadowRadius, 20), shadowMat);
   shadow.rotation.x = -Math.PI / 2;
   shadow.renderOrder = 3;
   scene.add(shadow);
@@ -62,6 +68,7 @@ export function createBall(scene) {
   const history = []; // recent positions (newest first)
   let trailStrength = 0;
   let visible = true;
+  let trailIsPitch = false;
   let baseScale = 1, minPx = 0; // minPx: extra on-screen size for the pitch (so it is readable on a phone), see setPosition below
 
   const api = {
@@ -75,13 +82,20 @@ export function createBall(scene) {
       shadow.position.set(x, 0.05, z);
       const k = 1 + h * 0.035;
       shadow.scale.setScalar(k);
-      shadowMat.opacity = Math.max(0.08, 0.45 - h * 0.006);
+      shadowMat.opacity = Math.max(0.12, CONFIG.pitch.shadowOpacity - h * 0.006);
     },
     // Spin about an axis (radians per second).
     spin(axis, rate, dt) {
       mesh.rotateOnWorldAxis(axis, rate * dt);
     },
-    setTrail(strength) { trailStrength = strength; },
+    setTrail(strength, pitch = false) {
+      trailStrength = strength;
+      // a pitch leaves a short, cool-white streak (it shows the flight's curve and how fast it is going); a hit leaves a warm one
+      if (pitch !== trailIsPitch) {
+        trailIsPitch = pitch;
+        tm.uniforms.uColor.value.set(pitch ? CONFIG.pitch.trailColor : 0xffdb8c);
+      }
+    },
     clearTrail() { history.length = 0; },
     // Call every frame after setPosition. `pts` (optional) = recent positions, newest first (from the
     // flight simulation), which gives a smooth continuous streak; otherwise the last frames are used.
@@ -98,7 +112,7 @@ export function createBall(scene) {
         p.array[i * 3] = h.x; p.array[i * 3 + 1] = h.y; p.array[i * 3 + 2] = h.z;
         const f = 1 - i / TRAIL_N;
         a.array[i] = trailStrength * f * f * 0.9;
-        s.array[i] = 0.55 * (0.4 + f * 0.9);
+        s.array[i] = (trailIsPitch ? CONFIG.pitch.trailSize : 0.55) * (0.4 + f * 0.9);
       }
       a.needsUpdate = true; s.needsUpdate = true; p.needsUpdate = true;
       tm.uniforms.uScale.value = (viewportH * 0.5) / Math.tan((camera.fov * Math.PI) / 360);

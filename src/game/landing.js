@@ -7,21 +7,24 @@ const smooth = (x) => { const t = clamp(x, 0, 1); return t * t * (3 - 2 * t); };
 
 /**
  * Where does this batted ball come down on the field? Returns null when there is nothing to show: a grounder or low liner, a home run,
- * or a ball that hits the wall (or the stands) before it ever lands on the grass.
+ * or a ball that ends up in the stands.
  * @returns {{x:number, z:number, tLand:number, tEnd:number, caught:boolean, tStart:number}|null}  times are seconds after contact
  */
 export function landingSpot(sim, plan, cfg = CONFIG) {
   const L = cfg.landing;
   if (!sim || !sim.firstBounce || sim.homerun || (plan && plan.homer)) return null;
   const fb = sim.firstBounce;
-  if (sim.wallHit && sim.wallHit.t < fb.t) return null; // it hits the wall first: it never lands on the grass
   if (sim.standsLanding && sim.standsLanding.t < fb.t) return null;
-  if (sim.apex.y < L.minApex || fb.t < L.minFlight) return null;
-  const caught = !!(plan && (plan.caught || plan.dropped) && plan.catchPos && plan.catchT <= fb.t);
-  // The ring marks where the ball's flight really ends: the grass where it lands, or - when a fielder catches it - the spot under the
-  // catch (a running catch is often several feet short of where it would have landed, and the ring must agree with the picture).
-  const x = caught ? plan.catchPos.x : fb.x, z = caught ? plan.catchPos.z : fb.z;
-  const tEnd = caught ? plan.catchT : fb.t;
+  // A ball that hits the wall on the fly never reaches the grass: the ring marks the spot on the warning track under where it hits.
+  const wall = sim.wallHit && sim.wallHit.t < fb.t ? sim.wallHit : null;
+  const endT = wall ? wall.t : fb.t;
+  if (sim.apex.y < L.minApex || endT < L.minFlight) return null;
+  const caught = !!(plan && (plan.caught || plan.dropped) && plan.catchPos && plan.catchT <= endT);
+  // The ring marks where the ball's flight really ends: the grass where it lands (or the wall it hits), or - when a fielder catches it -
+  // the spot under the catch (a running catch is often several feet short of where it would have landed, and the ring must agree with
+  // the picture).
+  const x = caught ? plan.catchPos.x : wall ? wall.x : fb.x, z = caught ? plan.catchPos.z : wall ? wall.z : fb.z;
+  const tEnd = caught ? plan.catchT : endT;
   return { x, z, tLand: tEnd, tEnd, caught, tStart: Math.min(L.delay, tEnd * 0.5) };
 }
 
@@ -37,6 +40,6 @@ export function landingRing(spot, t, cfg = CONFIG) {
   return {
     visible: true, x: spot.x, z: spot.z,
     radius: L.radiusEnd + (L.radiusStart - L.radiusEnd) * remaining,
-    alpha: L.alpha * smooth((t - spot.tStart) / Math.max(1e-6, L.fadeIn)),
+    alpha: L.alpha * smooth((t - spot.tStart) / Math.max(1e-6, L.fadeIn)) * smooth((spot.tEnd - t) / L.fadeOut), // (it fades out at the end instead of popping)
   };
 }
