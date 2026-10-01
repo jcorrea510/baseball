@@ -41,10 +41,11 @@ export function pitchGuide(pitch, elapsed, cfg = CONFIG, level = 'pro') {
   const reveal = smooth(L.reveal[0], L.reveal[1], f);
   const gx = straightX + (pitch.target.x - straightX) * reveal;
   const gy = straightY + (pitch.target.y - straightY) * reveal;
-  // the guess is a little off (fixed for this pitch), homing in on the real spot as the ball comes (to within `floor` feet)
-  const floor = L.floor ?? 0;
-  const err = floor + (L.error - floor) * (1 - smooth(L.sharpen ? L.sharpen[0] : 0, L.sharpen ? L.sharpen[1] : 1, f));
+  // the guess is a little off at first (fixed for this pitch) and homes in on the real spot as the ball comes - by the end of `sharpen`
+  // it is exactly where the ball will cross, and the circle has closed in to just bigger than the ball
+  const home = smooth(L.sharpen[0], L.sharpen[1], f);
+  const err = L.error * (1 - home);
   const [nx, ny] = pitchNoise(pitch);
-  const radius = (G.baseRadius + G.radiusPerError * err) * (1 + (G.closeIn - 1) * (1 - smooth(L.fadeIn[0], 1, f)));
+  const radius = G.radiusEnd + (G.radiusStart - G.radiusEnd) * (1 - smooth(L.fadeIn[0], L.sharpen[1], f));
   return { visible: alpha > 0.004 && f < 1, alpha, x: gx + nx * err, y: gy + ny * err, radius, f, error: err };
 }

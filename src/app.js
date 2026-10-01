@@ -1025,7 +1025,7 @@ export class App {
     const sw = e.swing && e.pitch && (e.phase === 'pitch' || e.phase === 'play' || e.phase === 'result') ? e.swing : null;
     this.batAim.update({
       show: batting && this.cam.catcherDist < A.showWithin && (e.phase !== 'result' || !!sw),
-      aim: shown, hand: e.batterHand, window: e.contactWindow, swing: sw, time: e.time,
+      aim: shown, hand: e.batterHand, swing: sw, time: e.time,
     }, dt);
     this.ui.setSwingButton(batting && this.touch && (e.phase === 'windup' || e.phase === 'pitch' || e.phase === 'ready'));
     const hideCursor = batting && this.aimMode === 'mouse' && !this.ui.current;

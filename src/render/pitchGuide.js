@@ -25,10 +25,10 @@ export class PitchGuide {
   constructor(scene) {
     this.mesh = new THREE.Mesh(
       new THREE.PlaneGeometry(2, 2),
-      new THREE.MeshBasicMaterial({ map: ringTexture(), color: CONFIG.pitch.guide.color, transparent: true, opacity: 0, depthWrite: false })
+      new THREE.MeshBasicMaterial({ map: ringTexture(), color: CONFIG.pitch.guide.color, transparent: true, opacity: 0, depthWrite: false, depthTest: false })
     );
     this.mesh.position.z = CONFIG.pitch.contactZ + 0.06;
-    this.mesh.renderOrder = 6;
+    this.mesh.renderOrder = 18; // (drawn over everything - nothing on the field ever covers part of it)
     this.mesh.visible = false;
     scene.add(this.mesh);
   }

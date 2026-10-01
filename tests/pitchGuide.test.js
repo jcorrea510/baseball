@@ -49,14 +49,14 @@ describe('when it shows', () => {
 });
 
 describe('where it points', () => {
-  it('is repeatable for a pitch (no jitter), different for different pitches, and roughly right at the plate', () => {
+  it('is repeatable for a pitch (no jitter), a little off at first (differently for each pitch), and exact by the time the ball arrives', () => {
     const p = mk('fastball', 0.4, 2.9, 'allstar', 7);
-    expect(at(p, 0.8, 'allstar')).toEqual(at(p, 0.8, 'allstar'));
+    expect(at(p, 0.3, 'allstar')).toEqual(at(p, 0.3, 'allstar'));
     const q = mk('fastball', 0.4, 2.9, 'allstar', 8);
-    expect(at(q, 0.8, 'allstar').x).not.toBe(at(p, 0.8, 'allstar').x);
+    expect(at(q, 0.3, 'allstar').x).not.toBe(at(p, 0.3, 'allstar').x);
     for (const lv of DIFFICULTIES) {
-      const g = at(mk('fastball', 0.4, 2.9, lv, 3), 0.97, lv);
-      expect(Math.hypot(g.x - 0.4, g.y - 2.9)).toBeLessThan(3 * CONFIG.difficulty[lv].guide.error + 0.05);
+      const g = at(mk('fastball', 0.4, 2.9, lv, 3), CONFIG.difficulty[lv].guide.sharpen[1] + 0.02, lv);
+      expect(Math.hypot(g.x - 0.4, g.y - 2.9)).toBeLessThan(0.005); // (one accurate circle: right where the ball will cross)
     }
   });
 
@@ -77,13 +77,20 @@ describe('where it points', () => {
     expect(errAt('curveball', 0.98)).toBeLessThan(1.6 * CONFIG.difficulty[level].guide.error + 0.05);
   });
 
-  it('is less exact on harder levels, and the circle is bigger and closes in as the ball arrives', () => {
-    const r = DIFFICULTIES.map((lv) => at(mk('fastball', 0.2, 2.5, lv), 0.95, lv).radius);
-    expect(r[0]).toBeLessThan(r[1]); expect(r[1]).toBeLessThan(r[2]);
-    const p = mk('fastball', 0.2, 2.5, 'pro');
-    expect(at(p, 0.45, 'pro').radius).toBeGreaterThan(at(p, 0.95, 'pro').radius);
-    const err = DIFFICULTIES.map((lv) => CONFIG.difficulty[lv].guide.error);
-    expect(err[0]).toBeLessThan(err[1]); expect(err[1]).toBeLessThan(err[2]);
+  it('homes in later on harder levels, and the circle closes in from a moderate size to just bigger than the ball', () => {
+    const offAt = (lv, f) => { let e = 0; for (let i = 0; i < 40; i++) { const g = at(mk('fastball', 0.2, 2.5, lv, i + 1), f, lv); e += Math.hypot(g.x - 0.2, g.y - 2.5); } return e / 40; };
+    const e = DIFFICULTIES.map((lv) => offAt(lv, 0.4));
+    expect(e[0]).toBeLessThan(e[1]); expect(e[1]).toBeLessThan(e[2]);
+    const G = CONFIG.pitch.guide;
+    for (const lv of DIFFICULTIES) {
+      const p = mk('fastball', 0.2, 2.5, lv);
+      expect(at(p, 0.15, lv).radius).toBeGreaterThan(at(p, 0.5, lv).radius);
+      expect(at(p, 0.15, lv).radius).toBeLessThanOrEqual(G.radiusStart + 1e-9);
+      expect(at(p, 0.95, lv).radius).toBeCloseTo(G.radiusEnd, 3);
+    }
+    expect(G.radiusStart).toBeLessThan(0.5); // (never a giant circle)
+    const sh = DIFFICULTIES.map((lv) => CONFIG.difficulty[lv].guide.sharpen[1]);
+    expect(sh[0]).toBeLessThan(sh[1]); expect(sh[1]).toBeLessThan(sh[2]);
   });
 });
 
@@ -102,16 +109,17 @@ describe('it helps in time, but it is not a giveaway', () => {
 
   it('when you must decide it is on the right side of the zone mostly on Rookie, less on Pro, and often not on All-Star', () => {
     // (round four: the circle is meant to be readable in time to put the bat there - only All-Star stays clearly unsure)
-    expect(decide('rookie')).toBeGreaterThan(0.95);
-    expect(decide('pro')).toBeGreaterThan(0.9); expect(decide('pro')).toBeLessThan(0.98);
-    expect(decide('allstar')).toBeGreaterThan(0.8); expect(decide('allstar')).toBeLessThan(0.92);
+    // (round six: the circle is exact by the time you must commit; All-Star still makes you read it early)
+    expect(decide('rookie')).toBeGreaterThan(0.97);
+    expect(decide('pro')).toBeGreaterThan(0.94);
+    expect(decide('allstar')).toBeGreaterThan(0.85); expect(decide('allstar')).toBeLessThan(0.97);
     expect(decide('rookie')).toBeGreaterThan(decide('pro')); expect(decide('pro')).toBeGreaterThan(decide('allstar'));
   });
 
-  it('borderline pitches stay hard: unsure on All-Star, never certain on Pro', () => {
+  it('borderline pitches: readable on Rookie and Pro, still a read on All-Star', () => {
     expect(decideEdge('rookie')).toBeGreaterThan(0.9);
-    expect(decideEdge('pro')).toBeLessThan(0.94);
-    expect(decideEdge('allstar')).toBeLessThan(0.84); expect(decideEdge('allstar')).toBeGreaterThan(0.6);
+    expect(decideEdge('pro')).toBeGreaterThan(0.85);
+    expect(decideEdge('allstar')).toBeLessThan(0.92); expect(decideEdge('allstar')).toBeGreaterThan(0.65);
   });
 
   it('never gives a clean number: no NaN, radius and position are sane', () => {

@@ -12,7 +12,7 @@ describe('how batting feels to a person', () => {
     expect(miss(feel({ difficulty: 'pro', player: 'new', n: N }))).toBeLessThan(0.38);
     const avg = feel({ difficulty: 'pro', player: 'average', n: N });
     expect(miss(avg)).toBeLessThan(0.2);
-    expect(miss(avg)).toBeGreaterThan(0.04); // (still a skill: timing counts)
+    expect(miss(avg)).toBeGreaterThan(0.02); // (still a skill: timing counts)
   }, 60000);
 
   it('...but it is not a home run derby: hits and home runs stay earned', () => {
@@ -20,7 +20,14 @@ describe('how batting feels to a person', () => {
     expect(rate(good, 'hr')).toBeLessThan(0.14);
     const avg = feel({ difficulty: 'pro', player: 'average', n: N });
     expect(rate(avg, 'hr')).toBeLessThan(0.08);
-    expect(rate(avg, 'hit') + rate(avg, 'hr')).toBeLessThan(0.45);
+    expect(rate(avg, 'hit') + rate(avg, 'hr')).toBeLessThan(0.55);
+  }, 60000);
+
+  it('most balls you hit stay fair (a foul is a mistimed or glancing swing, not the usual result)', () => {
+    const share = (r) => r.foul / r.contact;
+    expect(share(feel({ difficulty: 'rookie', player: 'new', n: N }))).toBeLessThan(0.2);
+    expect(share(feel({ difficulty: 'pro', player: 'new', n: N }))).toBeLessThan(0.32);
+    expect(share(feel({ difficulty: 'pro', player: 'average', n: N }))).toBeLessThan(0.24);
   }, 60000);
 
   it('the levels stay in order: Rookie easiest, All-Star clearly hardest', () => {

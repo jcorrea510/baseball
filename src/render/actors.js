@@ -165,18 +165,17 @@ export class Actors {
     const pre = !inPlay && E.steal && E.steal.plan && pitch && (phase === 'windup' || phase === 'pitch');
     this.updateFielders(E, dt, time, pitch, pre ? E.steal.plan : plan, pre ? time - pitch.tCatch : playT);
 
-    // ---- in the catcher's view we look through the catcher's eyes: only his glove arm shows, and the umpire (right behind) is hidden
-    // (while the camera pulls back out of his eyes after a swing, he - and the umpire - stay hidden until the camera is clear of them,
-    // so no giant helmet fills the screen for a moment)
+    // ---- in the catcher's view the camera is right behind the catcher: he and the umpire are hidden while it is close to them (in
+    // the batting view, and while it pulls back after a swing - no giant helmet fills the screen for a moment)
     const Cc = E.cfg.camera.catcher;
     const dC = this.cameraCatcherDist ?? Infinity;
-    const fp = dC < Cc.firstPerson;
-    this.catcherHidden = !fp && dC < Cc.clearDist;
-    if (this.fielders.C) this.fielders.C.setFirstPerson(fp);
+    // (in the batting view even his glove arm would cover the strike zone: he is not drawn at all - the mitt's pop is still heard - and
+    // a pitch he catches disappears into it)
+    this.catcherHidden = dC < Cc.clearDist;
     if (this.umpire) {
       const cp = this.cameraPos, u = this.umpire.root.position;
       const dU = cp ? Math.hypot(cp.x - u.x, cp.y - Cc.umpireHead, cp.z - u.z) : Infinity;
-      this.umpire.root.visible = !fp && dU > Cc.clearDist;
+      this.umpire.root.visible = !this.catcherHidden && dU > Cc.clearDist;
     }
 
     // ---- plate umpire
@@ -873,7 +872,7 @@ export class Actors {
         catcherP.root.updateMatrixWorld(true);
         const g = catcherP.gloveWorld(this.tmpV);
         bp.copy(g); bp.y += 0.05;
-        kind = 'glove';
+        kind = this.catcherHidden ? 'hidden' : 'glove';
       }
     } else if (phase === 'play' && play) {
       const r = this.ballInPlay(E, play, plan, playT, bp);
@@ -888,7 +887,7 @@ export class Actors {
     } else if (phase === 'result' && pitch) {
       catcherP.root.updateMatrixWorld(true);
       bp.copy(catcherP.gloveWorld(this.tmpV)); bp.y += 0.05;
-      kind = 'glove';
+      kind = this.catcherHidden ? 'hidden' : 'glove';
     }
     // after a take the next windup places the ball in the pitcher's hands again
     ball.setVisible(kind !== 'hidden');

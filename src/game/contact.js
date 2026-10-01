@@ -154,7 +154,7 @@ export function computeSwing(i, cfg = CONFIG) {
 /** The extra batting-practice help the Derby gives every swing. */
 export function derbyBatting(cfg = CONFIG) {
   const d = cfg.modes.derby;
-  return { evBonus: d.evBonus };
+  return { evBonus: d.evBonus, batBonus: d.batBonus ?? 0 }; // (the same bat speed on every level: batting practice)
 }
 
 /**

@@ -105,9 +105,8 @@ export const CONFIG = {
     // they end up late). How early / how exact it is depends on the level: see `difficulty.<level>.guide`.
     guide: {
       color: 0xffe8a6, // soft warm white (never green or red: the colour must not give the call away)
-      baseRadius: 0.22, // ft: radius of the circle when the guess is exact (a ball is 0.12 ft across at the plate)
-      radiusPerError: 0.7, // ft of extra radius per ft of guess error: the less sure the guess, the bigger and softer the circle
-      closeIn: 1.35, // the circle starts this much bigger than its final size and closes in as the ball arrives
+      radiusStart: 0.42, // ft: the circle's size when it appears (a ball is 0.24 ft across)...
+      radiusEnd: 0.16, // ...closing in to just bigger than the ball by the time the guess has homed in (`sharpen` of each level)
       maxAlpha: 0.62, // how see-through it stays even when fully faded in
     },
   },
@@ -147,8 +146,8 @@ export const CONFIG = {
     spray: {
       // Where the barrel faces at contact comes from the timing: right on time it faces centre field; early it is out front and
       // pulls the ball (this many degrees at the edge of the early / late window), late it is behind and sends it the other way.
-      timingMax: 56,
-      timingCurve: 1.15,
+      timingMax: 40,
+      timingCurve: 1.3,
     },
   },
 
@@ -172,7 +171,7 @@ export const CONFIG = {
     handleSlow: 0.3, // in on the hands the bat is moving this much slower (at the very end of the window)
     offBarrel: 0.45, // ...and off the sweet spot it bounces this much less at the edge of the window
     offBarrelMass: 0.6, // ...and more of the bat recoils
-    pullBias: 13, // degrees: a well-timed swing meets the ball a touch out front and sends it a little toward the pull side (left-centre for a right-handed hitter)
+    pullBias: 12, // degrees: a well-timed swing meets the ball a touch out front and sends it a little toward the pull side (left-centre for a right-handed hitter)
     endSpray: 7, // degrees: off the end of the bat the ball goes this much more the other way (in on the hands, pulled)
     chase: { from: 1.15, to: 1.6, speedLoss: 0.22 }, // reaching for a ball out of the zone (zone widths) costs bat speed
     squared: [-0.3, 0.62], // a ball hit inside this part of the window (and near the sweet spot) counts as squared up for the grade
@@ -184,11 +183,10 @@ export const CONFIG = {
 
   // The see-through bat you aim with (render/batAim.js) and how the cursor / keys / a finger move it
   batAim: {
-    color: 0xffffff, opacity: 0.4, spotColor: 0xffe08a, spotOpacity: 0.95, windowOpacity: 0.22,
+    color: 0xffffff, opacity: 0.4, spotColor: 0xffe08a, spotOpacity: 0.95,
     tilt: 0.2, tiltRefY: 2.6, tiltPerFt: 0.22, tiltRange: [0.04, 0.6], // radians the barrel dips (more on a low pitch)
     fadeTime: 0.18, // s to fade in / out
     holdAfterSwing: 0.35, fadeAfterSwing: 0.5, // after a swing it stays where it was swung this long, then fades
-    markTime: 1.3, markHit: 0x7dffb0, markMiss: 0xff8a80, // the ring that shows where the ball was
     follow: 0.03, // s: how closely it follows the cursor (a touch of weight, never a lag you can feel)
     keySpeed: 3.2, // ft/s when moved with the arrow keys / W A S D
     touchGain: 1.15, // a finger drag moves it this many times the distance the finger moves on the plate (so the finger never covers it)
@@ -241,16 +239,16 @@ export const CONFIG = {
       // ...and the sweet zone inside it: how the ball comes off depends on where it is in THIS (smaller) part - beyond it, still
       // inside the contact window, the bat only gets a piece of the ball (a foul tip, a pop-up, a chopper).
       sweetSpot: { up: 0.62, tip: 1.0, handle: 0.85 },
-      batBonus: 4, // mph of extra bat speed (slower pitches come off the bat slower: this keeps the easy level from being the weakest)
+      batBonus: 5, // mph of extra bat speed (slower pitches come off the bat slower: this keeps the easy level from being the weakest)
       fastball: [62, 72],
       mix: { fastball: 0.62, changeup: 0.12, curveball: 0.13, slider: 0.13, heater: 0 },
       // Where the computer pitcher throws (odds before the count changes them): 'heart' = in the zone, 'edge' = on the corners,
       // 'chase' = tempting but out of the zone, 'waste' = way out of reach (in the dirt, high heat, way off the plate).
       locations: { heart: 0.68, edge: 0.16, chase: 0.09, waste: 0.07 },
       // Pitch guide (see pitch.guide): fadeIn = fractions of the flight (0 = release, 1 = plate) where it starts and finishes fading in;
-      // reveal = where it starts / finishes showing the pitch's break; error = feet the guess is typically off when it first shows,
-      // sharpening over the `sharpen` part of the flight down to `floor` feet (how close it ends up).
-      guide: { fadeIn: [0.02, 0.1], reveal: [0.0, 0.2], error: 0.1, sharpen: [0.05, 0.35], floor: 0.04 },
+      // reveal = where it starts / finishes showing the pitch's break; error = feet the guess is typically off when it first shows; over
+      // the `sharpen` part of the flight it homes in until it is exactly where the ball will cross.
+      guide: { fadeIn: [0.02, 0.1], reveal: [0.0, 0.2], error: 0.1, sharpen: [0.05, 0.5] },
       pitchPace: 1.1, // the ball takes this many times longer to reach the plate than a real pitch at the speed shown (the speed shown,
       // the timing windows and how hard the ball comes off the bat are unchanged: it is just easier to see and to get the bat on)
       commandSigma: 0.12, // ft of pitcher inaccuracy
@@ -268,15 +266,15 @@ export const CONFIG = {
     },
     pro: {
       label: 'Pro',
-      windowScale: 1.0,
+      windowScale: 1.2,
       contactWindow: { up: 0.56, tip: 0.9, handle: 0.76 },
-      sweetSpot: { up: 0.44, tip: 0.78, handle: 0.66 },
-      batBonus: 1.5,
+      sweetSpot: { up: 0.5, tip: 0.82, handle: 0.7 },
+      batBonus: -0.5,
       fastball: [80, 90],
       mix: { fastball: 0.46, changeup: 0.18, curveball: 0.18, slider: 0.18, heater: 0 },
       locations: { heart: 0.52, edge: 0.08, chase: 0.21, waste: 0.19 },
-      guide: { fadeIn: [0.03, 0.14], reveal: [0.04, 0.35], error: 0.22, sharpen: [0.1, 0.5], floor: 0.09 },
-      pitchPace: 1.18,
+      guide: { fadeIn: [0.03, 0.12], reveal: [0.04, 0.32], error: 0.2, sharpen: [0.08, 0.6] },
+      pitchPace: 1.26,
       commandSigma: 0.28,
       errorScale: 1.0,
       catcherArm: 1.05,
@@ -292,15 +290,15 @@ export const CONFIG = {
     },
     allstar: {
       label: 'All-Star',
-      windowScale: 0.78,
+      windowScale: 0.95,
       contactWindow: { up: 0.54, tip: 0.84, handle: 0.72 },
-      sweetSpot: { up: 0.4, tip: 0.66, handle: 0.58 },
-      batBonus: 0,
+      sweetSpot: { up: 0.46, tip: 0.74, handle: 0.64 },
+      batBonus: -1.5,
       fastball: [88, 98],
       mix: { fastball: 0.36, changeup: 0.18, curveball: 0.17, slider: 0.19, heater: 0.1 },
       locations: { heart: 0.32, edge: 0.15, chase: 0.29, waste: 0.24 },
-      guide: { fadeIn: [0.045, 0.17], reveal: [0.05, 0.42], error: 0.28, sharpen: [0.12, 0.6], floor: 0.1 },
-      pitchPace: 1.15,
+      guide: { fadeIn: [0.045, 0.15], reveal: [0.05, 0.4], error: 0.26, sharpen: [0.1, 0.7] },
+      pitchPace: 1.24,
       commandSigma: 0.42,
       errorScale: 0.7,
       catcherArm: 1.1,
@@ -492,6 +490,7 @@ export const CONFIG = {
       outs: 10,
       pitchSpeed: { rookie: 58, pro: 66, allstar: 74 }, // batting-practice fastballs
       evBonus: 10, // extra exit velocity (mph) on a squared-up ball: batting-practice balls jump off the bat
+      batBonus: 3, // mph of extra bat speed in the Derby on every level (instead of the level's own)
       windowGrow: 1.75, // the bat's contact window is this much bigger (the pitches are meatballs)
       locationSigma: 0.24,
     },
@@ -521,7 +520,7 @@ export const CONFIG = {
   camera: {
     batter: { pos: [0.0, 13.5, 24.0], pitch: -14.5, fov: 36 }, // camera behind the plate; pitch in degrees
     // the catcher's view you bat from (after Ready): through the catcher's eyes, over his glove (the rest of him is hidden)
-    catcher: { pos: [0, 3.3, 7.0], look: [0, 1.2, -30], fov: 42, zoom: 5, firstPerson: 2.6, clearDist: 6, umpireHead: 4.2, mittY: 1.75, mittReach: 0.16, firstDelay: 0.5 }, // zoom = how quickly it moves in; firstPerson = ft from here at which only the catcher's glove arm shows; clearDist = the catcher and umpire stay hidden until the camera is this far (ft) from them (umpireHead = his head's height); the catcher's mitt waits low at mittY and reaches for the ball in the last mittReach s
+    catcher: { pos: [0, 3.3, 7.0], look: [0, 1.2, -30], fov: 42, zoom: 5, clearDist: 6, umpireHead: 4.2, mittY: 1.75, mittReach: 0.16, firstDelay: 0.5 }, // zoom = how quickly it moves in; clearDist = the catcher and umpire are hidden while the camera is closer than this (ft) to them (the batting view, and the pull-back after a swing) (umpireHead = his head's height); the catcher's mitt waits low at mittY and reaches for the ball in the last mittReach s
     minHorizontalFov: 38, // narrow (portrait) screens widen the view to keep this
     highHome: { up: 36, back: 40 }, // ft the camera climbs / backs up from its spot behind the plate while it follows a deep ball
   },

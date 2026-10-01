@@ -28,7 +28,7 @@ export function feel({ difficulty = 'pro', player = 'average', mode = 'quick', n
   const defense = createDefense(cfg, createRng(5));
   const win0 = contactWindow(difficulty, cfg), grow = mode === 'derby' ? cfg.modes.derby.windowGrow : 1;
   const win = scaleWindow(win0, grow);
-  const out = { swings: 0, contact: 0, fair: 0, hit: 0, hr: 0, why: {} };
+  const out = { swings: 0, contact: 0, fair: 0, foul: 0, hard: 0, hit: 0, hr: 0, why: {} };
   for (let i = 0; i < n; i++) {
     const p = choosePitch({ mode, difficulty, count: { balls: 0, strikes: 0 }, rng: pr, batterHand: 'R', pitcherHand: 'R' }, cfg);
     if (zoneRatio(p.target.x, p.target.y, cfg) > cfg.swing.chase.from) { i--; continue; } // (he only swings at hittable pitches)
@@ -49,8 +49,9 @@ export function feel({ difficulty = 'pro', player = 'average', mode = 'quick', n
     const start = flight.at(times.hitTime);
     const sim = simulateBattedBall({ ...c, start: { x: start.x, y: Math.max(1, start.y), z: start.z } }, cfg);
     const plan = planPlay({ sim, contact: c, bases: [null, null, null], outs: 0, defense }, cfg);
-    if (plan.result === 'foul' || plan.result === 'foulOut' && !plan.fair) continue;
+    if (plan.result === 'foul' || (plan.result === 'foulOut' && !plan.fair)) { out.foul++; continue; }
     out.fair++;
+    if (c.exitVelocity >= 95) out.hard++;
     if (plan.homer) out.hr++;
     else if (['single', 'double', 'triple', 'insideParkHomer'].includes(plan.result)) out.hit++;
   }
@@ -61,10 +62,10 @@ if (process.argv[1] && process.argv[1].endsWith('feel.mjs')) {
   const N = +(process.argv[2] || 3000), player = process.argv[3] || 'average', mode = process.argv[4] || 'quick';
   const pct = (x) => (100 * x).toFixed(0).padStart(3) + '%';
   console.log(`A ${player} player swinging at ${N} hittable pitches per level (${mode}).`);
-  console.log('level     contact  miss   | per swing: fair   hit    HR   | misses: why');
+  console.log('level     contact  miss   | per swing: fair   hit    HR   | of contact: foul  hard-hit | misses: why');
   for (const d of DIFFICULTIES) {
     const r = feel({ difficulty: d, player, mode, n: N });
     const why = Object.entries(r.why).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${pct(v / r.swings).trim()}`).join(', ');
-    console.log(`${d.padEnd(9)} ${pct(r.contact / r.swings)}    ${pct(1 - r.contact / r.swings)}   |          ${pct(r.fair / r.swings)}  ${pct(r.hit / r.swings)}  ${pct(r.hr / r.swings)}  | ${why}`);
+    console.log(`${d.padEnd(9)} ${pct(r.contact / r.swings)}    ${pct(1 - r.contact / r.swings)}   |          ${pct(r.fair / r.swings)}  ${pct(r.hit / r.swings)}  ${pct(r.hr / r.swings)}  |            ${pct(r.foul / Math.max(1, r.contact))}  ${pct(r.hard / Math.max(1, r.contact))}    | ${why}`);
   }
 }
