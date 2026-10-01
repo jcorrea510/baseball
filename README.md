@@ -1,8 +1,8 @@
 # ⚾ Sandlot
 
-**A baseball batting game that runs in your web browser, on a computer or a phone.** Watch the pitcher, decide whether to swing, time it, aim it, and send the ball over the fence. Play a whole season with your own team, or just a quick game. It looks like a real ballpark (striped grass, a dirt infield, dugouts, a packed crowd, day, dusk and night lighting) and it plays fast.
+**A baseball batting game that runs in your web browser, on a computer or a phone.** Watch the pitcher, decide whether to swing, time it, aim it, and send the ball over the fence. Pick one of thirty big-league clubs and play a whole league season, or just a quick game. It looks like a real ballpark (striped grass, a dirt infield, dugouts, a packed crowd, day, dusk and night lighting) and it plays fast.
 
-Everything in the game is original and made by code: the logo, players, teams, stadium, crowd and every sound effect. The umpire's voice is a set of recordings kept in the project. The only outside code is the three.js 3D engine (MIT licence - see Credits in the game).
+Everything in the game is made by code: the logo, players, stadium, crowd and every sound effect. The teams are the thirty big-league cities with their real colours, but every nickname and every player's name is changed a little (the New York Nets, the Los Angeles Dodgems, "Shohei Otani") so nobody is the real thing. The umpire's voice is a set of recordings kept in the project, and the pictures on the Play screen are screenshots of the game itself (`public/art/`, remade with `node scripts/art.mjs`). The only outside code is the three.js 3D engine (MIT licence - see Credits in the game).
 
 ## Play it
 
@@ -21,6 +21,7 @@ On a phone, turn it sideways for the best view. You can also add it to your home
 | Tap / click during a play | Fast-forward the play |
 | **Esc** or **P** | Pause (and back out of any menu) |
 | **M** | Mute |
+| **F** | Full screen (there is a button for it, too) |
 | **Z** | Show / hide the strike zone |
 | **Enter** / **Space** on a menu button, **Tab** to move between them | Use the menus without a mouse |
 
@@ -33,7 +34,7 @@ On a phone, turn it sideways for the best view. You can also add it to your home
 
 After every swing a small meter shows exactly how many milliseconds early or late you were.
 
-**Swing or take?** Pitches far outside the strike zone are hard to hit well, and some (way off the plate, in the dirt, high heat) cannot be hit at all. The **pitch guide** (a soft circle over the strike zone) shows where the pitch is heading in time to decide; on Rookie and Pro the pitch type is named as it leaves his hand. On harder levels the guide is less sure and curveballs and sliders reveal their break late - but it never tells you anything before the ball is thrown.
+**Swing or take?** Pitches far outside the strike zone are hard to hit well, and some (way off the plate, in the dirt, high heat) cannot be hit at all. The **pitch guide** (a soft circle over the strike zone) shows where the pitch is heading in time to decide - but you can also just watch the ball: it is drawn big, with a dark rim, a shadow on the ground and a streak behind it; on Rookie and Pro the pitch type is named as it leaves his hand. On harder levels the guide is less sure and curveballs and sliders reveal their break late - but it never tells you anything before the ball is thrown.
 
 **Aim:** hold a direction and a well-hit ball goes into that gap. The better the contact, the more the aim wins; pulling adds a little power.
 
@@ -43,7 +44,7 @@ Two helpers can be switched on and off: the **pitch guide** and the **landing ri
 
 ## What's in the game
 
-* **Season** - your team, the Sandlot Sluggers, against eight other teams, some good and some bad. 8 or 16 games of 6 innings; you meet the weakest teams first and the best last. The other games are played out for the standings. The top four make the playoffs: a one-game semifinal, then a best-of-three **World Series**. Every game earns **coins** (more for wins, playoff wins and a title); spend them in the **Shop** on better players. Every player has **Contact** (bigger timing windows), **Power** (the ball comes off harder) and **Speed** (he really runs faster). The **Roster** screen shows ratings and season numbers - tap two players to swap them in the batting order or bring one off the bench. When a batter comes up, his card shows his average, home runs and ratings. Win it all and the league gets tougher next season; your roster and coins carry over.
+* **League** - pick one of thirty teams (your own club and its stars, with real city and colours). You play your four division rivals and four teams from a neighbouring division: 8 or 16 games of 6 innings, weakest teams first and the best last. The other games are played out for the standings. The top four make the playoffs: a one-game semifinal, then a best-of-three **World Series**. Every game earns **coins** (more for wins, playoff wins and a title); spend them in the **Shop** on better players - now and then a star from another team is on the block. Every player has **Contact** (bigger timing windows), **Power** (the ball comes off harder) and **Speed** (he really runs faster). The **Roster** screen shows ratings and season numbers - tap two players to swap them in the batting order or bring one off the bench. You always bat in the bottom of the inning. A game is saved at every pitch: quit whenever you like and **Resume** puts you back at the same pitch (it cannot be re-rolled). Win it all and the league gets tougher next year; your roster and coins carry over.
 * **Quick Game** - 3 innings against the computer, with balls and strikes, outs, runners, runs and a real scoreboard. The computer's half-innings are played out instantly as a short highlights list. Tied after 3? Extra innings, starting with a runner on second base, and walk-off wins.
 * **Home Run Derby** - 10 outs. Anything that is not a home run costs an out (on Rookie, fouls and misses are free). Taking a pitch is free.
 * **Practice** - pick the pitch type, speed and location. Runners stay on base and the runs of the session are counted, but nobody is ever out for good.
@@ -57,7 +58,7 @@ From the title screen, the Play screen or the pause menu:
 * **Sound:** master, effects, umpire and crowd volume (letting go of a slider plays a sample), and the umpire's voice on or off.
 * **Game:** level, which side the batters hit from, time of day, strike zone, pitch guide, landing ring.
 * **Controls & screen:** *Swing delay* (if your screen or TV lags, slide it up until your perfect swings read PERFECT - it takes that many milliseconds off every press), camera shake, screen flashes.
-* **Reset stats** (clears career stats and records; your settings, unlocked items and season stay). Restart, Quit, Reset and New league all take two taps, so a mis-tap never loses anything.
+* **Reset stats** (clears career stats and records; your settings, unlocked items and league stay). Restart, Quit, Reset and New league all take two taps, so a mis-tap never loses anything.
 
 Sound stops by itself when you switch to another tab or another app.
 
@@ -135,7 +136,7 @@ If something feels too hard, too easy, too slow or too fast, open **`src/config.
 | Fielders too good / too weak | `fielding.speed`, `fielding.reaction`, `fielding.glove` |
 | Too much waiting between pitches | `pace.*` and `difficulty.<level>.windup` |
 | Computer scores too much / too little | `difficulty.<level>.ai` |
-| Season too easy / too hard | `season.teamRatings` (how good the other teams are), `season.strength` (what a strong team does), `season.yearStep` |
+| League too easy / too hard | `season.tierRating` (how good each tier of team is), `season.strength` (what a strong team does), `season.starters` (how good your role players are), `season.yearStep` |
 | Players too cheap / too dear, coins too slow | `season.price`, `season.coins` |
 | What a rating is worth | `ratings.conWindow`, `ratings.powMph`, `ratings.spdSpeed` |
 | Derby too hard | `modes.derby.evBonus`, `modes.derby.pitchSpeed` |
