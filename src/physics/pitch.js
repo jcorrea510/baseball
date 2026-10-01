@@ -29,7 +29,10 @@ export function buildPitch(p, cfg = CONFIG) {
   const hand = p.hand || 'R';
   const mv = p.movementScale ?? 1;
   const R = releasePoint(p.type, hand, cfg);
-  const v0 = p.speedMph * MPH;
+  // pace: the ball takes this many times longer to reach the plate than a real pitch of this speed (an easier pitch to read; the
+  // speed shown and the speed the bat feels stay p.speedMph - see contact.contactPoint)
+  const pace = p.pace ?? 1;
+  const v0 = (p.speedMph * MPH) / pace;
   const drag = cfg.pitch.drag;
   const L = cfg.pitch.contactZ - R.z; // distance to the timing plane
   const T = L / (v0 * (1 - drag / 2));
@@ -54,7 +57,8 @@ export function buildPitch(p, cfg = CONFIG) {
     type: p.type,
     hand,
     speedMph: p.speedMph,
-    plateSpeedMph: Math.hypot(vx0 + ax * T, vy0 + ay * T, vzPlate) / MPH,
+    plateSpeedMph: (Math.hypot(vx0 + ax * T, vy0 + ay * T, vzPlate) / MPH) * pace,
+    pace,
     release: R,
     target: { x: p.target.x, y: p.target.y },
     T,

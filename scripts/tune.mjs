@@ -19,7 +19,7 @@ for (let i = 0; i < N; i++) {
   const f = buildPitch({ type: 'fastball', speedMph: 84, hand: 'R', target: { x: rng.range(-0.6, 0.6), y: 2.5 + rng.range(-0.7, 0.7) } });
   const err = rng.gauss(0, sd);
   const pt = contactPoint(f, f.T + Math.max(-0.03, Math.min(0.012, err / 1000)), f.T + err / 1000);
-  const aim = { x: pt.ball.x + rng.gauss(0, aimSd * 1.5), y: pt.ball.y - 0.3 * win.up + rng.gauss(0, aimSd) };
+  const aim = { x: pt.ball.x + rng.gauss(0, aimSd * 1.5), y: pt.ball.y - 0.3 * win.sweet.up + rng.gauss(0, aimSd) };
   const c = computeSwing({ errorMs: err, aim, ...pt, window: win, windowScale: CONFIG.difficulty[diff].windowScale, batterHand: 'R', batBonus: CONFIG.difficulty[diff].batBonus || 0, rng });
   if (!c.made) continue;
   const sim = simulateBattedBall({ ...c, start: { x: 0, y: 2.6, z: -1 } });

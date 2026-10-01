@@ -40,15 +40,25 @@ export function contactPoint(flight, tHit, tBarrel, cfg = CONFIG) {
   const sp = flight.spin, rad = sp.rpm / 9.5493;
   return {
     ball: { x: bp.x, y: cross.y + (yTrue - cross.y) * (1 - S.onPlane) },
-    vBall: { x: bv.x, y: bv.y, z: bv.z },
+    vBall: { x: bv.x * (flight.pace || 1), y: bv.y * (flight.pace || 1), z: bv.z * (flight.pace || 1) }, // (the bat feels the pitch's real speed)
     wBall: { x: sp.axis[0] * rad, y: sp.axis[1] * rad, z: sp.axis[2] * rad },
   };
 }
 
 /** The contact window for a level: how far (ft) above / below the ball's centre the bat can be and still hit it, and along the barrel. */
+// { up, tip, handle } = how far from the sweet spot the bat still touches the ball; `sweet` (the same shape, smaller) = the part where
+// it is hit properly: where the ball is inside the sweet zone decides how it comes off (see computeSwing).
 export function contactWindow(level, cfg = CONFIG) {
   const d = cfg.difficulty[level] || cfg.difficulty.pro;
-  return d.contactWindow || cfg.difficulty.pro.contactWindow;
+  const w = d.contactWindow || cfg.difficulty.pro.contactWindow;
+  const s = d.sweetSpot || w;
+  return { up: w.up, tip: w.tip, handle: w.handle, sweet: { up: s.up, tip: s.tip, handle: s.handle } };
+}
+
+/** The same window made bigger or smaller (the Contact rating, the Derby). */
+export function scaleWindow(win, k) {
+  const s = win.sweet || win;
+  return { up: win.up * k, tip: win.tip * k, handle: win.handle * k, sweet: { up: s.up * k, tip: s.tip * k, handle: s.handle * k } };
 }
 
 /**
@@ -59,7 +69,12 @@ export function contactWindow(level, cfg = CONFIG) {
 export function batOffset(ball, aim, hand, win) {
   const dv = ball.y - aim.y; // ball's centre above the sweet spot = the bat is under the ball
   const along = (ball.x - aim.x) * (hand === 'L' ? -1 : 1); // toward the end of the bat (the bat reaches across the plate from the batter)
-  return { dv, along, u: dv / win.up, w: along >= 0 ? along / win.tip : along / win.handle };
+  const s = win.sweet || win;
+  return {
+    dv, along, u: dv / win.up, w: along >= 0 ? along / win.tip : along / win.handle,
+    // ...the same against the sweet zone (beyond +-1: only a piece of the ball)
+    uq: dv / s.up, wq: along >= 0 ? along / s.tip : along / s.handle,
+  };
 }
 
 /**
@@ -85,7 +100,7 @@ export function computeSwing(i, cfg = CONFIG) {
   const timing = classifyTiming(i.errorMs, { windowScale: i.windowScale, speedScale: i.speedScale }, cfg);
   const off = batOffset(i.ball, i.aim, hand, i.window);
   const ratio = zoneRatio(i.ball.x, i.ball.y, cfg);
-  const base = { timing, grade: timing.grade, errorMs: i.errorMs, zoneRatio: ratio, u: off.u, w: off.w, aim: { ...i.aim }, ball: { ...i.ball } };
+  const base = { timing, grade: timing.grade, errorMs: i.errorMs, zoneRatio: ratio, u: off.uq, w: off.wq, aim: { ...i.aim }, ball: { ...i.ball } };
   if (timing.grade === 'miss') return { ...base, made: false, reason: 'timing' };
   if (Math.abs(off.u) > 1) return { ...base, made: false, reason: off.u > 0 ? 'under' : 'over' }; // swung under / over it
   if (off.w > 1 || off.w < -1) return { ...base, made: false, reason: off.w > 0 ? 'end' : 'hands' }; // it went past the end of the bat / in behind the hands
@@ -96,18 +111,21 @@ export function computeSwing(i, cfg = CONFIG) {
   const pullSign = hand === 'R' ? -1 : 1; // right-handed hitters pull toward left field (-x)
   let heading = pullSign * Math.sign(earliness) * c.spray.timingMax * Math.pow(Math.abs(earliness), c.spray.timingCurve);
   heading += pullSign * S.pullBias; // (on time = a little out front: toward the pull-side gap)
-  heading += -pullSign * S.endSpray * off.w; // off the end of the bat the ball goes the other way a little; in on the hands, pulled
+  // (how the ball comes off depends on where it is against the SWEET zone; outside it the bat only gets a piece)
+  const uq = clamp(off.uq, -1, 1), wq = clamp(off.wq, -1, 1);
+  heading += -pullSign * S.endSpray * wq; // off the end of the bat the ball goes the other way a little; in on the hands, pulled
   let speed = S.batSpeed * speedFromTiming(timing, cfg);
-  speed *= 1 - S.handleSlow * Math.max(0, -off.w); // nearer the hands the bat is moving slower
+  speed *= 1 - S.handleSlow * Math.max(0, -wq); // nearer the hands the bat is moving slower
   const chase = clamp(invLerp(S.chase.from, S.chase.to, ratio), 0, 1); // reaching for a pitch well out of the zone costs bat speed
   speed *= 1 - S.chase.speedLoss * chase;
   speed += (i.evBonus || 0) / (1 + S.q) + (i.batBonus || 0); // (extra exit speed comes from extra bat speed)
   const attack = clamp(S.attack + (cfg.timing.zoneCenterY - i.ball.y) * S.attackPerFt, S.attackRange[0], S.attackRange[1]); // low pitch: uppercut
   // off the sweet spot the bat vibrates and gives: less bounce, a bigger share of the bat recoils
-  const e = B.cor * (1 - S.offBarrel * off.w * off.w);
-  const r = B.massRatio * (1 + S.offBarrelMass * off.w * off.w);
-  // the window is gameplay-sized; the collision uses the real geometry (u = +-1 is the ball just grazing the barrel)
-  const offset = clamp(off.u, -S.maxGraze, S.maxGraze) * (cfg.physics.ballRadius + B.barrelRadius);
+  const e = B.cor * (1 - S.offBarrel * wq * wq);
+  const r = B.massRatio * (1 + S.offBarrelMass * wq * wq);
+  // the window is gameplay-sized; the collision uses the real geometry (u = +-1 at the edge of the sweet zone is the ball just grazing
+  // the barrel)
+  const offset = clamp(uq, -S.maxGraze, S.maxGraze) * (cfg.physics.ballRadius + B.barrelRadius);
   const hit = hitBall({ offset, batSpeed: speed * MPH, heading: heading * DEG, attack: attack * DEG, vBall: i.vBall, wBall: i.wBall, e, r }, cfg);
 
   // ----- a little human scatter (much less on a squared-up ball)
@@ -122,7 +140,7 @@ export function computeSwing(i, cfg = CONFIG) {
 
   // how it is graded on screen: the timing, marked down for a ball off the barrel or hit way off-centre
   let grade = timing.grade;
-  const squared = off.u > S.squared[0] && off.u < S.squared[1] && Math.abs(off.w) < S.squaredAlong;
+  const squared = off.uq > S.squared[0] && off.uq < S.squared[1] && Math.abs(off.wq) < S.squaredAlong;
   if ((grade === 'perfect' || grade === 'good') && !squared) grade = grade === 'perfect' ? 'good' : (i.errorMs < 0 ? 'early' : 'late');
   if (chase > 0.5 && (grade === 'perfect' || grade === 'good')) grade = i.errorMs < 0 ? 'early' : 'late';
   const quality = clamp((exitVelocity - c.exitVelocityFloor) / (c.maxExitVelocity - c.exitVelocityFloor), 0, 1);

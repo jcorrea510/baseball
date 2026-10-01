@@ -29,7 +29,7 @@ export function createBot(engine, o = {}) {
     const win = engine.contactWindow;
     plan = {
       swing: rng.chance(p), err: rng.gauss(bias, errSd),
-      dy: -(under + rng.gauss(0, underSd)) * win.up + rng.gauss(0, aimSd), dx: rng.gauss(0, aimSdX),
+      dy: -(under + rng.gauss(0, underSd)) * (win.sweet || win).up + rng.gauss(0, aimSd), dx: rng.gauss(0, aimSdX),
     };
   });
   return {

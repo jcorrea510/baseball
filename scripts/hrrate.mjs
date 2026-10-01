@@ -7,7 +7,7 @@
 import { CONFIG, DIFFICULTIES } from '../src/config.js';
 import { createRng } from '../src/util/rng.js';
 import { choosePitch } from '../src/game/pitcherAI.js';
-import { computeSwing, derbyBatting, contactWindow, contactPoint } from '../src/game/contact.js';
+import { computeSwing, derbyBatting, contactWindow, contactPoint, scaleWindow } from '../src/game/contact.js';
 import { classifyTiming } from '../src/game/timing.js';
 import { simulateBattedBall, judgeFairFoul } from '../src/physics/ballistics.js';
 import { buildPitch, zoneRatio } from '../src/physics/pitch.js';
@@ -20,19 +20,19 @@ export function hrRate({ mode = 'derby', difficulty = 'pro', kind = 'perfect', c
   const d = cfg.difficulty[difficulty];
   const w = classifyTiming(0, { windowScale: d.windowScale }, cfg).windows; // timing window edges in ms
   const win0 = contactWindow(difficulty, cfg), grow = mode === 'derby' ? cfg.modes.derby.windowGrow : 1;
-  const win = { up: win0.up * grow, tip: win0.tip * grow, handle: win0.handle * grow };
+  const win = scaleWindow(win0, grow);
   const [uMean, uSd] = CONTACT_U[contact];
   let hr = 0, made = 0, fair = 0, sumEV = 0, sumLA = 0, hard = 0;
   for (let i = 0; i < n; i++) {
     const p = choosePitch({ mode, difficulty, count: { balls: 0, strikes: 0 }, rng: pr, batterHand: hand, pitcherHand: 'R' }, cfg);
     if (zoneRatio(p.target.x, p.target.y, cfg) > cfg.swing.chase.from) { i--; continue; } // (a hittable pitch, in or next to the zone)
-    const flight = buildPitch({ type: p.type, speedMph: p.speedMph, hand: 'R', target: p.target, movementScale: mode === 'derby' ? 0.4 : d.movementScale }, cfg);
+    const flight = buildPitch({ type: p.type, speedMph: p.speedMph, hand: 'R', target: p.target, movementScale: mode === 'derby' ? 0.4 : d.movementScale, pace: d.pitchPace || 1 }, cfg);
     const sign = side || (rng.chance(0.5) ? 1 : -1); // side: -1 = early swing (pulled), +1 = late (toward the opposite field)
     const errorMs = kind === 'perfect' ? rng.range(-0.6, 0.6) * w.perfect : sign * rng.range(w.perfect * 1.1, w.good * 0.95);
     const tHit = flight.T + Math.max(-cfg.timing.reachEarly, Math.min(cfg.timing.reachLate, errorMs / 1000));
     const pt = contactPoint(flight, tHit, flight.T + errorMs / 1000, cfg);
     const u = uMean + rng.gauss(0, uSd);
-    const aim = { x: pt.ball.x + rng.gauss(0, 0.05), y: pt.ball.y - u * win.up };
+    const aim = { x: pt.ball.x + rng.gauss(0, 0.05), y: pt.ball.y - u * win.sweet.up };
     const c = computeSwing({ errorMs, aim, ...pt, window: win, windowScale: d.windowScale, batterHand: hand, batBonus: d.batBonus || 0, ...(mode === 'derby' ? derbyBatting(cfg) : {}), rng }, cfg);
     if (!c.made) continue;
     made++;

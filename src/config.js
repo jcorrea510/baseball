@@ -76,16 +76,16 @@ export const CONFIG = {
     // reach out to timing.reachRatio, and hits only weakly beyond timing.chaseRatio).
     locations: { edge: [0.9, 1.3], chase: [1.3, 1.9], waste: [1.9, 2.9] },
     wasteMinRatio: 1.75, // a 'waste' pitch is never wilder in the wrong direction than this: it stays out of reach
-    ballScale: 1.35, // pitches are drawn a bit bigger so they are easy to track
+    ballScale: 1.5, // pitches are drawn a bit bigger so they are easy to track
     // Seeing the ball (all of it is picture only): a thin dark rim keeps a white ball visible against clouds, dirt and crowd; a soft
     // shadow right under it on the ground shows where it is and when it passes the plate; a short streak behind it shows its curve and
     // speed. No glow.
     rimColor: 0x0b1230, rimOpacity: 0.78, rimScale: 1.16,
     shadowOpacity: 0.6, shadowRadius: 0.5,
-    trailColor: 0xdfe9ff, trailSize: 0.34, trailSeconds: 0.075, trailStrength: 0.5,
+    trailColor: 0xdfe9ff, trailSize: 0.36, trailSeconds: 0.11, trailStrength: 0.6, // (a longer streak shows which way it is heading)
     // ...and on screen at least this many pixels across (or this fraction of the screen height, whichever is bigger) while it still
     // grows as it comes in: at release a real-size ball is only ~2.5 px on a phone held sideways. Only the picture: timing is unchanged.
-    minScreenPx: 5,
+    minScreenPx: 6,
     handMinScreenPx: 3.5, // the ball in the pitcher's throwing hand is drawn at least this big, so you can see which hand it is in
     minScreenFrac: 0.009,
     // Movement is measured at the plate. breakArm: feet toward the pitcher's
@@ -108,8 +108,7 @@ export const CONFIG = {
       baseRadius: 0.22, // ft: radius of the circle when the guess is exact (a ball is 0.12 ft across at the plate)
       radiusPerError: 0.7, // ft of extra radius per ft of guess error: the less sure the guess, the bigger and softer the circle
       closeIn: 1.35, // the circle starts this much bigger than its final size and closes in as the ball arrives
-      maxAlpha: 0.5, // how see-through it stays even when fully faded in
-      errorShrink: 0.65, // the guess error at the plate is this fraction of the error at the start (it sharpens a little)
+      maxAlpha: 0.62, // how see-through it stays even when fully faded in
     },
   },
 
@@ -238,7 +237,10 @@ export const CONFIG = {
       windowScale: 1.5,
       // The bat's contact window (ft): how far the ball's centre can be above / below the sweet spot (`up`) and toward the end of the
       // bat / the hands and still be hit. The middle of `up` hits a line drive, a little under it a fly ball, above it a grounder.
-      contactWindow: { up: 0.62, tip: 1.0, handle: 0.85 },
+      contactWindow: { up: 0.7, tip: 1.05, handle: 0.9 },
+      // ...and the sweet zone inside it: how the ball comes off depends on where it is in THIS (smaller) part - beyond it, still
+      // inside the contact window, the bat only gets a piece of the ball (a foul tip, a pop-up, a chopper).
+      sweetSpot: { up: 0.62, tip: 1.0, handle: 0.85 },
       batBonus: 4, // mph of extra bat speed (slower pitches come off the bat slower: this keeps the easy level from being the weakest)
       fastball: [62, 72],
       mix: { fastball: 0.62, changeup: 0.12, curveball: 0.13, slider: 0.13, heater: 0 },
@@ -246,8 +248,11 @@ export const CONFIG = {
       // 'chase' = tempting but out of the zone, 'waste' = way out of reach (in the dirt, high heat, way off the plate).
       locations: { heart: 0.68, edge: 0.16, chase: 0.09, waste: 0.07 },
       // Pitch guide (see pitch.guide): fadeIn = fractions of the flight (0 = release, 1 = plate) where it starts and finishes fading in;
-      // reveal = where it starts / finishes showing the pitch's break; error = feet the guess is typically off.
-      guide: { fadeIn: [0.03, 0.18], reveal: [0.02, 0.3], error: 0.12 },
+      // reveal = where it starts / finishes showing the pitch's break; error = feet the guess is typically off when it first shows,
+      // sharpening over the `sharpen` part of the flight down to `floor` feet (how close it ends up).
+      guide: { fadeIn: [0.02, 0.1], reveal: [0.0, 0.2], error: 0.1, sharpen: [0.05, 0.35], floor: 0.04 },
+      pitchPace: 1.1, // the ball takes this many times longer to reach the plate than a real pitch at the speed shown (the speed shown,
+      // the timing windows and how hard the ball comes off the bat are unchanged: it is just easier to see and to get the bat on)
       commandSigma: 0.12, // ft of pitcher inaccuracy
       errorScale: 1.5, // how often the defense makes errors (x fielding.errors)
       catcherArm: 0.74, // x the catcher's exchange time on a steal. Set with each level's windup and pitch speed for steal success ~88% / 75% / 55%
@@ -264,12 +269,14 @@ export const CONFIG = {
     pro: {
       label: 'Pro',
       windowScale: 1.0,
-      contactWindow: { up: 0.44, tip: 0.78, handle: 0.66 },
+      contactWindow: { up: 0.56, tip: 0.9, handle: 0.76 },
+      sweetSpot: { up: 0.44, tip: 0.78, handle: 0.66 },
       batBonus: 1.5,
       fastball: [80, 90],
       mix: { fastball: 0.46, changeup: 0.18, curveball: 0.18, slider: 0.18, heater: 0 },
       locations: { heart: 0.52, edge: 0.08, chase: 0.21, waste: 0.19 },
-      guide: { fadeIn: [0.05, 0.22], reveal: [0.05, 0.45], error: 0.27 },
+      guide: { fadeIn: [0.03, 0.14], reveal: [0.04, 0.35], error: 0.22, sharpen: [0.1, 0.5], floor: 0.09 },
+      pitchPace: 1.18,
       commandSigma: 0.28,
       errorScale: 1.0,
       catcherArm: 1.05,
@@ -285,13 +292,15 @@ export const CONFIG = {
     },
     allstar: {
       label: 'All-Star',
-      windowScale: 0.7,
-      contactWindow: { up: 0.4, tip: 0.66, handle: 0.58 },
+      windowScale: 0.78,
+      contactWindow: { up: 0.54, tip: 0.84, handle: 0.72 },
+      sweetSpot: { up: 0.4, tip: 0.66, handle: 0.58 },
       batBonus: 0,
       fastball: [88, 98],
       mix: { fastball: 0.36, changeup: 0.18, curveball: 0.17, slider: 0.19, heater: 0.1 },
       locations: { heart: 0.32, edge: 0.15, chase: 0.29, waste: 0.24 },
-      guide: { fadeIn: [0.06, 0.22], reveal: [0.04, 0.42], error: 0.33 },
+      guide: { fadeIn: [0.045, 0.17], reveal: [0.05, 0.42], error: 0.28, sharpen: [0.12, 0.6], floor: 0.1 },
+      pitchPace: 1.15,
       commandSigma: 0.42,
       errorScale: 0.7,
       catcherArm: 1.1,
@@ -512,7 +521,7 @@ export const CONFIG = {
   camera: {
     batter: { pos: [0.0, 13.5, 24.0], pitch: -14.5, fov: 36 }, // camera behind the plate; pitch in degrees
     // the catcher's view you bat from (after Ready): through the catcher's eyes, over his glove (the rest of him is hidden)
-    catcher: { pos: [0, 4.8, 7.0], look: [0, -1.4, -30], fov: 44, zoom: 5, firstPerson: 2.6, clearDist: 6, umpireHead: 4.2, mittY: 1.75, mittReach: 0.16, firstDelay: 0.5 }, // zoom = how quickly it moves in; firstPerson = ft from here at which only the catcher's glove arm shows; clearDist = the catcher and umpire stay hidden until the camera is this far (ft) from them (umpireHead = his head's height); the catcher's mitt waits low at mittY and reaches for the ball in the last mittReach s
+    catcher: { pos: [0, 3.3, 7.0], look: [0, 1.2, -30], fov: 42, zoom: 5, firstPerson: 2.6, clearDist: 6, umpireHead: 4.2, mittY: 1.75, mittReach: 0.16, firstDelay: 0.5 }, // zoom = how quickly it moves in; firstPerson = ft from here at which only the catcher's glove arm shows; clearDist = the catcher and umpire stay hidden until the camera is this far (ft) from them (umpireHead = his head's height); the catcher's mitt waits low at mittY and reaches for the ball in the last mittReach s
     minHorizontalFov: 38, // narrow (portrait) screens widen the view to keep this
     highHome: { up: 36, back: 40 }, // ft the camera climbs / backs up from its spot behind the plate while it follows a deep ball
   },

@@ -6,7 +6,7 @@ import { createRng } from '../util/rng.js';
 import { buildPitch, isStrike } from '../physics/pitch.js';
 import { simulateBattedBall, projectDistance } from '../physics/ballistics.js';
 import { resolveSwingTimes, describeError } from './timing.js';
-import { computeSwing, computeBunt, derbyBatting, contactWindow, contactPoint } from './contact.js';
+import { computeSwing, computeBunt, derbyBatting, contactWindow, contactPoint, scaleWindow } from './contact.js';
 import { choosePitch, pitchWindowScale } from './pitcherAI.js';
 import { createDefense, planPlay, planSteal, fielderBackTime } from './fielding.js';
 import * as rules from './rules.js';
@@ -133,7 +133,7 @@ export class Engine {
   get contactWindow() {
     const w = contactWindow(this.difficulty, this.cfg);
     const k = ratingEffects(this.batter, this.cfg).window * (this.mode === 'derby' ? this.cfg.modes.derby.windowGrow : 1);
-    return { up: w.up * k, tip: w.tip * k, handle: w.handle * k };
+    return scaleWindow(w, k);
   }
 
   // ------------------------------------------------------------------ lifecycle
@@ -229,7 +229,7 @@ export class Engine {
     const hand = this.pitcher.hand;
     const flight = buildPitch({
       type: p.type, speedMph: p.speedMph, hand, target: p.target,
-      movementScale: this.mode === 'derby' ? 0.4 : this.d.movementScale,
+      movementScale: this.mode === 'derby' ? 0.4 : this.d.movementScale, pace: this.d.pitchPace || 1,
     }, this.cfg);
     let windup = this.d.windup + (this.difficulty === 'allstar' ? this.rng.range(-0.03, 0.04) : 0);
     if (this.mode === 'derby') windup = 0.8;

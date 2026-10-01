@@ -16,7 +16,7 @@ export function guideStats(level, n = 6000, seed = 3, cfg = CONFIG) {
   let T = 0;
   for (let i = 0; i < n; i++) {
     const p = choosePitch({ mode: 'quick', difficulty: level, count: { balls: rng.int ? rng.int(0, 3) : 0, strikes: 0 }, rng, batterHand: rng.chance(0.5) ? 'R' : 'L', pitcherHand: 'R' }, cfg);
-    const flight = buildPitch({ type: p.type, speedMph: p.speedMph, hand: 'R', target: p.target, movementScale: d.movementScale }, cfg);
+    const flight = buildPitch({ type: p.type, speedMph: p.speedMph, hand: 'R', target: p.target, movementScale: d.movementScale, pace: d.pitchPace || 1 }, cfg);
     const pitch = { flight, target: p.target, speedMph: p.speedMph, id: i + 1, type: p.type };
     const truth = isStrike(p.target.x, p.target.y, cfg);
     const g = pitchGuide(pitch, flight.T * 0.98, cfg, level);

@@ -585,9 +585,18 @@ export class Actors {
       // contact point in the batter's pose space
       const tt = clamp(swing.tHit - pitch.tRelease, 0, pitch.flight.tCatch);
       const bp = pitch.flight.at(swing.made ? tt : clamp(swing.tHit - pitch.tRelease, 0, pitch.flight.T));
+      // The bat goes where you swung it: its sweet spot through the spot you aimed at. On a hit it is where it physically had to be
+      // to meet the ball the way it did - the ball touching the barrel above or below its middle by the contact's offset - and on a
+      // miss exactly where you aimed.
       let c;
-      if (swing.made) c = bp;
-      else c = { x: swing.aim ? swing.aim.x : pitch.target.x, y: swing.aim ? swing.aim.y : pitch.target.y, z: E.cfg.pitch.contactZ }; // (a miss: the bat goes where he aimed it)
+      const aim = swing.aim || pitch.target;
+      if (swing.made && !swing.bunt) {
+        const S = E.cfg.swing, reach = E.cfg.physics.ballRadius + E.cfg.bat.barrelRadius;
+        const u = clamp(swing.contact.u ?? 0, -S.maxGraze, S.maxGraze);
+        const by = swing.ball ? swing.ball.y : bp.y;
+        c = { x: aim.x, y: by - u * reach, z: bp.z };
+      } else if (swing.made) c = bp;
+      else c = { x: aim.x, y: aim.y, z: E.cfg.pitch.contactZ }; // (a miss: the bat goes where he aimed it)
       const local = person.root.worldToLocal(this.tmpV.set(c.x, c.y, c.z).clone());
       sw = { tStart: swing.tPress, tHit: swing.tHit, follow: swing.follow, contact: [local.x, local.y, local.z], early: clamp(-swing.errorMs / 60, -1, 1) };
       if (!swing.made) sw.early = clamp(-swing.errorMs / 100, -0.6, 0.6);

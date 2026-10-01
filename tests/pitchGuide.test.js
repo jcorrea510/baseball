@@ -8,7 +8,7 @@ import { DEFAULT_SAVE, Progress } from '../src/game/progression.js';
 import { guideStats } from '../scripts/guidecheck.mjs';
 
 const mk = (type, x, y, level = 'pro', id = 1, speed = 82) => {
-  const flight = buildPitch({ type, speedMph: speed, hand: 'R', target: { x, y }, movementScale: CONFIG.difficulty[level].movementScale }, CONFIG);
+  const flight = buildPitch({ type, speedMph: speed, hand: 'R', target: { x, y }, movementScale: CONFIG.difficulty[level].movementScale, pace: CONFIG.difficulty[level].pitchPace || 1 }, CONFIG);
   return { flight, target: { x, y }, speedMph: speed, id, type };
 };
 const at = (pitch, f, level) => pitchGuide(pitch, pitch.flight.T * f, CONFIG, level);
@@ -44,7 +44,7 @@ describe('when it shows', () => {
     const start = DIFFICULTIES.map((lv) => CONFIG.difficulty[lv].guide.fadeIn[0]);
     expect(start[0]).toBeLessThan(start[1]); expect(start[1]).toBeLessThan(start[2]);
     // it is only ever semi-transparent
-    for (const lv of DIFFICULTIES) for (let f = 0; f < 1; f += 0.05) expect(at(mk('slider', 0.3, 2.2, lv), f, lv).alpha).toBeLessThanOrEqual(0.5 + 1e-9);
+    for (const lv of DIFFICULTIES) for (let f = 0; f < 1; f += 0.05) expect(at(mk('slider', 0.3, 2.2, lv), f, lv).alpha).toBeLessThanOrEqual(CONFIG.pitch.guide.maxAlpha + 1e-9);
   });
 });
 
@@ -101,16 +101,17 @@ describe('it helps in time, but it is not a giveaway', () => {
   });
 
   it('when you must decide it is on the right side of the zone mostly on Rookie, less on Pro, and often not on All-Star', () => {
-    expect(decide('rookie')).toBeGreaterThan(0.93);
-    expect(decide('pro')).toBeGreaterThan(0.8); expect(decide('pro')).toBeLessThan(0.92);
-    expect(decide('allstar')).toBeGreaterThan(0.64); expect(decide('allstar')).toBeLessThan(0.8);
+    // (round four: the circle is meant to be readable in time to put the bat there - only All-Star stays clearly unsure)
+    expect(decide('rookie')).toBeGreaterThan(0.95);
+    expect(decide('pro')).toBeGreaterThan(0.9); expect(decide('pro')).toBeLessThan(0.98);
+    expect(decide('allstar')).toBeGreaterThan(0.8); expect(decide('allstar')).toBeLessThan(0.92);
     expect(decide('rookie')).toBeGreaterThan(decide('pro')); expect(decide('pro')).toBeGreaterThan(decide('allstar'));
   });
 
-  it('borderline pitches stay hard: close to a coin flip on All-Star, far from certain on Pro', () => {
-    expect(decideEdge('rookie')).toBeGreaterThan(0.85);
-    expect(decideEdge('pro')).toBeLessThan(0.82);
-    expect(decideEdge('allstar')).toBeLessThan(0.7); expect(decideEdge('allstar')).toBeGreaterThan(0.5);
+  it('borderline pitches stay hard: unsure on All-Star, never certain on Pro', () => {
+    expect(decideEdge('rookie')).toBeGreaterThan(0.9);
+    expect(decideEdge('pro')).toBeLessThan(0.94);
+    expect(decideEdge('allstar')).toBeLessThan(0.84); expect(decideEdge('allstar')).toBeGreaterThan(0.6);
   });
 
   it('never gives a clean number: no NaN, radius and position are sane', () => {
