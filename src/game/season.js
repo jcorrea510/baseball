@@ -90,6 +90,22 @@ export function newSeason(prev, o = {}, cfg = CONFIG) {
   return s;
 }
 
+/**
+ * A season saved before the clubs and stars got their real names: the names (and the stars' ratings, from their real numbers) are
+ * brought up to date. Safe to call on any season; returns it.
+ */
+export function freshen(s) {
+  if (!s || !Array.isArray(s.teams)) return s;
+  for (const t of s.teams) { const m = teamById(t.id); if (m && m.id === t.id) t.name = teamName(m); }
+  const byId = new Map(allStars().map((p) => [p.id, p]));
+  for (const p of [...(s.roster || []), ...(s.shop || [])]) {
+    const q = p && p.star ? byId.get(p.id) : null;
+    if (!q) continue;
+    Object.assign(p, { name: q.name, short: q.short, last: q.last, con: q.con, pow: q.pow, spd: q.spd, real: q.real, hand: q.hand, switch: q.switch });
+  }
+  return s;
+}
+
 /** Your team's tier decides how good the unnamed players around the stars are. */
 export const roleMean = (tier, cfg = CONFIG) => cfg.season.starters.base + cfg.season.starters.perRating * cfg.season.tierRating[tier];
 

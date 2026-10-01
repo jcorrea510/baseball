@@ -9,14 +9,23 @@ import { createDefense, planPlay } from '../src/game/fielding.js';
 
 const play = (s, won, rf = 5, ra = 3) => S.recordGame(s, { won, runsFor: won ? Math.max(rf, ra + 1) : Math.min(rf, ra - 1), runsAgainst: ra, lines: {} });
 
-import { MLB_TEAMS, leagueFor, uniformFor, starsOf, lum } from '../src/game/mlb.js';
+import { MLB_TEAMS, leagueFor, uniformFor, starsOf, lum, ratingsFromStats } from '../src/game/mlb.js';
 
 describe('the big-league teams', () => {
-  it('thirty teams, six divisions of five, every nickname and star name different from the real one', () => {
+  it('thirty teams, six divisions of five, stars with real numbers that make sensible ratings', () => {
     expect(MLB_TEAMS.length).toBe(30);
     for (const lg of ['AL', 'NL']) for (const d of ['East', 'Central', 'West']) expect(MLB_TEAMS.filter((t) => t.league === lg && t.division === d).length).toBe(5);
     expect(new Set(MLB_TEAMS.map((t) => t.abbr)).size).toBe(30);
-    for (const t of MLB_TEAMS) { expect(t.stars.length).toBeGreaterThanOrEqual(3); for (const st of t.stars) for (const v of st.slice(2, 5)) { expect(v).toBeGreaterThan(20); expect(v).toBeLessThan(99); } }
+    for (const t of MLB_TEAMS) {
+      expect(t.stars.length).toBeGreaterThanOrEqual(3);
+      for (const st of t.stars) { expect(st[2]).toBeGreaterThan(0.18); expect(st[2]).toBeLessThan(0.36); expect(st[3]).toBeGreaterThanOrEqual(0); expect(st[3]).toBeLessThan(70); expect(st[4]).toBeGreaterThanOrEqual(0); expect(st[4]).toBeLessThan(80); }
+      for (const p of starsOf(t)) for (const v of [p.con, p.pow, p.spd]) { expect(v).toBeGreaterThanOrEqual(25); expect(v).toBeLessThanOrEqual(99); }
+    }
+    // the numbers decide the ratings: more home runs = more power, a higher average = more contact
+    const r = (avg, hr, sb) => ratingsFromStats(avg, hr, sb);
+    expect(r(0.3, 20, 5).con).toBeGreaterThan(r(0.25, 20, 5).con);
+    expect(r(0.26, 45, 5).pow).toBeGreaterThan(r(0.26, 20, 5).pow);
+    expect(r(0.26, 20, 40).spd).toBeGreaterThan(r(0.26, 20, 5).spd);
   });
   it('your league: your team, your division and four teams from a neighbouring division', () => {
     for (const t of MLB_TEAMS) for (const seed of [1, 2, 3]) {
@@ -241,5 +250,20 @@ describe('what strength and ratings do', () => {
     }
     expect(fast).toBeGreaterThan(slow);
     expect(e.runnerSpeeds()[0]).toBeCloseTo(S.ratingEffects(e.batter).speed, 9);
+  });
+});
+
+describe('older saves', () => {
+  it('a league saved with the old made-up names gets the real club and player names', () => {
+    const s = S.newSeason(null, { team: 'nym', seed: 3 });
+    const old = JSON.parse(JSON.stringify(s));
+    old.teams[0].name = 'New York Nets';
+    const star = old.roster.find((p) => p.star);
+    star.name = 'Juan Sotto'; star.short = 'J. Sotto'; star.con = 1;
+    S.freshen(old);
+    expect(old.teams[0].name).toBe('New York Mets');
+    const fresh = s.roster.find((p) => p.id === star.id);
+    expect(star.name).toBe(fresh.name);
+    expect(star.con).toBe(fresh.con);
   });
 });

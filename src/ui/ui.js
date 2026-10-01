@@ -500,6 +500,7 @@ export class UI {
       ['Players, ballpark, crowd', 'Drawn in code'],
       ['Sound', 'Synthesized live in your browser'],
       ['Umpire', recordings ? 'Recorded calls' : 'Signals only'],
+      ['Teams and players', 'Real names and last season\'s numbers · personal use only, not affiliated with MLB'],
     ];
     d.innerHTML = `${this.backHead('Credits')}
       <div class="mini-logo">${logoSVG({ id: 'credits', swoosh: false })}</div>
@@ -623,7 +624,7 @@ export class UI {
           <div class="teamcard" style="--c:${team.color}">
             <div class="top">${crest(team, 'xl')}<div><small>${team.league === 'AL' ? 'American' : 'National'} League · ${team.division}</small><h3>${team.city}<br>${team.nick}</h3>${tierStars(team.tier)}</div></div>
             <div class="sect split"><span>Stars</span><span class="rate">${ratingHead}</span></div>
-            <div class="starlist">${stars5.map((p) => `<div class="starrow"><span class="pos">${p.pos}</span><span class="nm">${p.name}</span><span class="rate">${ratingCells(p)}</span></div>`).join('')}</div>
+            <div class="starlist">${stars5.map((p) => `<div class="starrow"><span class="pos">${p.pos}</span><span class="nm">${p.name}${p.real ? `<small class="real">${p.real.avg.toFixed(3).replace(/^0/, '')} · ${p.real.hr} HR · ${p.real.sb} SB</small>` : ''}</span><span class="rate">${ratingCells(p)}</span></div>`).join('')}</div>
             <div class="sect">Division rivals</div>
             <div class="rivals">${rivals.map((t) => crest(t, 'sm')).join('')}</div>
           </div>

@@ -1,51 +1,60 @@
-// The League's teams and stars: the thirty big-league cities with their real locations and colours. Every nickname and every
-// player's name is changed a little (the Nets, the Fillies, "Aaron Judd") so nobody is the real thing but everybody is easy to
-// recognise. Pure data and small helpers (no graphics, no DOM).
+// The League's teams and stars: the thirty big-league clubs with their real names, cities and colours, and their best hitters
+// with their real names and last season's numbers (batting average, home runs, stolen bases) - their Contact / Power / Speed
+// ratings are worked out from those numbers (see ratingsFromStats). The game is for the owner's personal use only (see Credits).
+// Pure data and small helpers (no graphics, no DOM).
+import { CONFIG } from '../config.js';
 import { createRng } from '../util/rng.js';
 import { SKINS } from './teams.js';
 
-// strength tiers: 1 (rebuilding) .. 5 (the team to beat). A team's CPU strength rating comes from it (see config.league.tierRating).
-// stars: [name, position, contact, power, speed, bats]
+// strength tiers: 1 (rebuilding) .. 5 (the team to beat). A team's CPU strength rating comes from it (see config.season.tierRating).
+// stars: [name, position, batting average, home runs, stolen bases, bats] - last season's numbers
 const T = (id, city, nick, abbr, league, division, color, color2, tier, stars) => ({ id, city, nick, abbr, league, division, color, color2, tier, stars });
 
 export const MLB_TEAMS = [
   // ---- American League East
-  T('bal', 'Baltimore', 'Ospreys', 'BAL', 'AL', 'East', '#df4601', '#111111', 2, [['Gunner Hendricks', 'SS', 80, 76, 72, 'L'], ['Adley Rutledge', 'C', 78, 70, 40, 'L'], ['Jackson Holloway', '2B', 74, 62, 84, 'L']]),
-  T('bos', 'Boston', 'Red Hose', 'BOS', 'AL', 'East', '#bd3039', '#0c2340', 3, [['Rafael Devera', '3B', 80, 84, 38, 'L'], ['Jarren Durant', 'CF', 76, 58, 94, 'L'], ['Roman Antonio', 'RF', 74, 70, 70, 'L']]),
-  T('nyy', 'New York', 'Yankers', 'NYY', 'AL', 'East', '#0c2340', '#c4ced3', 4, [['Aaron Judd', 'RF', 84, 98, 58, 'R'], ['Giancarlo Stanford', 'DH', 66, 92, 36, 'R'], ['Anthony Volpi', 'SS', 68, 66, 82, 'R'], ['Austin Wellsley', 'CF', 72, 62, 78, 'L']]),
-  T('tb', 'Tampa Bay', 'Rayfins', 'TB', 'AL', 'East', '#092c5c', '#8fbce6', 3, [['Yandi Diaz', '1B', 86, 66, 44, 'R'], ['Junior Camino', '3B', 74, 80, 56, 'R'], ['Brandon Lowry', '2B', 66, 60, 78, 'L']]),
-  T('tor', 'Toronto', 'Blue Jets', 'TOR', 'AL', 'East', '#134a8e', '#e8291c', 3, [['Vladimir Guerrera Jr.', '1B', 86, 86, 34, 'R'], ['Bo Bishette', 'SS', 84, 66, 60, 'R'], ['George Springfield', 'CF', 70, 76, 68, 'R']]),
+  T('bal', 'Baltimore', 'Orioles', 'BAL', 'AL', 'East', '#df4601', '#111111', 2, [['Gunnar Henderson', 'SS', 0.274, 17, 30, 'L'], ['Jackson Holliday', '2B', 0.242, 17, 17, 'L'], ['Adley Rutschman', 'C', 0.220, 9, 0, 'S'], ['Jordan Westburg', '3B', 0.265, 17, 2, 'R']]),
+  T('bos', 'Boston', 'Red Sox', 'BOS', 'AL', 'East', '#bd3039', '#0c2340', 3, [['Jarren Duran', 'LF', 0.256, 16, 24, 'L'], ['Trevor Story', 'SS', 0.263, 25, 31, 'R'], ['Roman Anthony', 'RF', 0.292, 8, 4, 'L'], ['Wilyer Abreu', 'CF', 0.247, 22, 6, 'L']]),
+  T('nyy', 'New York', 'Yankees', 'NYY', 'AL', 'East', '#0c2340', '#c4ced3', 4, [['Aaron Judge', 'RF', 0.331, 53, 12, 'R'], ['Cody Bellinger', 'LF', 0.272, 29, 13, 'L'], ['Trent Grisham', 'CF', 0.235, 34, 4, 'L'], ['Giancarlo Stanton', 'DH', 0.273, 24, 0, 'R'], ['Ben Rice', '1B', 0.255, 26, 3, 'L']]),
+  T('tb', 'Tampa Bay', 'Rays', 'TB', 'AL', 'East', '#092c5c', '#8fbce6', 2, [['Junior Caminero', '3B', 0.264, 45, 7, 'R'], ['Yandy Díaz', '1B', 0.300, 25, 3, 'R'], ['Jonathan Aranda', '2B', 0.316, 14, 0, 'L'], ['Chandler Simpson', 'CF', 0.295, 0, 44, 'R']]),
+  T('tor', 'Toronto', 'Blue Jays', 'TOR', 'AL', 'East', '#134a8e', '#e8291c', 4, [['Vladimir Guerrero Jr.', '1B', 0.292, 23, 6, 'R'], ['Bo Bichette', 'SS', 0.311, 18, 4, 'R'], ['George Springer', 'DH', 0.309, 32, 18, 'R'], ['Daulton Varsho', 'CF', 0.238, 20, 3, 'L'], ['Ernie Clement', '3B', 0.277, 9, 6, 'R']]),
   // ---- American League Central
-  T('cws', 'Chicago', 'White Socks', 'CWS', 'AL', 'Central', '#27251f', '#c4ced4', 1, [['Luis Roberts Jr.', 'CF', 68, 82, 80, 'R'], ['Andrew Benintendo', 'LF', 70, 56, 54, 'L'], ['Miguel Vargis', '3B', 64, 66, 60, 'R']]),
-  T('cle', 'Cleveland', 'Guardsmen', 'CLE', 'AL', 'Central', '#00385d', '#e50022', 3, [['Jose Ramos', '3B', 82, 82, 80, 'S'], ['Steven Kwon', 'LF', 84, 44, 74, 'L'], ['Kyle Manzardo', '1B', 70, 70, 40, 'L']]),
-  T('det', 'Detroit', 'Tygers', 'DET', 'AL', 'Central', '#0c2340', '#fa4616', 4, [['Riley Greer', 'CF', 78, 76, 74, 'L'], ['Kerry Carpentier', 'RF', 76, 80, 56, 'L'], ['Spencer Torkelsen', '1B', 62, 80, 36, 'R'], ['Javier Baeza', 'SS', 68, 56, 70, 'R']]),
-  T('kc', 'Kansas City', 'Royales', 'KC', 'AL', 'Central', '#004687', '#bd9b60', 3, [['Bobby Wiltt Jr.', 'SS', 92, 84, 92, 'R'], ['Salvador Peres', 'C', 74, 80, 30, 'R'], ['Vinnie Pasquantini', '1B', 82, 62, 28, 'L']]),
-  T('min', 'Minnesota', 'Twines', 'MIN', 'AL', 'Central', '#002b5c', '#d31145', 2, [['Byron Buxtin', 'CF', 70, 82, 92, 'R'], ['Carlos Correia', 'SS', 76, 74, 50, 'R'], ['Royce Louis', '3B', 72, 78, 74, 'R']]),
+  T('cws', 'Chicago', 'White Sox', 'CWS', 'AL', 'Central', '#27251f', '#c4ced4', 1, [['Luis Robert Jr.', 'CF', 0.223, 14, 33, 'R'], ['Colson Montgomery', 'SS', 0.239, 21, 1, 'L'], ['Andrew Benintendi', 'LF', 0.240, 20, 1, 'L'], ['Kyle Teel', 'C', 0.271, 8, 3, 'L']]),
+  T('cle', 'Cleveland', 'Guardians', 'CLE', 'AL', 'Central', '#00385d', '#e50022', 3, [['José Ramírez', '3B', 0.283, 30, 44, 'S'], ['Steven Kwan', 'LF', 0.272, 11, 21, 'L'], ['Kyle Manzardo', '1B', 0.234, 27, 0, 'L']]),
+  T('det', 'Detroit', 'Tigers', 'DET', 'AL', 'Central', '#0c2340', '#fa4616', 4, [['Riley Greene', 'LF', 0.258, 36, 2, 'L'], ['Spencer Torkelson', '1B', 0.240, 31, 1, 'R'], ['Kerry Carpenter', 'RF', 0.252, 26, 0, 'L'], ['Gleyber Torres', '2B', 0.256, 16, 4, 'R']]),
+  T('kc', 'Kansas City', 'Royals', 'KC', 'AL', 'Central', '#004687', '#bd9b60', 3, [['Bobby Witt Jr.', 'SS', 0.295, 23, 38, 'R'], ['Vinnie Pasquantino', '1B', 0.264, 32, 0, 'L'], ['Maikel Garcia', '3B', 0.286, 16, 23, 'R'], ['Salvador Perez', 'C', 0.236, 30, 0, 'R']]),
+  T('min', 'Minnesota', 'Twins', 'MIN', 'AL', 'Central', '#002b5c', '#d31145', 2, [['Byron Buxton', 'CF', 0.264, 35, 24, 'R'], ['Royce Lewis', '3B', 0.237, 13, 12, 'R'], ['Trevor Larnach', 'RF', 0.250, 17, 1, 'L']]),
   // ---- American League West
-  T('hou', 'Houston', 'Astrals', 'HOU', 'AL', 'West', '#002d62', '#eb6e1f', 3, [['Yordan Alvarado', 'DH', 90, 92, 40, 'L'], ['Jose Altuvo', '2B', 82, 66, 66, 'R'], ['Jeremy Penya', 'SS', 72, 62, 70, 'R']]),
-  T('laa', 'Los Angeles', 'Angles', 'LAA', 'AL', 'West', '#ba0021', '#003263', 2, [['Mike Troutt', 'CF', 86, 90, 74, 'R'], ['Taylor Wardle', 'LF', 70, 74, 52, 'R'], ['Zach Netto', 'SS', 70, 62, 76, 'R']]),
-  T('ath', 'Sacramento', 'Athletix', 'ATH', 'AL', 'West', '#003831', '#efb21e', 2, [['Brent Rooke', 'DH', 72, 90, 44, 'L'], ['Nick Kurtzman', '1B', 74, 86, 44, 'L'], ['Lawrence Butlin', 'RF', 76, 72, 66, 'L']]),
-  T('sea', 'Seattle', 'Marines', 'SEA', 'AL', 'West', '#0c2c56', '#00857c', 3, [['Julio Rodrigues', 'CF', 78, 82, 90, 'R'], ['Cal Raliegh', 'C', 66, 94, 40, 'S'], ['Randy Arozaren', 'LF', 70, 78, 82, 'R'], ['Eugenio Suarex', '3B', 62, 84, 32, 'R']]),
-  T('tex', 'Texas', 'Ranchers', 'TEX', 'AL', 'West', '#003278', '#c0111f', 3, [['Corey Seeger', 'SS', 86, 88, 50, 'L'], ['Marcus Semian', '2B', 74, 74, 70, 'R'], ['Wyatt Langfield', 'LF', 72, 76, 78, 'L']]),
+  T('hou', 'Houston', 'Astros', 'HOU', 'AL', 'West', '#002d62', '#eb6e1f', 3, [['Jeremy Peña', 'SS', 0.304, 17, 20, 'R'], ['Jose Altuve', '2B', 0.265, 26, 10, 'R'], ['Yordan Alvarez', 'DH', 0.273, 6, 1, 'L'], ['Carlos Correa', '3B', 0.276, 13, 0, 'R']]),
+  T('laa', 'Los Angeles', 'Angels', 'LAA', 'AL', 'West', '#ba0021', '#003263', 2, [['Mike Trout', 'DH', 0.232, 26, 2, 'R'], ['Zach Neto', 'SS', 0.257, 26, 26, 'R'], ['Jo Adell', 'RF', 0.236, 37, 5, 'R'], ['Taylor Ward', 'LF', 0.228, 36, 3, 'R']]),
+  T('ath', 'Sacramento', 'Athletics', 'ATH', 'AL', 'West', '#003831', '#efb21e', 2, [['Nick Kurtz', '1B', 0.290, 36, 2, 'L'], ['Brent Rooker', 'DH', 0.262, 30, 6, 'R'], ['Shea Langeliers', 'C', 0.277, 31, 1, 'R'], ['Jacob Wilson', 'SS', 0.311, 13, 4, 'R'], ['Lawrence Butler', 'RF', 0.234, 21, 23, 'L']]),
+  T('sea', 'Seattle', 'Mariners', 'SEA', 'AL', 'West', '#0c2c56', '#00857c', 4, [['Cal Raleigh', 'C', 0.247, 60, 14, 'S'], ['Julio Rodríguez', 'CF', 0.267, 32, 30, 'R'], ['Eugenio Suárez', '3B', 0.228, 49, 3, 'R'], ['Josh Naylor', '1B', 0.295, 20, 30, 'L'], ['Randy Arozarena', 'LF', 0.238, 27, 31, 'R']]),
+  T('tex', 'Texas', 'Rangers', 'TEX', 'AL', 'West', '#003278', '#c0111f', 3, [['Corey Seager', 'SS', 0.271, 21, 3, 'L'], ['Wyatt Langford', 'LF', 0.241, 22, 22, 'R'], ['Josh Jung', '3B', 0.251, 14, 4, 'R'], ['Marcus Semien', '2B', 0.230, 15, 11, 'R']]),
   // ---- National League East
-  T('atl', 'Atlanta', 'Bravos', 'ATL', 'NL', 'East', '#13274f', '#ce1141', 3, [['Ronaldo Acunya Jr.', 'RF', 86, 90, 96, 'R'], ['Matt Olsen', '1B', 76, 90, 42, 'L'], ['Ozzie Albeez', '2B', 78, 70, 78, 'S'], ['Austin Reilly', '3B', 74, 86, 40, 'R']]),
-  T('mia', 'Miami', 'Merlins', 'MIA', 'NL', 'East', '#00a3e0', '#111111', 2, [['Kyle Stowes', 'RF', 66, 80, 74, 'L'], ['Xavier Edwardes', '2B', 80, 36, 80, 'S'], ['Otto Lopes', 'SS', 62, 56, 82, 'R']]),
-  T('nym', 'New York', 'Nets', 'NYM', 'NL', 'East', '#002d72', '#ff5910', 4, [['Juan Sotto', 'LF', 92, 90, 58, 'L'], ['Francisco Lindar', 'SS', 80, 82, 74, 'S'], ['Pete Alonzo', '1B', 70, 92, 32, 'R'], ['Brandon Nimmow', 'RF', 78, 64, 60, 'L']]),
-  T('phi', 'Philadelphia', 'Fillies', 'PHI', 'NL', 'East', '#e81828', '#002d72', 4, [['Bryce Harpur', '1B', 84, 90, 62, 'L'], ['Kyle Schwarbur', 'DH', 70, 94, 40, 'L'], ['Trea Turnor', 'SS', 82, 74, 94, 'R'], ['Alec Boehm', '3B', 78, 66, 42, 'R']]),
-  T('wsh', 'Washington', 'Naturals', 'WSH', 'NL', 'East', '#ab0003', '#14225a', 1, [['James Woods', 'RF', 72, 80, 76, 'L'], ['CJ Abrahms', 'SS', 70, 68, 90, 'L'], ['Dylan Crewes', 'CF', 66, 66, 84, 'R']]),
+  T('atl', 'Atlanta', 'Braves', 'ATL', 'NL', 'East', '#13274f', '#ce1141', 2, [['Ronald Acuña Jr.', 'RF', 0.290, 21, 9, 'R'], ['Matt Olson', '1B', 0.272, 29, 0, 'L'], ['Drake Baldwin', 'C', 0.274, 19, 0, 'L'], ['Michael Harris II', 'CF', 0.249, 20, 20, 'L'], ['Ozzie Albies', '2B', 0.240, 16, 14, 'S']]),
+  T('mia', 'Miami', 'Marlins', 'MIA', 'NL', 'East', '#00a3e0', '#111111', 2, [['Kyle Stowers', 'LF', 0.288, 25, 6, 'L'], ['Xavier Edwards', 'SS', 0.283, 3, 27, 'S'], ['Agustín Ramírez', 'C', 0.231, 21, 16, 'R'], ['Otto Lopez', '2B', 0.246, 15, 16, 'R']]),
+  T('nym', 'New York', 'Mets', 'NYM', 'NL', 'East', '#002d72', '#ff5910', 3, [['Juan Soto', 'RF', 0.263, 43, 38, 'L'], ['Francisco Lindor', 'SS', 0.267, 31, 31, 'S'], ['Pete Alonso', '1B', 0.272, 38, 1, 'R'], ['Brandon Nimmo', 'LF', 0.262, 25, 13, 'L']]),
+  T('phi', 'Philadelphia', 'Phillies', 'PHI', 'NL', 'East', '#e81828', '#002d72', 4, [['Kyle Schwarber', 'DH', 0.240, 56, 10, 'L'], ['Trea Turner', 'SS', 0.304, 15, 36, 'R'], ['Bryce Harper', '1B', 0.261, 27, 12, 'L'], ['Alec Bohm', '3B', 0.287, 11, 6, 'R'], ['J.T. Realmuto', 'C', 0.257, 12, 7, 'R']]),
+  T('wsh', 'Washington', 'Nationals', 'WSH', 'NL', 'East', '#ab0003', '#14225a', 1, [['James Wood', 'LF', 0.256, 31, 15, 'L'], ['CJ Abrams', 'SS', 0.257, 19, 31, 'L'], ['Dylan Crews', 'RF', 0.214, 10, 17, 'R']]),
   // ---- National League Central
-  T('chc', 'Chicago', 'Cubbies', 'CHC', 'NL', 'Central', '#0e3386', '#cc3433', 4, [['Kyle Tuckor', 'RF', 84, 86, 72, 'L'], ['Seiya Suzuka', 'LF', 80, 76, 56, 'R'], ['Pete Crow-Armstrang', 'CF', 66, 74, 92, 'L'], ['Ian Hapt', '2B', 72, 70, 50, 'S']]),
-  T('cin', 'Cincinnati', 'Redds', 'CIN', 'NL', 'Central', '#c6011f', '#111111', 3, [['Elly De La Cruze', 'SS', 68, 84, 98, 'S'], ['Spencer Steere', '1B', 74, 72, 66, 'R'], ['TJ Friedel', 'CF', 76, 54, 80, 'L']]),
-  T('mil', 'Milwaukee', 'Brewmen', 'MIL', 'NL', 'Central', '#12284b', '#ffc52f', 4, [['William Contrares', 'C', 80, 76, 44, 'R'], ['Christian Yelick', 'LF', 80, 74, 60, 'L'], ['Jackson Chorio', 'CF', 74, 76, 84, 'R']]),
-  T('pit', 'Pittsburgh', 'Pyrates', 'PIT', 'NL', 'Central', '#27251f', '#fdb827', 1, [['Oneil Cruze', 'SS', 64, 88, 82, 'L'], ['Bryan Reynold', 'LF', 78, 74, 56, 'S'], ['Nick Gonzaless', '2B', 66, 54, 66, 'R']]),
-  T('stl', 'St. Louis', 'Redbirds', 'STL', 'NL', 'Central', '#c41e3a', '#0c2340', 2, [['Nolan Arenada', '3B', 78, 76, 40, 'R'], ['Willson Contrera', 'C', 74, 76, 44, 'R'], ['Masyn Wynn', 'SS', 72, 60, 80, 'R'], ['Brendan Donovin', '2B', 78, 58, 62, 'L']]),
+  T('chc', 'Chicago', 'Cubs', 'CHC', 'NL', 'Central', '#0e3386', '#cc3433', 4, [['Kyle Tucker', 'RF', 0.266, 22, 25, 'L'], ['Pete Crow-Armstrong', 'CF', 0.247, 31, 35, 'L'], ['Seiya Suzuki', 'DH', 0.245, 32, 5, 'R'], ['Michael Busch', '1B', 0.261, 34, 4, 'L'], ['Nico Hoerner', '2B', 0.297, 7, 29, 'R']]),
+  T('cin', 'Cincinnati', 'Reds', 'CIN', 'NL', 'Central', '#c6011f', '#111111', 3, [['Elly De La Cruz', 'SS', 0.264, 22, 37, 'S'], ['Spencer Steer', '1B', 0.238, 21, 6, 'R'], ['TJ Friedl', 'CF', 0.261, 14, 12, 'L']]),
+  T('mil', 'Milwaukee', 'Brewers', 'MIL', 'NL', 'Central', '#12284b', '#ffc52f', 4, [['Christian Yelich', 'LF', 0.264, 29, 16, 'L'], ['Jackson Chourio', 'CF', 0.270, 21, 21, 'R'], ['Brice Turang', '2B', 0.288, 18, 24, 'L'], ['William Contreras', 'C', 0.260, 17, 6, 'R']]),
+  T('pit', 'Pittsburgh', 'Pirates', 'PIT', 'NL', 'Central', '#27251f', '#fdb827', 1, [['Oneil Cruz', 'CF', 0.200, 20, 38, 'L'], ['Bryan Reynolds', 'RF', 0.245, 16, 5, 'S'], ['Andrew McCutchen', 'DH', 0.239, 13, 5, 'R']]),
+  T('stl', 'St. Louis', 'Cardinals', 'STL', 'NL', 'Central', '#c41e3a', '#0c2340', 2, [['Alec Burleson', 'RF', 0.290, 18, 5, 'L'], ['Iván Herrera', 'C', 0.284, 19, 8, 'R'], ['Willson Contreras', '1B', 0.257, 20, 3, 'R'], ['Masyn Wynn', 'SS', 0.253, 9, 6, 'R']]),
   // ---- National League West
-  T('ari', 'Arizona', 'Diamondbackers', 'ARI', 'NL', 'West', '#a71930', '#30ced8', 3, [['Corbin Caroll', 'CF', 76, 74, 94, 'L'], ['Ketel Martay', '2B', 84, 80, 50, 'S'], ['Gerardo Perdomo', 'SS', 78, 56, 70, 'S']]),
-  T('col', 'Colorado', 'Rockers', 'COL', 'NL', 'West', '#33006f', '#c4ced4', 1, [['Ezequiel Tovarr', 'SS', 68, 66, 78, 'R'], ['Brenton Doyal', 'CF', 62, 76, 88, 'R'], ['Hunter Goodmann', 'C', 64, 76, 40, 'R']]),
-  T('lad', 'Los Angeles', 'Dodgems', 'LAD', 'NL', 'West', '#005a9c', '#c4ced4', 5, [['Shohei Otani', 'DH', 90, 96, 80, 'L'], ['Mookie Betz', 'SS', 86, 78, 76, 'R'], ['Freddy Freemon', '1B', 90, 74, 50, 'L'], ['Will Smyth', 'C', 82, 76, 42, 'R'], ['Teoscar Hernandes', 'LF', 70, 84, 58, 'R']]),
-  T('sd', 'San Diego', 'Padrinos', 'SD', 'NL', 'West', '#2f241d', '#ffc425', 4, [['Fernando Tatiz Jr.', 'RF', 80, 86, 88, 'R'], ['Manny Machada', '3B', 80, 82, 56, 'R'], ['Jackson Merril', 'LF', 84, 66, 66, 'L'], ['Xander Bogerts', '2B', 78, 60, 56, 'R']]),
-  T('sf', 'San Francisco', 'Gyants', 'SF', 'NL', 'West', '#fd5a1e', '#27251f', 3, [['Willy Adamez', 'SS', 74, 80, 70, 'R'], ['Matt Chapmin', '3B', 68, 82, 52, 'R'], ['Heliot Ramoz', 'RF', 70, 74, 74, 'R']]),
+  T('ari', 'Arizona', 'Diamondbacks', 'ARI', 'NL', 'West', '#a71930', '#30ced8', 3, [['Corbin Carroll', 'RF', 0.259, 31, 32, 'L'], ['Ketel Marte', '2B', 0.283, 28, 4, 'S'], ['Geraldo Perdomo', 'SS', 0.290, 20, 27, 'S'], ['Gabriel Moreno', 'C', 0.285, 9, 2, 'R']]),
+  T('col', 'Colorado', 'Rockies', 'COL', 'NL', 'West', '#33006f', '#c4ced4', 1, [['Hunter Goodman', 'C', 0.278, 31, 1, 'R'], ['Jordan Beck', 'LF', 0.258, 16, 19, 'R'], ['Brenton Doyle', 'CF', 0.233, 15, 18, 'R'], ['Ezequiel Tovar', 'SS', 0.253, 6, 3, 'R']]),
+  T('lad', 'Los Angeles', 'Dodgers', 'LAD', 'NL', 'West', '#005a9c', '#c4ced4', 5, [['Shohei Ohtani', 'DH', 0.282, 55, 20, 'L'], ['Freddie Freeman', '1B', 0.295, 24, 6, 'L'], ['Will Smith', 'C', 0.296, 17, 0, 'R'], ['Mookie Betts', 'SS', 0.258, 20, 8, 'R'], ['Teoscar Hernández', 'RF', 0.247, 25, 3, 'R']]),
+  T('sd', 'San Diego', 'Padres', 'SD', 'NL', 'West', '#2f241d', '#ffc425', 4, [['Fernando Tatis Jr.', 'RF', 0.268, 25, 32, 'R'], ['Manny Machado', '3B', 0.275, 27, 14, 'R'], ['Jackson Merrill', 'CF', 0.264, 16, 1, 'L'], ['Xander Bogaerts', 'SS', 0.263, 11, 20, 'R']]),
+  T('sf', 'San Francisco', 'Giants', 'SF', 'NL', 'West', '#fd5a1e', '#27251f', 3, [['Rafael Devers', '1B', 0.252, 35, 1, 'L'], ['Willy Adames', 'SS', 0.225, 30, 12, 'R'], ['Heliot Ramos', 'LF', 0.256, 21, 7, 'R'], ['Matt Chapman', '3B', 0.231, 21, 6, 'R']]),
 ];
+
+/** Contact / Power / Speed (1-99) from a season's batting average, home runs and stolen bases (config.season.realStats). */
+export function ratingsFromStats(avg, hr, sb, cfg = CONFIG) {
+  const R = cfg.season.realStats;
+  const c = (v) => Math.max(R.min, Math.min(R.max, Math.round(v)));
+  return { con: c(R.conBase + (avg - R.conAvg) * R.conPerPoint * 1000), pow: c(R.powBase + hr * R.powPerHr), spd: c(R.spdBase + sb * R.spdPerSb) };
+}
 
 export const teamById = (id) => MLB_TEAMS.find((t) => t.id === id) || MLB_TEAMS[0];
 export const teamName = (t) => `${t.city} ${t.nick}`;
@@ -95,12 +104,13 @@ export function leagueFor(teamId, seed = 1) {
 export const FIRST_NAMES = ['Jake', 'Marcus', 'Danny', 'Tyler', 'Carlos', 'Ryan', 'Alex', 'Luis', 'Kevin', 'Brandon', 'Sam', 'Eric', 'Nate', 'Paul', 'Gabe', 'Hector', 'Will', 'Felix', 'Omar', 'Dustin', 'Mateo', 'Trevor', 'Andre', 'Cody'];
 export const LAST_NAMES = ['Alvarez', 'Bennett', 'Castillo', 'Dawson', 'Ellis', 'Fontaine', 'Grayson', 'Hollis', 'Ishikawa', 'Jimenez', 'Kowalski', 'Lindgren', 'Marlow', 'Nakamura', 'Okafor', 'Pruitt', 'Quinn', 'Rourke', 'Santos', 'Tanaka', 'Underhill', 'Vasquez', 'Whitaker', 'Yoder', 'Zielinski', 'Brennan', 'Delgado', 'Faulkner', 'Haddad', 'Iverson', 'Mercer', 'Novak', 'Ortega', 'Petrov', 'Reyes', 'Sutton', 'Thibodeaux', 'Voss', 'Walsh', 'Abbott'];
 
-/** "Aaron Judd" -> "A. Judd" (for tight places). */
+/** "Aaron Judge" -> "A. Judge" (for tight places). */
 export const shortName = (name) => { const [f, ...r] = name.split(' '); return r.length ? `${f[0]}. ${r.join(' ')}` : name; };
 
 /** A star as a player object (the shape the roster uses). */
 export function starPlayer(team, row, k, rng) {
-  const [name, pos, con, pow, spd, bats] = row;
+  const [name, pos, avg, hr, sb, bats] = row;
+  const { con, pow, spd } = ratingsFromStats(avg, hr, sb);
   const [fn, ...rest] = name.split(' ');
   void fn;
   return {
@@ -109,7 +119,7 @@ export function starPlayer(team, row, k, rng) {
     pos, hand: bats === 'L' ? 'L' : 'R', switch: bats === 'S',
     skin: SKINS[(team.abbr.charCodeAt(0) + k * 3 + team.abbr.charCodeAt(1)) % SKINS.length],
     scale: +(0.97 + rng.range(0, 0.06)).toFixed(3), build: +(0.97 + rng.range(0, 0.1)).toFixed(3),
-    con, pow, spd,
+    con, pow, spd, real: { avg, hr, sb }, // (last season's real numbers)
   };
 }
 export const starsOf = (t) => t.stars.map((row, k) => starPlayer(t, row, k, createRng(t.id.charCodeAt(0) * 131 + k * 17 + t.id.charCodeAt(t.id.length - 1))));

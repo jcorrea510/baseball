@@ -588,6 +588,10 @@ export const CONFIG = {
   //  Season mode (game/season.js)
   // --------------------------------------------------------------------------
   season: {
+    // A star's ratings from his real numbers last season: Contact = conBase + (AVG - conAvg) x conPerPoint per point of average
+    // (.300 -> 80, .250 -> 57), Power = powBase + HR x powPerHr (30 HR -> 72, 50 -> 98), Speed = spdBase + SB x spdPerSb
+    // (30 SB -> 69), each kept between min and max.
+    realStats: { conBase: 35, conAvg: 0.2, conPerPoint: 0.45, powBase: 35, powPerHr: 1.25, spdBase: 38, spdPerSb: 1.05, min: 25, max: 99 },
     innings: 6, // innings in a season game
     cycles: { short: 1, full: 2 }, // how many times you play every other team (8 opponents: 8 or 16 games)
     // CPU team strength ratings (50 = the level you picked). Shuffled onto the teams each season; the schedule goes from the
