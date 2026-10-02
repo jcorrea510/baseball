@@ -724,6 +724,8 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
   .setgrid .setrow.stack { grid-column: 1 / -1; }
 }
 @media (max-width: 520px) { .rrow .lw { display: none; } .rrow .rbadge { font-size: 12px; } }
+@media (max-height: 360px) and (max-width: 700px) { .basepad { width: 270px; } .rrow .lw { display: none; } .rrow .rbadge { font-size: 12px; } .rrow button { padding: 0 7px; } } /* the smallest phones held sideways: clear of the score box */
+@media (orientation: portrait) and (min-width: 761px) and (max-width: 1100px) { .basepad { bottom: calc(var(--safe-b) + 96px); } } /* upright tablets: above the score box */
 @media (max-width: 520px) {
   .title-stack .row { display: grid; grid-template-columns: 1fr 1fr; width: min(300px, 86vw); }
   .title-stack .btn.small { padding: 0 10px; font-size: 12px; gap: 6px; }
