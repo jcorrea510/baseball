@@ -324,44 +324,37 @@ svg.wordart { display: block; height: 1.08em; width: auto; max-width: 100%; marg
 body.touch .swingbtn.show { display: flex; }
 
 /* the base diamond (sending runners): bottom right while a hit is being played; a base you can send a runner to glows - tap it */
-.basepad { position: absolute; right: calc(var(--safe-r) + 14px); bottom: calc(var(--safe-b) + 10px); width: 276px; display: flex; flex-direction: column; align-items: stretch; opacity: 0; transform: translateY(10px) scale(.96); transition: opacity .16s var(--ease), transform .16s var(--ease); pointer-events: none; touch-action: none; }
+.basepad { position: absolute; right: calc(var(--safe-r) + 14px); bottom: calc(var(--safe-b) + 10px); width: min(400px, calc(100vw - 28px)); display: flex; flex-direction: column; align-items: stretch; opacity: 0; transform: translateY(10px) scale(.96); transition: opacity .16s var(--ease), transform .16s var(--ease); pointer-events: none; touch-action: none; }
 .basepad.show { opacity: 1; transform: none; pointer-events: auto; }
 .basepad .bphead { order: 2; text-align: center; margin: 6px 0 0; font: italic 800 13px/1 var(--cond); letter-spacing: .22em; text-transform: uppercase; color: var(--gold-hi); text-shadow: 0 2px 6px rgba(0, 0, 0, .8); }
-.basepad .bpdia { order: 3; position: relative; width: 170px; height: 170px; align-self: center; }
-.basepad .bpfield { position: absolute; left: 0; top: 0; width: 170px; height: 170px; filter: drop-shadow(0 6px 16px rgba(0, 0, 0, .55)); }
+.basepad .bpdia { order: 3; position: relative; width: 150px; height: 150px; align-self: flex-end; margin-right: 10px; }
+.basepad .bpfield { position: absolute; left: 0; top: 0; width: 150px; height: 150px; filter: drop-shadow(0 6px 16px rgba(0, 0, 0, .55)); }
 .basepad .bpover { pointer-events: none; filter: none; }
 .basepad .lines { fill: rgba(9, 16, 34, .72); stroke: rgba(255, 255, 255, .55); stroke-width: 2; }
 .basepad .bpdot { stroke: #0a1020; stroke-width: 2.2; }
 .basepad .bpdot.sent { stroke: #fff; stroke-width: 2.6; }
 .basepad .bplab { font: 900 10px/1 var(--cond); fill: #0a1020; text-anchor: middle; pointer-events: none; }
-.bpbase { appearance: none; position: absolute; width: 50px; height: 50px; margin: -25px 0 0 -25px; padding: 0; border: 0; background: none; cursor: default; pointer-events: none; }
-.bpbase::before { content: ''; position: absolute; inset: 9px; transform: rotate(45deg); background: rgba(255, 255, 255, .22); border: 2px solid rgba(255, 255, 255, .6); border-radius: 3px; transition: background .12s, transform .12s; }
-.bpbase.home::before { transform: none; inset: 10px 7px 5px; clip-path: polygon(0 0, 100% 0, 100% 55%, 50% 100%, 0 55%); border-radius: 0; }
-.bpbase span { position: relative; display: none; font: 800 11px/1 var(--cond); letter-spacing: .06em; text-transform: uppercase; color: var(--gold-ink); }
-.bpbase[data-base="1"] { left: 148.75px; top: 85px; }
-.bpbase[data-base="2"] { left: 85px; top: 21.25px; }
-.bpbase[data-base="3"] { left: 21.25px; top: 85px; }
-.bpbase[data-base="4"] { left: 85px; top: 148.75px; }
-.bpbase.home span { top: -3px; }
-.basepad.show .bpbase.can { pointer-events: auto; cursor: pointer; }
-.bpbase.can::before { background: linear-gradient(180deg, var(--gold-hi), var(--gold)); border-color: #fff; box-shadow: 0 0 16px rgba(255, 196, 64, .8); animation: bppulse .9s var(--ease) infinite alternate; }
-.bpbase.can span { display: block; }
-.basepad.show .bpbase.back { pointer-events: auto; cursor: pointer; }
-.bpbase.back::before { background: linear-gradient(180deg, #ffb27a, #e8682c); border-color: #fff; box-shadow: 0 0 16px rgba(240, 110, 50, .85); animation: bppulse .9s var(--ease) infinite alternate; }
-.bpbase.back span { display: block; color: #3a1405; }
-.bpbase.hit::before { transform: rotate(45deg) scale(1.25); background: #fff; }
-.bpbase.home.hit::before { transform: scale(1.2); }
-/* one row per runner: where he started (in his colour), where he is going, Back / Go / Tag */
-.rrows { order: 1; display: flex; flex-direction: column; gap: 4px; }
-.rrow { display: grid; grid-template-columns: 48px minmax(0, 1fr) 44px 66px 42px; align-items: center; gap: 4px; padding: 3px 4px 3px 0; background: rgba(9, 16, 34, .82); border-left: 4px solid var(--rc); box-shadow: 0 4px 12px rgba(0, 0, 0, .4); }
-.rrow .rbadge { padding-left: 7px; font: 900 13px/1 var(--cond); letter-spacing: .06em; text-transform: uppercase; color: var(--rc); }
-.rrow .rdest { overflow: hidden; font: 800 12px/1 var(--cond); letter-spacing: .06em; text-transform: uppercase; color: var(--ink); white-space: nowrap; }
-.rrow button { appearance: none; height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 1px; padding: 0 3px; border: 0; border-radius: 3px; background: rgba(255, 255, 255, .1); color: var(--ink); font: 800 11px/1 var(--cond); letter-spacing: .04em; text-transform: uppercase; cursor: pointer; }
-.rrow button svg { width: 14px; height: 14px; flex: none; }
+/* the bases are only a picture (a runner is told what to do with the buttons in his own row) */
+.bpbase { position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; transform: rotate(45deg); background: rgba(255, 255, 255, .22); border: 2px solid rgba(255, 255, 255, .6); border-radius: 3px; pointer-events: none; }
+.bpbase.home { transform: none; clip-path: polygon(0 0, 100% 0, 100% 55%, 50% 100%, 0 55%); border-radius: 0; }
+.bpbase[data-base="1"] { left: 131.25px; top: 75px; }
+.bpbase[data-base="2"] { left: 75px; top: 18.75px; }
+.bpbase[data-base="3"] { left: 18.75px; top: 75px; }
+.bpbase[data-base="4"] { left: 75px; top: 131.25px; }
+.rrows { order: 1; display: flex; flex-direction: column; gap: 5px; }
+/* one row per runner: [key] WHO | where he is going | Back to ... | Send to ... | Tag */
+.rrow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto auto; align-items: center; gap: 5px; padding: 4px 5px 4px 0; background: rgba(9, 16, 34, .86); border-left: 5px solid var(--rc); box-shadow: 0 4px 12px rgba(0, 0, 0, .45); }
+.rrow.isout { opacity: .6; }
+.rrow .rbadge { display: inline-flex; align-items: center; gap: 6px; padding-left: 8px; font: 900 14px/1 var(--cond); letter-spacing: .05em; text-transform: uppercase; color: var(--rc); white-space: nowrap; }
+.rrow .rbadge kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 3px; background: var(--rc); color: #0a1020; font: 900 11px/1 var(--cond); }
+body.touch .rrow .rbadge kbd { display: none; }
+.rrow .rdest { overflow: hidden; font: 800 13px/1 var(--cond); letter-spacing: .05em; text-transform: uppercase; color: var(--ink); white-space: nowrap; text-overflow: ellipsis; }
+.rrow .rgap { width: 0; }
+.rrow button { appearance: none; height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 2px; padding: 0 9px; border: 0; border-radius: 3px; background: rgba(255, 255, 255, .1); color: var(--ink); font: 800 13px/1 var(--cond); letter-spacing: .04em; text-transform: uppercase; cursor: pointer; white-space: nowrap; }
+.rrow button svg { width: 15px; height: 15px; flex: none; }
 .rrow button[data-ro="send"] { background: linear-gradient(180deg, var(--gold-hi), var(--gold)); color: var(--gold-ink); }
-.rrow button[data-ro="back"]:not([disabled]) { background: linear-gradient(180deg, #ffb27a, #e8682c); color: #3a1405; }
-.rrow button[disabled] { opacity: .25; cursor: default; background: rgba(255, 255, 255, .06); color: var(--ink-3); }
-.rrow button.tag { min-width: 42px; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .35); }
+.rrow button[data-ro="back"] { background: linear-gradient(180deg, #ffb27a, #e8682c); color: #3a1405; }
+.rrow button.tag { min-width: 44px; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .35); }
 .rrow button.tag.on { background: #fff; color: #0a1020; box-shadow: none; }
 .rrow button.tag.off { opacity: .55; text-decoration: line-through; }
 .rrow button.hit { transform: scale(.94); filter: brightness(1.3); }
@@ -633,7 +626,8 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
   .meter .txt { font-size: 20px; margin-top: 8px; }
   .callout .item { padding: 6px 12px 5px; min-width: 60px; }
   .swingbtn { width: 84px; height: 84px; }
-  .basepad { transform-origin: 100% 100%; scale: .72; }
+  .basepad .bpdia { transform-origin: 100% 100%; scale: .7; margin-top: -45px; } /* (only the little diamond shrinks: the buttons stay big enough to tap) */
+  .basepad .bphead { display: none; }
   .practice { width: 196px; }
   .lineup { width: 146px; }
 }
@@ -729,6 +723,7 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
   .setgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
   .setgrid .setrow.stack { grid-column: 1 / -1; }
 }
+@media (max-width: 520px) { .rrow .lw { display: none; } .rrow .rbadge { font-size: 12px; } }
 @media (max-width: 520px) {
   .title-stack .row { display: grid; grid-template-columns: 1fr 1fr; width: min(300px, 86vw); }
   .title-stack .btn.small { padding: 0 10px; font-size: 12px; gap: 6px; }

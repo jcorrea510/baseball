@@ -262,7 +262,6 @@ export class App {
       case 'batterReady': if (this.engine) this.engine.batterReady(); break;
       case 'bunt': if (this.engine) this.engine.setBunt(!this.engine.buntStance); break;
       case 'steal': if (this.engine) this.engine.setSteal(!this.engine.stealArmed); break;
-      case 'send': this.sendRunner(d); break;
       case 'runner': if (this.engine && !this.paused && !this.bot && this.engine.runnerOrder(d.from, d.kind)) this.audio.uiClick(); break;
       case 'swing': this.swingInput(d); break;
       case 'practice': if (this.engine) { Object.assign(this.engine.practice, d); } break;
@@ -956,7 +955,10 @@ export class App {
           break;
         case 'KeyM': this.toggleMute(); break;
         case 'KeyF': if (!onControl) this.toggleFullscreen(); break;
-        case 'KeyB': if (inGame && this.engine) this.engine.setBunt(!this.engine.buntStance); break;
+        case 'KeyB':
+          if (inGame && this.engine && this.engine.sendOpen) { this.runnerKey(0, e.shiftKey); break; } // (during a play B is the batter's row)
+          if (inGame && this.engine) this.engine.setBunt(!this.engine.buntStance);
+          break;
         case 'KeyS': if (inGame && this.engine) this.engine.setSteal(!this.engine.stealArmed); break;
         case 'KeyZ': if (this.engine) { this.changeSetting('zone', !this.settings.zone); } break;
         // the arrow keys (or A / D across) move the bat
@@ -973,10 +975,9 @@ export class App {
             if (any) this.audio.uiClick();
           }
           break;
-        case 'Digit1': case 'Digit2': case 'Digit3': case 'Digit4': case 'Digit5': case 'Digit6': case 'KeyH':
-          // while a hit is being played: 2 / 3 / 4 (or H) send a runner to that base
-          if (inGame && this.engine.sendOpen) { const b = e.code === 'KeyH' ? 4 : +e.code.slice(5); if (b >= 2 && b <= 4) this.sendRunner(b); break; }
-          if (e.code === 'KeyH') break;
+        case 'Digit1': case 'Digit2': case 'Digit3': case 'Digit4': case 'Digit5': case 'Digit6':
+          // while a hit is being played: 1 / 2 / 3 = the runner who started on that base (Shift: back), as shown on his row
+          if (inGame && this.engine.sendOpen) { const b = +e.code.slice(5); if (b <= 3) this.runnerKey(b, e.shiftKey); break; }
           if (inGame && this.engine.mode === 'practice') {
             const types = ['fastball', 'changeup', 'curveball', 'slider', 'heater', 'mixed'];
             this.engine.practice.type = types[+e.code.slice(5) - 1];
@@ -1131,11 +1132,12 @@ export class App {
     if (hideCursor !== this.cursorHidden) { this.cursorHidden = hideCursor; this.canvas.style.cursor = hideCursor ? 'none' : ''; }
   }
 
-  // ---------------------------------------------------------------- sending runners (the base diamond)
-  sendRunner(base) {
+  // ---------------------------------------------------------------- sending runners (one row per runner on the base pad)
+  // A key for a runner's row: send him one base further (Shift: back one base).
+  runnerKey(from, back) {
     const e = this.engine;
     if (!e || this.paused || this.bot) return;
-    if (e.sendRunner(base)) this.audio.uiClick();
+    if (e.runnerOrder(from, back ? 'back' : 'send')) this.audio.uiClick();
   }
 
   // Every frame: the base diamond is up while you can send runners - the bases you can send someone to glow, and a dot shows every
@@ -1157,7 +1159,7 @@ export class App {
       const q = runnerProfile(0, 1, 'run', e.cfg).at(Math.max(0, t - e.cfg.runner.batterStart), this.padQ || (this.padQ = {}));
       dots.push({ x: q.x, z: q.z, sent: false, from: 0 });
     }
-    this.ui.setBasePad({ targets: e.sendTargets(), dots, runners: e.runnerTargets() });
+    this.ui.setBasePad({ dots, runners: e.runnerTargets() });
   }
 
   swingInput(ev) {
