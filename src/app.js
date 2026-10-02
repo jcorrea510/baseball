@@ -577,17 +577,17 @@ export class App {
     }
     const q = grade === 'perfect' ? 1 : grade === 'good' ? 0.62 : 0.25;
     audio.batCrack(q, c.exitVelocity);
-    if (grade === 'perfect') this.hitStop = F.hitStopPerfect;
-    else if (grade === 'good') this.hitStop = F.hitStopGood;
+    if (c.plan.result !== 'foul') { if (grade === 'perfect') this.hitStop = F.hitStopPerfect; else if (grade === 'good') this.hitStop = F.hitStopGood; } // (no freeze-frame on a foul)
     if (this.settings.shake) this.cam.shake(grade === 'perfect' ? F.shakePerfect : grade === 'good' ? F.shakeGood : 0.2);
     const s = c.sim;
     const start = { x: s.x[0], y: s.y[0], z: s.z[0] };
     const dirN = new THREE.Vector3(Math.sin(c.sprayAngle * Math.PI / 180), 0.3, -Math.cos(c.sprayAngle * Math.PI / 180));
     this.fx.contactSparks(start.x, start.y, start.z, q, [dirN.x, dirN.y, dirN.z]);
-    if (grade === 'perfect') ui.flash(0.22, 90);
-    if (grade === 'perfect') ui.banner('PERFECT!', `${Math.round(c.exitVelocity)} mph`, 'great');
-    else if (grade === 'good') ui.banner('NICE HIT', '', 'good');
-    else if (c.plan.result === 'foul') { audio.tick(); }
+    const foul = c.plan.result === 'foul';
+    if (grade === 'perfect' && !foul) ui.flash(0.22, 90);
+    if (foul) audio.tick(); // (a foul ball gets no contact banner: the FOUL call says it)
+    else if (grade === 'perfect') ui.banner('PERFECT!', `${Math.round(c.exitVelocity)} mph`, 'great');
+    else if (grade === 'good') ui.banner('SOLID CONTACT', `${Math.round(c.exitVelocity)} mph`, 'good'); // (the timing was good - what becomes of the ball is the play's to say)
     if (c.homer) { this.slowMo = { t: 0, dur: F.slowMoDuration, delay: this.hitStop + 0.02 }; }
     if (e.mode === 'practice') ui.callout([{ v: Math.round(c.exitVelocity), u: 'mph', l: 'Exit velo' }, { v: Math.round(c.launchAngle), u: '°', l: 'Launch' }], 2400);
     // The follow-through swoosh already played; a big hit swells the crowd - a beat after the crack, once they see it fly
