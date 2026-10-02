@@ -677,6 +677,7 @@ export const CONFIG = {
     // the catcher's view you bat from (after Ready): through the catcher's eyes, over his glove (the rest of him is hidden)
     catcher: { pos: [0, 3.3, 7.0], look: [0, 1.2, -30], fov: 42, zoom: 5, clearDist: 6, umpireHead: 4.2, mittY: 1.75, mittReach: 0.16, firstDelay: 0.5 }, // zoom = how quickly it moves in; clearDist = the catcher and umpire are hidden while the camera is closer than this (ft) to them (the batting view, and the pull-back after a swing) (umpireHead = his head's height); the catcher's mitt waits low at mittY and reaches for the ball in the last mittReach s
     minHorizontalFov: 38, // narrow (portrait) screens widen the view to keep this
+    keepBall: { marginDeg: 7, maxFov: 64 }, // a ball high in the air stays this far inside the top of the picture (the view widens up to maxFov deg, then tilts up to it)
     highHome: { up: 36, back: 40 }, // ft the camera climbs / backs up from its spot behind the plate while it follows a deep ball
   },
   // --------------------------------------------------------------------------

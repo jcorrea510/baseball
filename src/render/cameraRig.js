@@ -6,6 +6,7 @@ import { damp, clamp, lerp, smoothstep, DEG } from '../util/math.js';
 
 const FIELD_CAM = new THREE.Vector3(0, 44, 58);
 const _look = new THREE.Vector3();
+const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3();
 const _tmp = new THREE.Vector3();
 const _dir = new THREE.Vector3();
 
@@ -71,6 +72,7 @@ export class CameraRig {
     const look = this.batterLook(_look).clone();
 
     const phase = E ? E.phase : 'title';
+    this.keepBallOn = false;
     if (this.batting && E && !this.title) {
       // batting: the catcher's view (it eases in from wherever the camera was - the broadcast view after Ready, or the field after a play)
       const C = cfg.catcher;
@@ -133,6 +135,16 @@ export class CameraRig {
         tFov = lerp(34, 46, w);
         posL = 2.4; lookL = 7; fovL = 3;
       }
+      // a ball high in the air never leaves the picture: the view widens until it fits, and past the widest it tilts up to it
+      this.keepBallOn = ball.y > 12 && !homerAfter && t < plan.ballHitEnd;
+      if (this.keepBallOn) {
+        const K = cfg.keepBall;
+        _a.subVectors(ball, this.pos); _b.subVectors(look, this.pos);
+        const off = _a.angleTo(_b) / DEG + K.marginDeg; // degrees from the middle of the picture
+        if (2 * off > tFov) tFov = Math.min(K.maxFov, 2 * off);
+        const over = off - K.maxFov / 2;
+        if (over > 0) look.lerp(_c.copy(ball), clamp(over / Math.max(1, off), 0, 1));
+      }
     } else if (E && (phase === 'result') && E.play && E.play.plan.homer) {
       look.set(this.interest.x * 0.9, this.interest.y + 18, this.interest.z * 0.9);
       tPos = _tmp.copy(this.basePos).add(new THREE.Vector3(0, 6, 4));
@@ -158,6 +170,15 @@ export class CameraRig {
     this.pos.set(damp(this.pos.x, tPos.x, posL, dt), damp(this.pos.y, tPos.y, posL, dt), damp(this.pos.z, tPos.z, posL, dt));
     this.look.set(damp(this.look.x, look.x, lookL, dt), damp(this.look.y, look.y, lookL, dt), damp(this.look.z, look.z, lookL, dt));
     this.fov = damp(this.fov, tFov, fovL, dt);
+    // (the eased view can lag a ball that shoots straight up: it widens at once rather than lose it)
+    if (this.keepBallOn) {
+      const ball = actors.ballPos, K = cfg.keepBall;
+      _a.subVectors(ball, this.pos); _b.subVectors(this.look, this.pos);
+      const off = _a.angleTo(_b) / DEG + K.marginDeg;
+      if (2 * off > this.fov) this.fov = Math.min(K.maxFov, 2 * off);
+      const over = off - K.maxFov / 2;
+      if (over > 0) this.look.lerp(ball, clamp(over / Math.max(1, off), 0, 1));
+    }
 
     // shake
     this.shakeT += dt * 60;
