@@ -140,6 +140,9 @@ If something feels too hard, too easy, too slow or too fast, open **`src/config.
 | The batting camera | `camera.catcher` |
 | Sending runners too easy / too hard | `runner.sendTag`, `runner.sendReact`, `runner.roundPast`, `runner.sendLead`, `runner.sendAfter` (how long the diamond stays up), `runner.halfway`, `runner.autoMargin` |
 | A park too easy / too hard to hit it out of | `parks.list.<park>` (fence distances, wall heights, air), `parks.scale` (all the big-league parks at once) |
+| How a park looks (seats, decks, roof, skyline, landmarks, grass pattern) | `parks.looks.<park>` |
+| Runners too timid / too bold on their own | `runner.autoMargin`, `runner.sureHitFeet`, `fielding.throwSpeed.OF` |
+| Too many / too few hit batters | `difficulty.<level>.hitBatter` |
 | Bunts too easy / too hard | `bunt.*` |
 | Steals too easy / too hard | `difficulty.<level>.catcherArm`, `steal.jump`, `runner.lead` |
 | Too many / too few errors | `fielding.errors`, `difficulty.<level>.errorScale` |

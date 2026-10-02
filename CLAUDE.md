@@ -10,7 +10,8 @@ Modes: **League** (called Season in the code and the save: pick one of the 30 bi
 - **The fourth round (Oct 1, second batch) is done**: batting order back after a resume, the ball comes out of the pitcher's throwing hand, dusk by default (old saves migrated once), Quick Game saved every pitch (tile: Resume / New game), faster infield throws (a first baseman cuts his run and carries), real **bat-ball collision physics** (`physics/bat.js`: where the bat meets the ball decides the flight), the **catcher's view** with a **see-through bat** you aim with the mouse / a finger, and **runner control** (one base on their own; tap a base on the diamond to send a runner).
 - **Round five (batting balance) is done**: see Known issues.
 - **Round six (Oct 1, third batch) is done**: foul balls stop in the seats; only Space fast-forwards a play; the shop charges exactly the price shown; the catcher is visible in every play, runs down pop-ups and foul pops and tags at the plate; ONE accurate shrinking pitch circle (no box / landing marks over the zone), fewer fouls, Pro and All-Star easier, a little more time to decide; bunting from the catcher's view (B squares around at once, he bunts by himself); **runner control v2** (below: from contact on every ball, call-backs, fly-ball sends / doubled off / tag-ups, a second throw, visible tag outs, banners that say who was out); the **real club and player names** with ratings from real stat lines; **all 30 clubs in the standings** by division; **31 ballparks** (Sandlot + every club's park; League = your club's park).
-- `npm test`: 31 files, 427 tests, all passing (3 ffmpeg tests skip when ffmpeg is missing). Baselines from the check scripts are in "Tuning".
+- **Round seven (Oct 2) is done**: runner orders v3 (Send / Back as often as you like with the runner really running each way, Stay / Tag / Go on fly balls, one row per runner on the base pad, no teleporting fielders), outs (more infield range, the first baseman runs it over himself, quick tags at home and on the bases), bunting with the real bat (it follows your aim and only bunts if it touches the ball), **difficulty** (slower pitches on every level, a little less contact, more home runs, runners who score by themselves), **hit by pitch**, Esc in full screen opens the pause menu, **League home and away** (road games in their park, batting first), your League club in every mode, "League level" labels, the Derby pitch guide, a sharper bat crack and a crowd that reacts a beat later, a landing ring the haze and dust never hide, one smooth seat on the players, and **every ballpark looking like itself** (`render/parkLook.js`).
+- `npm test`: 31 files, 433 tests, all passing (3 ffmpeg tests skip when ffmpeg is missing). Baselines from the check scripts are in "Tuning".
 - Work goes on the branch the session is given; the owner has authorised pushing to `main` (that is what publishes). One topic per commit.
 
 ## Commands
@@ -49,7 +50,7 @@ Modes: **League** (called Season in the code and the save: pick one of the 30 bi
 Module map:
 - `src/physics/`: `field.js`, `pitch.js`, `ballistics.js` (+ the backstop net), `bat.js`
 - `src/game/`: `engine`, `timing`, `contact`, `fielding`, `fielderMotion`, `playAudit`, `runnerMotion`, `rules`, `pitcherAI`, `aiHalf`, `pitchGuide`, `landing`, `progression`, `teams`, `mlb`, `season`, `bot`
-- `src/render/`: `scene`, `environment`, `stadium` (+ `perimeter`, `crowd`, `scoreboard`, `textures`), `rig`, `poses`, `actors`, `cameraRig`, `ball`, `effects`, `pitchGuide`, `landingRing`, `batAim`
+- `src/render/`: `scene`, `environment`, `stadium` (+ `perimeter`, `crowd`, `scoreboard`, `textures`, `parkLook` - each park's decks, roof, backdrop and landmarks from `config.parks.looks`), `rig`, `poses`, `actors`, `cameraRig`, `ball`, `effects`, `pitchGuide`, `landingRing`, `batAim`
 - `src/audio/`: `audio` (engine + umpire), `umpireFiles`, `umpireNames`
 - `src/ui/ui.js` + `src/style.css` + `src/ui/logo.js`
 - `scripts/` (Node tools and QA), `tests/` (31 files), `public/` (icons, share picture, manifest, `sounds/umpire/`)
@@ -126,29 +127,30 @@ The owner's cheat sheet is the table in README.md ("Tuning the game").
 
 | Area (config key) | Current values | How to check after a change |
 | --- | --- | --- |
-| Timing windows (`timing`) | perfect 20 ms, good 42, early 80, late 56; `swingDelay` 0.115 s; `decideTime` 0.22 s; windowScale rookie 1.5 / pro 1.0 / all-star 0.7 | `npm test`, `sim.mjs` |
+| Timing windows (`timing`) | perfect 20 ms, good 42, early 80, late 56; `swingDelay` 0.115 s; `decideTime` 0.22 s; windowScale rookie 1.45 / pro 1.1 / all-star 0.8; bat speed by timing `swing.timingSpeed` (good .95-.86: a perfect swing is clearly the best) | `npm test`, `sim.mjs` |
 | Pitch speed (`difficulty.<level>.fastball`) | rookie 62-72, pro 80-90, all-star 88-98 (+ heater) | `pitchmix.mjs` |
 | Where pitches go (`difficulty.<level>.locations`) | strikes 80% / 61% / 47%; unhittable 13% / 30% / 40% | `pitchmix.mjs` |
 | Pitch guide (`difficulty.<level>.guide`) | fades in from 2 / 3 / 4.5% of the flight, homes in (`sharpen`) to within `floor` .04 / .09 / .1 ft; right side at the decision moment 99 / 96 / 87% (borderline 97 / 90 / 76) | `guidecheck.mjs`, `feel.mjs` |
-| Pitch pace (`difficulty.<level>.pitchPace`) | 1.1 / 1.18 / 1.15 (flight time x; the mph shown is unchanged) | `feel.mjs` |
-| Bat-ball collision (`bat`, `swing`) | an inch under the middle of the ball ~33 deg / ~2700 rpm / ~380 ft on a perfect swing; contact window up .70 / .56 / .54 ft, sweet zone .62 / .44 / .40 ft by level; All-Star timing `windowScale` .78 | `tests/contact.test.js`, `hrrate.mjs`, `tune.mjs`, `feel.mjs` |
+| Pitch pace (`difficulty.<level>.pitchPace`) | 1.25 / 1.42 / 1.42 (flight time x; the mph shown is unchanged) | `feel.mjs` |
+| Bat-ball collision (`bat`, `swing`) | an inch under the middle of the ball ~33 deg / ~2700 rpm / ~380 ft on a perfect swing; contact window up .66 / .53 / .48 ft, sweet zone .58 / .46 / .41 ft by level; drag .0018 | `tests/contact.test.js`, `hrrate.mjs`, `tune.mjs`, `feel.mjs` |
 | Catcher view / bat cursor (`camera.catcher`, `batAim`) | camera [0, 3.3, 7] looking at [0, 1.2, -30], fov 42 (low: the release point is just above the zone, the pitch comes straight in); bat opacity .4, follow .03 s | `qa-output`-style screenshots, `hudqa.mjs` |
-| Sending runners (`runner`) | from .1 s after contact; round 14 ft past, halfway .5 (line .22), tag-up depth 320 ft, react .12 s / down .15 s, tag .15 s (lead .1), throw chosen .1 s before he is ready, window .45 s after, auto extra base at 1.4 s margin, tag-out shown 2.3 s | tests/baserunning |
+| Sending runners (`runner`) | from .1 s after contact; round 14 ft past, halfway .5 (line .22), tag-up depth 320 ft, react .12 s / down .15 s, tag .15 s (lead .1), throw chosen .1 s before he is ready, window .45 s after, auto extra base when safe by `autoMargin` .05 s, a ball nobody gets within `sureHitFeet` 10 ft of is read as a hit at `sureHitRead` .55 s, tag-out shown 2.3 s; runner on 2nd scores on ~half of singles by himself | tests/baserunning |
 | Bunt (`bunt`) | window 45-115 ms, 24-42 mph, `leadMargin` 0.35 | tests/engine, groundouts |
 | Errors (`fielding.errors`) | ground 4%, fly 1.8% per chance, x2 hard, x1.5 / 1 / 0.7 by level | tests/errors, `sim.mjs` (~1 per 100 balls in play) |
 | Steals (`steal`, `difficulty.<level>.catcherArm`) | jump .02/.03 s, exchange 0.74 s x 0.74 / 1.05 / 1.1, tag 0.12 s | success ~88 / 76 / 58% (tests/steal guards the order) |
-| Runners (`runner`) | 30.2 ft/s, accel 0.42 s, lead 9 ft (18 off second) | tests/runnerMotion, `sim.mjs` |
+| Runners (`runner`) | 30.2 ft/s, accel 0.42 s, lead 9 ft (22 off second) | tests/runnerMotion, `sim.mjs` |
 | Ballparks (`parks`) | 31: Sandlot + every club (real distances x `scale` .96, wall heights, `air` Coors .96 / Oracle 1.08) | tests/parks; `node scripts/sim.mjs 40 30 pro <park>` (Sandlot ~1.8 HR/g, Fenway ~1.5, Coors ~2.5) |
 | League (`season`) | 6 innings, 8/16 games, CPU ratings `tierRating` 26-54 (+boost), your role players `starters.base + perRating x tier rating`, coins start 200 / win 25 (+margin up to 10) / loss 10 / playoff win 50 / title 150, prices ~80-700 | tests/season; `qa-output`-style bot check (Mets, sd 70): ~93% vs the weakest, ~78% vs a 68; sd 110: ~73% to ~53% |
 | Windups (`difficulty.<level>.windup`, `stealBreak`) | 1.3 / 1.15 / 1.05 s; runners break 1.03 / 0.9 / 0.83 s before release | steals ~83 / 71 / 57% (steal of second) |
 | Ratings (`ratings`) | Contact +-18% windows, Power +-6 mph, Speed +-8% at 99 / 1 | tests/season |
 | Derby help (`modes.derby`) | `evBonus` 10, `windowGrow` 1.75: a perfect swing a little under the ball ~90% HR, good ~55% (the HR band is ~2.8-5.5 in under the ball's middle) | `hrrate.mjs` |
-| Fielders (`fielding`) | speed IF 20 / OF 22 ft/s, reaction IF .24 / OF .36 s, glove 2.4 ft | `sim.mjs`, `wallcatch.mjs`, `groundcheck.mjs` |
+| Fielders (`fielding`) | speed IF 21 / OF 22.5 ft/s, reaction IF .23 / OF .37 s, glove 2.4 ft; outfield throws 100 ft/s average after a .65 s gather | `sim.mjs`, `wallcatch.mjs`, `groundcheck.mjs` |
 | Landing ring (`landing`) | radius 18 -> 4 ft, alpha .85, appears 0.45 s after contact | `landingqa.mjs` |
 | Umpire (`audio.umpire.files`) | level .6, reverb .2, echo .5 | smoke 8, `mixcheck.mjs` |
 
-Baselines measured at the time of writing:
-- `node scripts/sim.mjs 60 30 pro` (round six: the bot sends runners only once a ball is down or caught): win ~80%, AVG ~.59, ~1.8 HR/game, ~5.7 runs for / ~3.2 against, "no violations, no stuck games"; Derby ~5.7 HR per run for the bot. Sloppy bot (sd 70): win ~65%, AVG ~.44.
+Baselines measured at the time of writing (round seven):
+- `node scripts/sim.mjs 60 30 pro`: win ~77%, AVG ~.60, ~1.6 HR/game, ~5.7 runs for / ~3.3 against, "no violations, no stuck games". Sloppy bot that never sends a runner (`NOSEND=1 node scripts/sim.mjs 60 70 <level>`): Rookie win ~98% (7.1 runs), Pro ~72% (4.3 runs, AVG ~.46), All-Star ~58% (4.3 runs, AVG ~.42).
+- `node scripts/feel.mjs` hits per swing (new / average / good player): Rookie 40 / 49 / 57%, Pro 28 / 34 / 45%, All-Star 16 / 23 / 31%; HR per swing on Pro 2.9 / 4.9 / 9.9%. (Round six: Pro average 42%, good 47%.) Hit by pitch: about 1 pitch in 500-800 (`difficulty.<level>.hitBatter`).
 - `guidecheck.mjs`: see above. `groundcheck.mjs`: "no problems". `wallcatch.mjs`: 100% of catchable balls caught (80 of 619 catches are leaps). `wallcheck.mjs`: worst penetration 0.00 ft.
 
 ## Conventions
@@ -170,6 +172,7 @@ Baselines measured at the time of writing:
 - **Umpire recordings**: every call has at least one take except `ball4` (ball four uses `ball`). Adding more takes makes it less repetitive.
 - **Real-device performance was never measured** (this sandbox renders in software). The sky light adds one small PMREM bake per time-of-day change.
 - **By design, the player only bats.**
+- **Round seven**: feel of the new difficulty, hit by pitch, home / away and the park looks is untested by the owner. A runner on first still rarely takes third on a single by himself (~3%; he is about 0.8 s short at the median).
 - **Nothing else is queued.** Further work comes from the owner's playtest notes.
 
 ## Working in this sandbox (things that cost time before)
