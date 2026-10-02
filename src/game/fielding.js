@@ -1758,6 +1758,7 @@ function finishHit(plan, ctx) {
       return [{ kind: 'run', from: r.from, to, t0: t0Of(r.from) }];
     };
     const extra = (r, target, ceil) => {
+      if (!R.autoExtra) return target; // (only you send a runner past the one base he takes)
       for (let nb = target + 1; nb <= 4 && (nb === 4 || nb < ceil); nb++) {
         const hyp = { ...r, legs: legsTo(r, nb) };
         if (recArrive(cfg, hyp, nb) + R.autoMargin < D[nb]) target = nb; else break;
@@ -1807,7 +1808,7 @@ function finishHit(plan, ctx) {
   // mile goes on (you have no time to think about a ball that gets past everybody)
   {
     const tAuto = sendBy + R.sendReact;
-    for (let pass = 0; pass < 3; pass++) {
+    for (let pass = 0; pass < (R.autoExtra ? 3 : 0); pass++) {
       let moved = false;
       for (const r of [...recs].sort((p, q) => q.to - p.to)) {
         if (r.recalled || r.out || r.to >= 4 || !r.legs.length || r.running) continue;
@@ -1931,7 +1932,23 @@ function finishHit(plan, ctx) {
   if (settled && recvPos) {
     const arrive = recArrive(cfg, settled, tgtBase);
     const tag = tgtBase === 1 && !settled.recalled ? 0 : R.sendTag;
-    if (tBall + tag + F.outMargin <= arrive) {
+    // a runner you sent who sees the throw is going to beat him pulls up and goes back to the bag he left behind, if nobody else is
+    // on it and he can get there before the ball can be thrown there
+    if (tBall + tag + F.outMargin <= arrive && R.retreatRead !== undefined) {
+      const back = tgtBase - 1, thr = plan.throws[plan.throws.length - 1];
+      const free = back >= Math.max(1, settled.from) && !recs.some((q) => q !== settled && !q.out && q.to === back);
+      if (free && thr && thr.toBase === tgtBase) {
+        const hyp = cloneRec(settled);
+        backLegs(hyp.legs, hyp.from, back, thr.t0 + R.retreatRead, cfg, hyp.spd);
+        const tBack = recArrive(cfg, hyp, back);
+        const ballBack = tBall + F.transfer.IF + dist(BASE_XZ[tgtBase][0], BASE_XZ[tgtBase][1], BASE_XZ[back][0], BASE_XZ[back][1]) / F.throwSpeed.IF + R.sendTag;
+        if (tBack !== undefined && tBack + F.outMargin < ballBack) {
+          settled.legs = hyp.legs; settled.to = back; settled.recalled = true; settled.retreated = true; plan.retreated = { from: settled.from, base: back };
+          if (ballBack - tBack <= F.closePlay) plan.events.push({ t: tBack + 0.1, type: 'safe', base: back });
+        }
+      }
+    }
+    if (settled.retreated) { /* (back safely: no tag) */ } else if (tBall + tag + F.outMargin <= arrive) {
       plan.events.push({ t: tBall, type: 'out', base: tgtBase, pos: recvPos, tag: tag > 0 });
       tagRunner(plan, settled, tgtBase, { tOut: tBall }, cfg);
     } else if (tBall - arrive <= F.closePlay) plan.events.push({ t: Math.max(tBall, arrive) + 0.1, type: 'safe', base: tgtBase });

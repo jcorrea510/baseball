@@ -602,6 +602,8 @@ export const CONFIG = {
     walkOffDelay: 1.3, // s after the tag before he gets up and walks to the dugout
     walkOffSpeed: 6, // ft/s
     autoMargin: 0.05, // s: a runner who would make one more base by this much takes it by himself (as the ball comes down, and again when the window closes)
+    autoExtra: false, // false: a runner (the batter too) NEVER takes an extra base by himself - one base (or where he is forced), more only when you send him. true: he takes one more when it is safe by autoMargin
+    retreatRead: 0.3, // s after the throw is let go: a runner you sent who sees it will beat him turns back to the bag he left (when he can make it back)
     // On a ball to the outfield a runner rounds his base, pulls up `roundPast` ft beyond it (braking at `roundBrake` ft/s^2) and waits.
     roundPast: 14,
     roundBrake: 30,

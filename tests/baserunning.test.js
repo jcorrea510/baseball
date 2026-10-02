@@ -165,7 +165,7 @@ describe('sending runners', () => {
     expect(onThrow).toBeGreaterThan(5);
   }, 120000);
 
-  it('a ball in the gap or off the wall: he makes second - by himself, or when you send him as soon as it is down', () => {
+  it('a ball in the gap or off the wall: he makes second when you send him as soon as it is down - never by himself', () => {
     const rng = createRng(17);
     let n = 0, made = 0, alone = 0;
     for (let k = 0; k < 3000 && n < 80; k++) {
@@ -179,8 +179,37 @@ describe('sending runners', () => {
     }
     expect(n).toBeGreaterThan(30);
     expect(made / n).toBeGreaterThan(0.7);
-    expect(alone / n).toBeGreaterThan(0.4); // (a plain double needs no order)
+    expect(alone).toBe(0); // (only you send a runner past the one base he takes - runner.autoExtra)
   }, 60000);
+
+  it('a runner you sent who sees the throw will beat him turns back to the bag he left, when he can make it', () => {
+    const rng = createRng(31);
+    let back = 0, sentOut = 0;
+    const problems = [];
+    for (let k = 0; k < 2500; k++) {
+      const c = C(rng.range(75, 102), rng.range(2, 24), rng.range(-40, 40));
+      const bases = [rng.chance(0.5) ? 1 : null, rng.chance(0.5) ? 2 : null, null];
+      const first = plan(c, { bases }).plan;
+      if (!['single', 'double'].includes(first.result) || !first.send) continue;
+      // send every runner one base further, early, as soon as the pad offers it
+      const t = (first.send.res ?? first.send.from) + 0.05;
+      const orders = [];
+      for (const o of sendOptions(first, t)) if (o.kind === 'send') orders.push({ base: o.base, t, from: o.from });
+      if (!orders.length) continue;
+      const { plan: p, defense } = plan(c, { bases, orders });
+      if (p.retreated) {
+        back++;
+        const m = p.moves.find((q) => q.from === p.retreated.from);
+        if (!m || m.out || m.to !== p.retreated.base) problems.push('retreated runner not back on his bag');
+      }
+      if (p.sentOut) sentOut++;
+      problems.push(...auditPlan(p, defense));
+      const ends = p.moves.filter((m) => !m.out && !m.back && m.to < 4).map((m) => m.to);
+      if (new Set(ends).size !== ends.length) problems.push('two runners on one base');
+    }
+    expect(problems).toEqual([]);
+    expect(back).toBeGreaterThan(5);
+  }, 120000);
 
   it('the throw goes after the runner you sent when it can get him', () => {
     // a single to left-centre with a runner on second: send him home late and the throw beats him
