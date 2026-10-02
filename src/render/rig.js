@@ -15,15 +15,20 @@ export const DIM = {
 };
 DIM.hipStand = DIM.ankle + DIM.shin + DIM.thigh; // hip height with straight legs (3.26)
 
+// Where the hands hold the bat: feet up the bat from the knob to the middle of each fist (bottom hand just above the knob, the top
+// hand touching it - a pose can slide the top hand up the bat with `gripTop`, as for a bunt), and the point inside a closed fist
+// the handle runs through (wrist space: down toward the fingers, out toward the curled fingertips).
+const GRIP = { bottom: 0.17, top: 0.43, point: new THREE.Vector3(0, -0.2, 0.07) };
+
 // ---------------------------------------------------------------- pose format
-export const SCALARS = ['hipY', 'pelvisYaw', 'pelvisPitch', 'pelvisRoll', 'torsoPitch', 'torsoYaw', 'torsoRoll', 'headYaw', 'headPitch', 'footLTilt', 'footRTilt', 'batYaw', 'batPitch', 'batVis', 'gloveOpen'];
+export const SCALARS = ['hipY', 'pelvisYaw', 'pelvisPitch', 'pelvisRoll', 'torsoPitch', 'torsoYaw', 'torsoRoll', 'headYaw', 'headPitch', 'footLTilt', 'footRTilt', 'batYaw', 'batPitch', 'batVis', 'gloveOpen', 'gripTop'];
 export const VECTORS = ['pelvis', 'footL', 'footR', 'handL', 'handR', 'poleL', 'poleR', 'kneeL', 'kneeR', 'bat'];
 
 export function makePose(o = {}) {
   const p = {
     hipY: DIM.hipStand - 0.12, pelvisYaw: 0, pelvisPitch: 0, pelvisRoll: 0,
     torsoPitch: 0, torsoYaw: 0, torsoRoll: 0, headYaw: 0, headPitch: 0,
-    footLTilt: 0, footRTilt: 0, batYaw: 0, batPitch: 0, batVis: 0, gloveOpen: 0.5,
+    footLTilt: 0, footRTilt: 0, batYaw: 0, batPitch: 0, batVis: 0, gloveOpen: 0.5, gripTop: GRIP.top,
     pelvis: [0, 0, 0],
     footL: [0.34, DIM.ankle, 0], footR: [-0.34, DIM.ankle, 0],
     handL: [0.78, 2.6, 0.12], handR: [-0.78, 2.6, 0.12],
@@ -268,7 +273,9 @@ export class Person {
     this.pose = makePose();
     this.root = new THREE.Group();
     this.root.name = 'person-' + this.role;
-    this.root.scale.set(this.scale * (this.mirror ? -1 : 1) * this.build, this.scale, this.scale * this.build);
+    // (height scales the whole figure the same way in every direction; `build` only widens the body - a root stretched sideways
+    // sheared every limb that turned, so a wide player's arms and bat were bent differently from everybody else's)
+    this.root.scale.set(this.scale * (this.mirror ? -1 : 1), this.scale, this.scale);
     this._buildMeshes(o);
     this.setShadows(true);
     this._fk = { qU: new THREE.Quaternion(), qL: new THREE.Quaternion() };
@@ -326,30 +333,33 @@ export class Person {
     // --- pelvis group (hip height is animated): hips, seat, belt and buckle as one mesh
     this.pelvisG = new THREE.Group();
     this.root.add(this.pelvisG);
-    this._merged(this.pelvisG, [
+    const B = this.build;
+    const pelvisMesh = this._merged(this.pelvisG, [
       // hips and seat as ONE smooth shape, a little fuller behind, wide enough to take in the tops of the thighs (separate seat
       // pieces left creases where they met)
       { geo: sphere(0.5, 20, 14), color: pantsHex, y: -0.03, z: -0.03, sx: 1.08, sy: 0.7, sz: 0.78, ao: 0.06 },
       { geo: cyl(0.5, 0.5, 0.12, 22), color: beltHex, y: 0.12, sx: 0.98, sz: 0.68 },
       { geo: box(0.15, 0.1, 0.04), color: '#c8ccd2', y: 0.12, z: 0.345 },
     ]);
+    pelvisMesh.scale.set(B, 1, B);
 
     // --- spine / torso: a V-tapered jersey (textured) plus a collar
     this.spine = new THREE.Group();
     this.spine.position.set(0, 0.1, 0);
     this.pelvisG.add(this.spine);
     const torso = this._mesh(torsoGeometry(dl), shirt, this.spine, 0, 0, 0);
-    torso.scale.set(1.0, 1, 0.62);
+    torso.scale.set(B, 1, 0.62 * B);
     this.torsoMesh = torso;
-    this._merged(this.spine, [
+    const yoke = this._merged(this.spine, [
       { geo: torus(0.2, 0.05, Math.PI * 2, 6, 18), color: trimHex, y: 1.7, rx: Math.PI / 2, sx: 1.08, sy: 1, sz: 0.85 },
       // the slope of the trapezius from the neck out to each shoulder (so the shoulders are not balls stuck on a vase)
       { geo: sphere(0.3, 12, 8), color: u.primary, x: 0.33, y: 1.56, z: -0.04, sx: 1.25, sy: 0.5, sz: 0.85 },
       { geo: sphere(0.3, 12, 8), color: u.primary, x: -0.33, y: 1.56, z: -0.04, sx: 1.25, sy: 0.5, sz: 0.85 },
     ]);
+    yoke.scale.set(B, 1, B);
     if (isCatcher || isUmpire) {
       const chest = this._mesh(capsule(0.66, 0.4, 6, 18), getMat(u.gear || '#20242b', 0.7), this.spine, 0, 0.98, 0.04);
-      chest.scale.set(1.03, 1, 0.72);
+      chest.scale.set(1.03 * B, 1, 0.72 * B);
     }
 
     // --- head group: neck, skull, face, ears, hair, cap - one mesh
@@ -405,7 +415,7 @@ export class Person {
     const gloveLeather = ['#6b4226', '#7a4a2a', '#4a3020', '#8a5a2e'][(u.number || 0) % 4];
     for (const side of [1, -1]) {
       const sh = new THREE.Group();
-      sh.position.set(side * DIM.shoulderW, DIM.shoulderY, 0);
+      sh.position.set(side * DIM.shoulderW * B, DIM.shoulderY, 0);
       this.spine.add(sh);
       const upper = new THREE.Group(); sh.add(upper);
       this._merged(upper, [
@@ -423,6 +433,7 @@ export class Person {
         { geo: sphere(0.145, 10, 8), color: armHex, y: -0.3, z: 0.01, sx: 1.02, sy: 1.8, sz: 0.95 }, // forearm muscle (thick by the elbow)
       ];
       const isGloveHand = side === 1 && (o.glove || isCatcher);
+      const handParts = [];
       if (isGloveHand) {
         const big = isCatcher;
         const gcol = big ? '#3a2416' : gloveLeather;
@@ -437,28 +448,41 @@ export class Person {
           { geo: torus(0.15 * k, 0.026 * k, Math.PI, 5, 12), color: lace, y: gy - 0.46 * k, z: 0.2 * k, rx: 0.35, rz: Math.PI }, // laced webbing
           { geo: box(0.02, 0.5 * k, 0.03), color: lace, x: 0.0, y: gy - 0.2 * k, z: 0.238 * k }, // palm lace (sits on the leather)
         );
+      } else if (this.role === 'batter') {
+        // a batter's hand is a closed fist (in batting gloves) round the handle: the back of the hand and the knuckles, then four
+        // fingers that wrap right round the bat (rings round the grip line, open only on the palm side) and the thumb across the
+        // front. It is its own piece on the wrist, which turns to hold the bat (positions are from the wrist; GRIP.point is the
+        // middle of the fist, where the handle runs through).
+        const hand = u.gloves || '#f0f0f0';
+        const gp = GRIP.point;
+        handParts.push(
+          { geo: sphere(0.12, 10, 8), color: hand, y: -0.08, z: -0.015, sx: 1.0, sy: 0.95, sz: 0.62 }, // back of the hand / palm
+          { geo: capsule(0.045, 0.13, 3, 8), color: hand, x: 0, y: gp.y + 0.075, z: gp.z - 0.035, rz: Math.PI / 2 }, // knuckles
+          { geo: capsule(0.036, 0.075, 3, 6), color: hand, x: -0.105 * side, y: gp.y - 0.01, z: gp.z + 0.085, rx: -0.35, rz: 0.25 * side }, // thumb across the front
+          { geo: cyl(0.122, 0.122, 0.07, 10), color: '#22252b', y: 0.02 }, // glove cuff
+          { geo: box(0.13, 0.16, 0.03), color: u.trim || '#c62828', y: -0.05, z: -0.1 }, // strap
+        );
+        for (let f = 0; f < 4; f++) {
+          // (a ring of 270 deg round the grip line, from the knuckles over the front and under to the palm)
+          handParts.push({ geo: torus(0.088, 0.028, Math.PI * 1.5, 6, 14), color: hand, x: (-0.075 + f * 0.05) * side, y: gp.y, z: gp.z, ry: Math.PI / 2, rz: 1.2 });
+        }
+        if (side === 1) foreParts.push({ geo: capsule(0.165, 0.22, 4, 10), color: '#191b20', y: -0.16, sz: 1.05, ao: 0.1 }); // elbow guard on the lead arm
       } else {
-        const hand = this.role === 'batter' ? (u.gloves || '#f0f0f0') : skinHex;
-        const gy = -DIM.foreArm;
-        foreParts.push(
-          { geo: sphere(0.12, 10, 8), color: hand, y: gy - 0.07, sx: 1.0, sy: 1.05, sz: 0.72 }, // palm
-          { geo: capsule(0.04, 0.1, 3, 6), color: hand, x: -0.095 * side, y: gy - 0.06, z: 0.085, rx: 0.5, rz: 0.5 * side }, // thumb
+        // the bare hand is its own piece on the wrist (positions are from the wrist)
+        const hand = skinHex;
+        handParts.push(
+          { geo: sphere(0.12, 10, 8), color: hand, y: -0.07, sx: 1.0, sy: 1.05, sz: 0.72 }, // palm
+          { geo: capsule(0.04, 0.1, 3, 6), color: hand, x: -0.095 * side, y: -0.06, z: 0.085, rx: 0.5, rz: 0.5 * side }, // thumb
         );
         // four fingers, curled a little (a loose fist that closes round a bat or a ball)
         for (let f = 0; f < 4; f++) {
           const fx = (-0.075 + f * 0.05) * side;
-          foreParts.push({ geo: capsule(0.029, 0.1 - Math.abs(f - 1.5) * 0.012, 3, 6), color: hand, x: fx, y: gy - 0.2, z: 0.05, rx: 0.65 });
-          foreParts.push({ geo: sphere(0.03, 6, 5), color: hand, x: fx, y: gy - 0.26, z: 0.12 }); // curled fingertip
-        }
-        if (this.role === 'batter') {
-          foreParts.push(
-            { geo: cyl(0.122, 0.122, 0.07, 10), color: '#22252b', y: gy + 0.02 }, // glove cuff
-            { geo: box(0.13, 0.16, 0.03), color: u.trim || '#c62828', y: gy - 0.05, z: -0.1 }, // strap
-          );
-          if (side === 1) foreParts.push({ geo: capsule(0.165, 0.22, 4, 10), color: '#191b20', y: -0.16, sz: 1.05, ao: 0.1 }); // elbow guard on the lead arm
+          handParts.push({ geo: capsule(0.029, 0.1 - Math.abs(f - 1.5) * 0.012, 3, 6), color: hand, x: fx, y: -0.2, z: 0.05, rx: 0.65 });
+          handParts.push({ geo: sphere(0.03, 6, 5), color: hand, x: fx, y: -0.26, z: 0.12 }); // curled fingertip
         }
       }
       this._merged(elbow, foreParts);
+      if (handParts.length) this._merged(wrist, handParts);
       this.arms.push({ side, sh, upper, elbow, wrist, len1: DIM.upperArm, len2: DIM.foreArm });
     }
 
@@ -577,23 +601,47 @@ export class Person {
       _bd.set(Math.sin(p.batYaw) * cp, Math.sin(p.batPitch), Math.cos(p.batYaw) * cp).normalize();
       this.bat.position.set(p.bat[0], p.bat[1], p.bat[2]);
       this.bat.quaternion.setFromUnitVectors(_up, _bd);
-      gripA = _ga.set(p.bat[0], p.bat[1], p.bat[2]).addScaledVector(_bd, 0.18);
-      gripB = _gb.set(p.bat[0], p.bat[1], p.bat[2]).addScaledVector(_bd, 0.5);
+      gripA = _ga.set(p.bat[0], p.bat[1], p.bat[2]).addScaledVector(_bd, GRIP.bottom);
+      gripB = _gb.set(p.bat[0], p.bat[1], p.bat[2]).addScaledVector(_bd, p.gripTop ?? GRIP.top);
     }
 
     // arms
+    const holding = this.bat && p.batVis > 0.5;
     for (const arm of this.arms) {
       const hand = arm.side === 1 ? p.handL : p.handR;
       const polev = arm.side === 1 ? p.poleL : p.poleR;
-      tmp.set(hand[0], hand[1], hand[2]);
-      if (this.bat && p.batVis > 0.5) {
-        // Hands hold the bat: the "bottom" hand is the person's left (right-handed batter).
-        tmp.copy(arm.side === 1 ? gripA : gripB);
-      }
-      this.spine.worldToLocal(this.root.localToWorld(tmp));
-      const shPos = arm.sh.position;
       const pole = _pole.set(polev[0], polev[1], polev[2]);
-      solveTwoBone(arm.len1, arm.len2, shPos, tmp, pole, arm.upper.quaternion, arm.elbow.quaternion);
+      if (!holding) {
+        arm.wrist.quaternion.identity();
+        tmp.set(hand[0], hand[1], hand[2]);
+        this.spine.worldToLocal(this.root.localToWorld(tmp));
+        solveTwoBone(arm.len1, arm.len2, arm.sh.position, tmp, pole, arm.upper.quaternion, arm.elbow.quaternion);
+        continue;
+      }
+      // Hands hold the bat (the "bottom" hand is the person's left - a right-handed batter): each fist closes ROUND the handle at
+      // its grip - the bat lies across the curled fingers, index finger toward the barrel - and the wrist turns to hold it there,
+      // with the back of the hand toward the elbow. (Putting the wrist itself on the bat ran the bat through the cuff and made it
+      // look like part of the forearm.) Found in two passes: a first guess with the hand pointing back at the shoulder, then again
+      // with the hand pointing back at where the elbow really went.
+      const G = arm.side === 1 ? gripA : gripB;
+      _hx.copy(_bd).multiplyScalar(-arm.side);
+      this.root.worldToLocal(arm.sh.getWorldPosition(_aim));
+      for (let pass = 0; pass < 2; pass++) {
+        _t2.copy(_aim).sub(G);
+        _hy.copy(_t2).addScaledVector(_bd, -_t2.dot(_bd));
+        if (_hy.lengthSq() < 1e-6) _hy.set(0, -1, 0).addScaledVector(_bd, _bd.y).normalize(); else _hy.normalize();
+        _hz.crossVectors(_hx, _hy);
+        _hm.makeBasis(_hx, _hy, _hz);
+        _hq.setFromRotationMatrix(_hm);
+        tmp.copy(GRIP.point).applyQuaternion(_hq).negate().add(G); // the wrist, so that the fist's grip point is on the bat
+        this.spine.worldToLocal(this.root.localToWorld(tmp));
+        solveTwoBone(arm.len1, arm.len2, arm.sh.position, tmp, pole, arm.upper.quaternion, arm.elbow.quaternion);
+        arm.elbow.updateWorldMatrix(true, false);
+        this.root.worldToLocal(arm.elbow.getWorldPosition(_aim));
+      }
+      // the wrist's turn: the hand's frame (in the figure's own space) relative to the forearm's
+      _hq2.copy(this.pelvisG.quaternion).multiply(this.spine.quaternion).multiply(arm.sh.quaternion).multiply(arm.upper.quaternion).multiply(arm.elbow.quaternion);
+      arm.wrist.quaternion.copy(_hq2.invert().multiply(_hq));
     }
     this.root.updateMatrixWorld(true);
   }
@@ -623,6 +671,8 @@ const _t1 = new THREE.Vector3(), _t2 = new THREE.Vector3();
 const _qw = new THREE.Quaternion(), _qr = new THREE.Quaternion(), _qk = new THREE.Quaternion();
 const _e = new THREE.Euler();
 const _bd = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0), _ga = new THREE.Vector3(), _gb = new THREE.Vector3();
+const _hx = new THREE.Vector3(), _hy = new THREE.Vector3(), _hz = new THREE.Vector3(), _aim = new THREE.Vector3();
+const _hm = new THREE.Matrix4(), _hq = new THREE.Quaternion(), _hq2 = new THREE.Quaternion();
 
 // ---------------------------------------------------------------- bat model (knob at the origin, barrel along +y)
 export const BAT_STYLES = {

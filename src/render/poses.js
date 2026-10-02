@@ -48,15 +48,16 @@ export function resetPose(P) {
 }
 
 // ---------------------------------------------------------------- batter (right-handed pose space)
-// The bat handle ("knob") position in the stance.
-const KNOB_STANCE = [-0.72, 4.1, 0.3];
+// The bat handle ("knob") position in the stance: the hands a few inches in front of the back shoulder, at about shoulder height.
+const KNOB_STANCE = [-0.38, 4.0, 1.0];
 
 export function batterPose(P, time, swing, aimY = null) {
   resetPose(P);
   const wag = Math.sin(time * 3.4);
   const breathe = Math.sin(time * 1.6);
-  let hip = 2.8 + breathe * 0.02;
-  let pelvisYaw = -0.05, torsoYaw = -0.06, torsoPitch = 0.3, pelvisPitch = 0.14;
+  // (an athletic stance: knees flexed, hips back a little, the chest fairly upright over the plate)
+  let hip = 2.72 + breathe * 0.02;
+  let pelvisYaw = -0.05, torsoYaw = -0.06, torsoPitch = 0.18, pelvisPitch = 0.12;
   let headYawAbs = 1.5, headPitch = 0.16;
   let footLx = 0.95, footLy = ANK, footLz = 0.1, footRx = -0.95, footRz = -0.05, footRTilt = 0;
   // (aimY: where the bat is aimed - the hands come down a little and he sinks a touch for a low pitch, rise for a high one)
@@ -64,7 +65,8 @@ export function batterPose(P, time, swing, aimY = null) {
   hip -= Math.max(0, -aimK) * 0.07;
   let knob = [KNOB_STANCE[0], KNOB_STANCE[1] + wag * 0.05 + aimK * 0.16, KNOB_STANCE[2]];
   let batYaw = -1.4 + wag * 0.05, batPitch = 0.88 + wag * 0.07;
-  let poleL = [0.7, -0.9, -0.1], poleR = [-0.7, -0.1, -0.7];
+  // (the lead elbow points down in front of the chest, the back elbow out behind him at about shoulder height)
+  let poleL = [0.3, -1, 0.45], poleR = [-0.5, -1, -0.35];
   let footLTilt = 0;
 
   const k0 = knob.slice(); // (the swing starts from his stance, wherever his hands were)
@@ -84,8 +86,8 @@ export function batterPose(P, time, swing, aimY = null) {
       const rot = ru * ru * (1.6 - 0.6 * ru); // accelerating
       pelvisYaw = lerp(-0.05 - 0.2 * load, 0.62, rot);
       torsoYaw = lerp(-0.06 - 0.22 * load, 0.3, rot);
-      torsoPitch = lerp(0.3, 0.36, rot);
-      hip = 2.8 - 0.14 * load + 0.08 * rot;
+      torsoPitch = lerp(0.18, 0.36, rot); // (from his stance to the same position at contact as always)
+      hip = 2.72 - 0.1 * load + 0.16 * rot;
       footLx = 0.95 + 0.6 * smoothstep(0, 0.32, u);
       footLy = ANK + 0.5 * Math.sin(Math.PI * clamp(u / 0.34, 0, 1));
       footRTilt = -0.9 * rot;
@@ -178,6 +180,7 @@ export function buntPose(P, time, push = null, aim = null) {
   }
   set3(P.bat, knob[0], knob[1], knob[2]);
   P.batYaw = 0.16; P.batPitch = 0.05; P.batVis = 1;
+  P.gripTop = 1.05; // (the top hand slides up toward the label to steady the bat; it slides up as he squares around)
   P.poleL = [0.6, -0.8, -0.4]; P.poleR = [0.4, -0.8, 0.6];
   return P;
 }
@@ -286,11 +289,13 @@ export function fielderReady(P, time, kind = 'IF') {
     set3(P.handL, 0.55, 2.7, 0.75); set3(P.handR, -0.5, 2.9, 0.55);
     set3(P.footL, 0.5, ANK, 0.15); set3(P.footR, -0.5, ANK, -0.15);
   } else {
-    P.hipY = 2.62 + b; P.torsoPitch = 0.55; P.pelvisPitch = 0.16;
-    set3(P.handL, 0.6, 1.95, 1.0); set3(P.handR, -0.45, 2.2, 0.78);
-    set3(P.footL, 0.85, ANK, 0.2); set3(P.footR, -0.85, ANK, -0.15);
+    // an infielder's ready position: down low with the knees well bent, back fairly flat, glove out in front open and low with
+    // the throwing hand beside it (not arms hanging)
+    P.hipY = 2.42 + b; P.torsoPitch = 0.42; P.pelvisPitch = 0.3;
+    set3(P.handL, 0.42, 1.75, 1.45); set3(P.handR, -0.3, 1.85, 1.3);
+    set3(P.footL, 0.95, ANK, 0.15); set3(P.footR, -0.95, ANK, -0.1);
   }
-  P.headPitch = 0.1;
+  P.headPitch = kind === 'OF' ? 0.1 : -0.15; // (eyes up on the hitter, not on the dirt)
   set3(P.kneeL, 0.4, 0.05, 1); set3(P.kneeR, -0.4, 0.05, 1);
   P.poleL = [0.9, -0.6, -0.1]; P.poleR = [-0.9, -0.6, -0.1];
   // a living stance: a slow weight shift from foot to foot and an occasional glance around (feet stay planted)
