@@ -150,6 +150,9 @@ export const CONFIG = {
     releaseZ: -54.5, // ball leaves the hand ~6 ft in front of the rubber
     contactZ: -1.0, // the plane where timing is measured (front-center of plate)
     catchZ: 1.15, // where the catcher's mitt sits
+    // A foul tip: a ball that glances off the bat straight back (spray beyond `spray` degrees, launch inside `launch`) goes into
+    // the catcher's mitt - a strike, and strike three with two strikes.
+    foulTip: { spray: 140, launch: [-20, 28] },
     drag: 0.085, // fraction of speed a pitch loses on the way to the plate
     zoneBottom: 1.55, // strike zone (ft above ground)
     zoneTop: 3.4,

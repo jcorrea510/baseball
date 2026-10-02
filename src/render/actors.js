@@ -978,6 +978,14 @@ export class Actors {
     const segs = plan.ballSegments || (plan.ballSegments = buildBallSegments(plan, sim));
     let seg = segs[0];
     for (const s of segs) if (t >= s.t0) seg = s;
+    if (seg.kind === 'hit' && plan.foulTip && t >= plan.foulTip.t) {
+      // a foul tip: it is in the catcher's mitt
+      const C = this.fielders.C;
+      C.root.updateMatrixWorld(true);
+      C.gloveWorld(this.tmpV);
+      out.copy(this.tmpV);
+      return { kind: this.catcherHidden ? 'hidden' : 'glove', trail: 0 };
+    }
     if (seg.kind === 'hit') {
       const q = sampleBall(sim, t);
       out.set(q.x, q.y, q.z);

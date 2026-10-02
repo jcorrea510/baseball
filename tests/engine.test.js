@@ -606,3 +606,26 @@ describe('hit by pitch', () => {
     expect(a).toBeGreaterThan(r);
   });
 });
+
+describe('foul tips', () => {
+  const tip = () => ({ exitVelocity: 70, launchAngle: 6, sprayAngle: 172, backspin: 800, hook: 0, errorMs: 0, grade: 'weak' });
+  const swingAt = (e) => { expect(untilPhase(e, 'pitch')).toBe(true); while (e.time < e.pitch.tCross - e.cfg.timing.swingDelay) e.update(DT); e.swingPressed(0); };
+  it('a ball that glances straight back into the mitt is a foul tip: a strike, and strike three with two strikes', () => {
+    const e = new Engine({ mode: 'quick', playerSide: 'top', seed: 8 });
+    e.pitchOverride = strikePitch;
+    e.contactOverride = tip;
+    e.start();
+    let last = null;
+    e.on('result', (r) => { last = r; });
+    swingAt(e);
+    expect(untilPhase(e, 'result')).toBe(true);
+    expect(last.foulTip).toBe(true);
+    expect(e.game.strikes).toBe(1);
+    e.game.strikes = 2;
+    expect(untilPhase(e, 'ready', 20) || untilPhase(e, 'windup', 20)).toBe(true);
+    swingAt(e);
+    expect(untilPhase(e, 'result')).toBe(true);
+    expect(last.result).toBe('strikeoutSwinging');
+    expect(last.detail).toBe('Foul tip');
+  });
+});

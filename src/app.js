@@ -779,7 +779,8 @@ export class App {
     if (r.kind === 'pitch') {
       const map = { ball: ['BALL', count, 'neutral'], calledStrike: ['STRIKE', count, 'bad'], swingingStrike: ['STRIKE', 'Swinging', 'bad'], foul: ['FOUL', count, 'neutral'], take: ['', '', ''], hitByPitch: ['HIT BY PITCH', runsText.replace(' · ', '') || 'Take your base', 'neutral'] };
       if (r.call === 'hitByPitch') { audio.glovePop(0.4); audio.crowdGroan(0.45); }
-      const m = map[r.call] || [r.text || '', '', 'neutral'];
+      const m = r.foulTip ? ['FOUL TIP', count, 'neutral'] : map[r.call] || [r.text || '', '', 'neutral'];
+      if (r.foulTip) audio.glovePop(0.9);
       if (r.call === 'ball' || r.call === 'take') { /* subtle */ }
       if (m[0]) ui.banner(m[0], e.mode === 'quick' ? m[1] : (r.call === 'swingingStrike' ? 'Swinging' : ''), m[2]);
       if (r.call === 'ball' && e.game && e.game.balls === 3) audio.crowdSwell(0.2, 1.2);
@@ -801,7 +802,7 @@ export class App {
     else if (res === 'error') { cls = 'good'; sub = `E${POSITION_NUMBER[r.plan && r.plan.error ? r.plan.error.pos : ''] || ''}${runsText}`.replace(/^E · /, ''); audio.applause(1, 0.4); }
     else if (res === 'walk') { cls = 'neutral'; sub = runsText.replace(' · ', ''); audio.crowdSwell(0.2, 1.2); }
     else if (res === 'hitByPitch') { cls = 'neutral'; sub = runsText.replace(' · ', '') || 'Take your base'; audio.glovePop(0.4); audio.crowdGroan(0.45); }
-    else if (res === 'strikeoutSwinging' || res === 'strikeoutLooking') { cls = 'bad'; sub = res === 'strikeoutLooking' ? 'Looking' : 'Swinging'; audio.crowdGroan(0.7); }
+    else if (res === 'strikeoutSwinging' || res === 'strikeoutLooking') { cls = 'bad'; sub = r.detail || (res === 'strikeoutLooking' ? 'Looking' : 'Swinging'); audio.crowdGroan(0.7); if (r.detail === 'Foul tip') audio.glovePop(0.9); }
     else if (res === 'out') { cls = 'bad'; sub = r.detail ? r.detail : ''; audio.crowdGroan(0.4); }
     else if (['groundout', 'flyout', 'lineout', 'popout', 'foulOut', 'doublePlay', 'fieldersChoice', 'sacFly', 'sacBunt'].includes(res)) {
       const sac = res === 'sacFly' || res === 'sacBunt';

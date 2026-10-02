@@ -576,6 +576,15 @@ export class Engine {
     this.rng.next(); // (kept so a game's random numbers stay in step with older saves)
     const planIn = { sim, contact: c, bases: this.bases.slice(), outs: this.outs, defense: this.defense, simple, errorRoll, errorScale: this.d.errorScale, running, speeds: this.runnerSpeeds(), orders: [] };
     const plan = planPlay(planIn, this.cfg);
+    // a foul tip: straight back into the catcher's mitt (he holds it)
+    const FT = this.cfg.pitch.foulTip;
+    if (plan.result === 'foul' && !c.bunt && Math.abs(c.sprayAngle) >= FT.spray && c.launchAngle >= FT.launch[0] && c.launchAngle <= FT.launch[1]) {
+      let k = 0;
+      while (k < sim.count - 1 && sim.z[k] < this.cfg.pitch.catchZ) k++;
+      const tTip = sim.t[k];
+      plan.foulTip = { t: tTip };
+      plan.ballHitEnd = tTip; plan.endTime = tTip + 0.5;
+    }
     const proj = projectDistance(params, this.cfg);
     const fb = sim.firstBounce;
     const distance = plan.homer ? proj.distance : fb ? Math.hypot(fb.x, fb.z) : proj.distance;
@@ -718,6 +727,16 @@ export class Engine {
     const g = this.game;
     if (plan.result === 'foul') {
       this.stats.fouls++;
+      if (plan.foulTip && g.strikes >= 2) {
+        // a foul tip held by the catcher with two strikes is strike three
+        const res = rules.pitchStrike(g, { swinging: true });
+        this.stats.pa++; this.stats.strikeouts++; this.stats.ab++;
+        this.creditBatter(res.result, 0);
+        this.emitCount();
+        this.emit('result', { kind: 'pa', result: res.result, text: 'STRIKEOUT', detail: 'Foul tip', runs: 0, outs: g.outs, halfOver: res.halfOver, batter: this.batter, ...summary });
+        this.finishPitch(this.cfg.pace.callDisplay + 0.45, res.halfOver, true, res.result);
+        return;
+      }
       if (c.bunt && g.strikes >= 2) {
         // a bunt foul with two strikes is strike three
         const res = rules.pitchStrike(g, { swinging: true });
@@ -730,7 +749,7 @@ export class Engine {
       }
       rules.pitchFoul(g);
       this.emitCount();
-      this.emit('result', { kind: 'pitch', call: 'foul', text: 'FOUL', ...summary });
+      this.emit('result', { kind: 'pitch', call: 'foul', text: plan.foulTip ? 'FOUL TIP' : 'FOUL', foulTip: !!plan.foulTip, ...summary });
       this.finishPitch(0.28);
       return;
     }
