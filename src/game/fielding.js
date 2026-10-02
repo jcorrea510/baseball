@@ -531,7 +531,7 @@ function planPlayCore(i, cfg) {
     // high pop-up - the batter is out whether it is caught or not (so a dropped one cannot be turned into a cheap double play)
     const IF = F.infieldFly;
     const infieldFly = fair && !i.simple && outs < 2 && !!bases[0] && !!bases[1] && f.type !== 'OF' && sim.apex.y >= IF.apex && Math.hypot(air.ball.x, air.ball.z) < IF.range;
-    if (infieldFly) { plan.infieldFly = true; plan.notes.push('infield fly'); plan.events.push({ t: Math.max(0.6, air.t - IF.callBefore), type: 'infieldFly' }); }
+    if (infieldFly) { plan.infieldFly = true; plan.notes.push('infield fly'); plan.events.push({ t: Math.max(0.6, Math.min(sim.apex.t + IF.callAfterApex, air.t - IF.callBefore)), type: 'infieldFly' }); }
     // a dropped fly ball (rare): it hits the glove and pops out; he picks it up and the runners take what they can
     if (fair && !i.simple && errorHappens(i, F.errors.fly * (air.dive || plan.leap ? F.errors.hardFactor : 1))) {
       if (infieldFly) return infieldFlyDrop(plan, i, f, air, bases, cfg);

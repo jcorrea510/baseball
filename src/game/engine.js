@@ -828,7 +828,7 @@ export class Engine {
     this.creditBatter(play.result, res.rbi);
     this.emitCount();
     this.emit('result', {
-      kind: 'pa', result: play.result, text: plan.groundRule && play.result === 'double' ? 'GROUND-RULE DOUBLE' : rules.RESULT_TEXT[play.result] || play.result.toUpperCase(),
+      kind: 'pa', result: play.result, text: plan.groundRule && play.result === 'double' ? 'GROUND-RULE DOUBLE' : plan.infieldFly ? 'INFIELD FLY' : rules.RESULT_TEXT[play.result] || play.result.toUpperCase(),
       runs: res.runs, outs: g.outs, outsBefore, halfOver: res.halfOver, walkOff: res.walkOff, batter: this.batter,
       ...summary,
     });

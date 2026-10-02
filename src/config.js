@@ -489,7 +489,7 @@ export const CONFIG = {
     groundHeight: 3.2, // a ball this low counts as a ground ball for fielding
     // the infield fly rule (runners on 1st and 2nd or the bases loaded, fewer than two outs): a pop-up at least `apex` ft high that an
     // infielder settles under within `range` ft of home - the batter is out, caught or not; the umpire calls it `callBefore` s before it comes down
-    infieldFly: { apex: 45, range: 160, callBefore: 1.0 },
+    infieldFly: { apex: 45, range: 160, callBefore: 1.0, callAfterApex: 0.3 }, // (the umpire calls it as the ball peaks - a moment after the top of its flight - and at the latest callBefore s before the catch)
     transfer: { IF: 0.36, OF: 0.65, C: 0.4, P: 0.42 },
     homeThrowMargin: 0.45, // s: on a grounder with the runner on third breaking for home, the fielder throws home only when he has him by this much
     pivot: 0.9, // s: the middle infielder turning a double play - catch, clear the sliding runner, throw to first // catch-to-throw time (an outfielder gathers himself and crow-hops)

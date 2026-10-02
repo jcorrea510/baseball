@@ -828,6 +828,7 @@ export class App {
     else if (['groundout', 'flyout', 'lineout', 'popout', 'foulOut', 'doublePlay', 'fieldersChoice', 'sacFly', 'sacBunt'].includes(res)) {
       const sac = res === 'sacFly' || res === 'sacBunt';
       cls = sac ? 'good' : 'bad'; sub = res === 'sacFly' ? `1 run` : res === 'sacBunt' ? (r.runs > 0 ? '' : 'Runner up') : (r.text && res === 'doublePlay' ? '2 outs' : `${Math.round(r.exitVelocity || 0)} mph`);
+      if (r.plan && r.plan.infieldFly) sub = 'Batter is out';
       if (!sac) audio.crowdGroan(0.35);
       if (runsText) sub += runsText;
     }
