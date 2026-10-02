@@ -656,6 +656,7 @@ export class App {
         const dist = Math.round(c ? c.projected.distance : 400);
         audio.homeRun(dist);
         this.S.stadium.crowd.cheer(1);
+        if (e.playerSide === 'bottom' || e.mode !== 'quick') this.S.stadium.celebrate(); // (the home team's home run: Citi Field's apple)
         this.celebrateHomer(ev, dist);
         this.showDistanceCallout(c, true);
         ui.banner('HOME RUN!', `${dist} ft`, 'hr', true);

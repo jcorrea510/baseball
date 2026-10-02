@@ -448,14 +448,31 @@ export function buildParkLook(root, c) {
       }
     }
   }
+  let celebrate = null;
   if (has('apple')) {
-    // the home-run apple rising out of its black top hat beyond center field (off to the side of the batter's eye)
-    const p = P(13, fenceDistance(13) + 24);
-    parts.push(piece(new THREE.CylinderGeometry(14, 14, 16, 18), { x: p.x, y: 8, z: p.z, color: '#141518' }));
-    parts.push(piece(new THREE.CylinderGeometry(20, 20, 1.5, 18), { x: p.x, y: 16, z: p.z, color: '#141518' }));
-    parts.push(piece(new THREE.SphereGeometry(11, 18, 12), { x: p.x, y: 27, z: p.z, sy: 0.92, color: '#d2232a' }));
-    parts.push(piece(new THREE.CylinderGeometry(0.6, 0.8, 4, 5), { x: p.x, y: 39, z: p.z, color: '#4a3020' }));
-    parts.push(piece(new THREE.SphereGeometry(2.6, 8, 5), { x: p.x + 2.4, y: 39.5, z: p.z, sy: 0.35, rz: 0.5, color: '#3b8f3a' }));
+    // the home-run apple: a black top hat just behind the batter's eye (its brim shows over the hedge); the apple waits inside it
+    // and only rises out of it after a home run by the home team, then sinks back (`parks.apple`)
+    const A = CONFIG.parks.apple;
+    const p = P(A.angle, fenceDistance(A.angle) + A.back);
+    parts.push(piece(new THREE.CylinderGeometry(A.hatR, A.hatR, A.hatTop, 18), { x: p.x, y: A.hatTop / 2, z: p.z, color: '#141518' }));
+    parts.push(piece(new THREE.CylinderGeometry(A.hatR + 6, A.hatR + 6, 1.5, 18), { x: p.x, y: A.hatTop, z: p.z, color: '#141518' }));
+    const apple = new THREE.Group();
+    const appleMat = new THREE.MeshStandardMaterial({ color: 0xd2232a, roughness: 0.35, metalness: 0.1 });
+    const body = new THREE.Mesh(new THREE.SphereGeometry(A.r, 20, 14), appleMat); body.scale.y = 0.92; apple.add(body);
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.8, 4, 5), new THREE.MeshStandardMaterial({ color: 0x4a3020 })); stem.position.y = A.r + 1; apple.add(stem);
+    const leaf = new THREE.Mesh(new THREE.SphereGeometry(2.6, 8, 5), new THREE.MeshStandardMaterial({ color: 0x3b8f3a })); leaf.scale.y = 0.35; leaf.rotation.z = 0.5; leaf.position.set(2.4, A.r + 1.5, 0); apple.add(leaf);
+    const downY = A.hatTop - A.r - 3, upY = A.hatTop + A.r + 2; // (down: wholly inside the hat; up: sitting clear of the brim)
+    apple.position.set(p.x, downY, p.z);
+    root.add(apple);
+    let since = Infinity;
+    celebrate = () => { since = 0; };
+    updaters.push((dt) => {
+      since += dt;
+      const k = since < A.rise ? since / A.rise : since < A.rise + A.stay ? 1 : since < A.rise + A.stay + A.sink ? 1 - (since - A.rise - A.stay) / A.sink : 0;
+      const e = k * k * (3 - 2 * k);
+      apple.position.y = downY + (upY - downY) * e;
+      apple.rotation.y = since < A.rise + A.stay + A.sink ? since * 0.8 : 0;
+    });
   }
   if (has('bell')) {
     const p = P(36, outR(36) + 30), y = topY + 60;
@@ -566,7 +583,7 @@ export function buildParkLook(root, c) {
     root.add(new THREE.Mesh(mergeGeometries(glowParts), gm));
     updaters.push((dt, t, env) => { gm.emissiveIntensity = 0.1 + (env ? env.lamps : 0) * 0.9; });
   }
-  return { update(dt, time, env) { for (const u of updaters) u(dt, time, env); } };
+  return { update(dt, time, env) { for (const u of updaters) u(dt, time, env); }, celebrate() { if (celebrate) celebrate(); } }; // (celebrate: a home run by the home team)
 }
 
 /** Shader code for the grass: the park's mowing pattern (0 stripes, 1 checkerboard, 2 diamonds, 3 waves from home, 4 turf). */

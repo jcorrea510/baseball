@@ -516,6 +516,7 @@ export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {
     scoreboard,
     crowd,
     bases,
+    celebrate() { parkLook.celebrate(); }, // a home run by the home team (Citi Field's apple rises)
     // Called every frame. env supplies brightness/lamp levels.
     update(dt, time, env) {
       const lamps = env ? env.lamps : 0;

@@ -49,6 +49,10 @@ export const CONFIG = {
   // `wall`: the padding colour. Each club plays its League home games in its own park.
   parks: {
     scale: 0.96,
+    // Citi Field's home-run apple: its top hat stands `back` ft behind the centre-field fence at `angle` deg (just behind the batter's
+    // eye, the brim over the hedge at `hatTop` ft), the apple (radius `r`) hidden inside; a home run by the home team brings it up
+    // in `rise` s, it stays `stay` s and sinks back in `sink` s
+    apple: { angle: 5, back: 16, hatR: 13, hatTop: 44, r: 10, rise: 2.5, stay: 9, sink: 3 },
     list: {
       sandlot: { name: 'Sandlot Park', wall: '#0f3d24' },
       bal: { name: 'Camden Yards', fence: [333, 384, 400, 373, 318], walls: [13, 13, 7, 7, 25], wall: '#123a2a' },
