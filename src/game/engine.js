@@ -336,26 +336,24 @@ export class Engine {
   // (so timing does not depend on frame rate). Returns true if the swing was accepted.
   swingPressed(sinceUpdate = 0) {
     if (this.phase !== 'pitch' || this.swing || !this.pitch) return false;
-    if (this.buntStance) return false; // (squared around to bunt, he bunts by himself - see autoBunt)
+    if (this.buntStance) return false; // (squared around to bunt, the bat is held out where you put it - see holdBunt)
     const tPress = this.time + Math.max(-0.02, Math.min(0.05, sinceUpdate)) - this.inputDelay;
     return this.commitSwing(tPress, { x: this.batAim.x, y: this.batAim.y }, false);
   }
 
-  // Squared around to bunt, the batter holds the bat out and meets the pitch by himself - a little before it arrives he pushes the bat
-  // at it (his timing a touch off now and then, the bat mostly on top of the ball: a good bunt, sometimes a pop-up or a foul). A pitch
-  // well out of the zone he pulls the bat back on and takes. The bunt goes up the line that moves the runners (third-base line with
-  // a runner on second, first-base line otherwise).
-  autoBunt() {
+  // Squared around to bunt, the batter holds the bat out where you put it (it follows the mouse / your finger like the swing bat) and
+  // the pitch either meets it or it does not: the bunt is decided by where the bat is as the ball gets there - over the top of the ball
+  // it goes down into the grass, under it it pops up, off the end of the bat it goes up the first-base line (third-base line off the
+  // part near the hands). A bat held well away from the pitch is pulled back: he takes it.
+  holdBunt() {
     const pitch = this.pitch, B = this.cfg.bunt;
     pitch.buntDecided = true;
-    if (zoneRatio(pitch.target.x, pitch.target.y, this.cfg) > B.offerRatio) return false; // (he pulls the bat back)
-    const errorMs = clamp(this.rng.gauss(0, B.autoTimingSd), -B.windowMs[1] * 0.8, B.windowMs[1] * 0.8);
-    const tPress = pitch.tCross + errorMs / 1000 - this.cfg.timing.swingDelay;
-    const win = this.contactWindow, up = win.up * B.windowScale;
-    const aim = { x: pitch.target.x + this.rng.gauss(0, B.autoAimSd), y: pitch.target.y + B.autoOnTop * up + this.rng.gauss(0, B.autoAimSd) };
-    const thirdLine = -1; // (spray: negative = the left-field / third-base side)
-    const side = this.bases[1] && !this.bases[2] ? thirdLine : -thirdLine;
-    return this.commitSwing(tPress, aim, true, side);
+    const tB = pitch.tCross - pitch.tRelease;
+    const ball = pitch.flight.at(Math.min(tB, pitch.flight.T));
+    const aim = { x: this.batAim.x, y: this.batAim.y };
+    if (Math.hypot(aim.x - ball.x, aim.y - ball.y) > B.offerDist) return false; // (bat pulled back: a take)
+    const errorMs = clamp(this.rng.gauss(0, B.holdTimingSd), -B.windowMs[0], B.windowMs[0]);
+    return this.commitSwing(pitch.tCross + errorMs / 1000 - this.cfg.timing.swingDelay, aim, true, 'bat');
   }
 
   commitSwing(tPress, aim, bunting, buntSide = 0) {
@@ -390,7 +388,7 @@ export class Engine {
 
   updatePitch() {
     const pitch = this.pitch;
-    if (this.buntStance && !this.swing && !pitch.buntDecided && this.time >= pitch.tCross - this.cfg.timing.swingDelay - this.cfg.bunt.autoLead) this.autoBunt();
+    if (this.buntStance && !this.swing && !pitch.buntDecided && this.time >= pitch.tCross - this.cfg.timing.swingDelay) this.holdBunt();
     const s = this.swing;
     if (s && !s.resolved && this.time >= s.tHit) {
       s.resolved = true;

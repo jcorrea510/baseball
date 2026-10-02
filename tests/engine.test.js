@@ -417,9 +417,11 @@ describe('waiting for the batter', () => {
 });
 
 describe('bunting', () => {
-  const pitchAndBunt = (e) => {
+  // (squared around, the bat is held where you put it: here right on top of the pitch)
+  const pitchAndBunt = (e, dy = 0.12) => {
     while (!(e.phase === 'pitch' && e.time > e.pitch.tCross - 0.16)) e.update(DT);
-    e.swingPressed(0);
+    e.setBatAim(e.pitch.target.x, e.pitch.target.y + dy);
+    while (!e.swing && e.phase === 'pitch' && e.time < 120) e.update(DT);
   };
 
   it('B squares the batter around; the swing then bunts (a soft ball), and the stance resets after the pitch', () => {
@@ -438,13 +440,27 @@ describe('bunting', () => {
     expect(e.buntStance).toBe(false);
   });
 
-  it('squared around he bunts by himself (no press needed) and lays off a pitch well out of the zone', () => {
-    const e = new Engine({ mode: 'quick', playerSide: 'top', seed: 21 });
-    e.pitchOverride = strikePitch;
-    e.start();
-    e.setBunt(true);
-    while (!(e.phase === 'pitch' && e.time > e.pitch.tCross)) e.update(DT);
-    expect(e.swing && e.swing.bunt).toBe(true); // (nobody pressed anything)
+  it('the bunt is where the bat is: held on the ball it bunts, a little off it misses (a strike), well away from it he takes', () => {
+    const run = (dy, seed) => {
+      const e = new Engine({ mode: 'quick', playerSide: 'top', seed });
+      e.pitchOverride = strikePitch;
+      e.start();
+      e.setBunt(true);
+      while (!(e.phase === 'pitch' && e.time > e.pitch.tCross - 0.3)) e.update(DT);
+      e.setBatAim(e.pitch.target.x, e.pitch.target.y + dy);
+      let call = null;
+      e.on('result', (x) => { call = call || x; });
+      while (!call && e.time < 60) e.update(DT);
+      return { e, call };
+    };
+    const on = run(0.1, 21);
+    expect(on.e.swing && on.e.swing.bunt && on.e.swing.made).toBe(true); // (nobody pressed anything)
+    const off = run(0.95, 21);
+    expect(off.e.swing && off.e.swing.bunt).toBe(true);
+    expect(off.e.swing.made).toBe(false);
+    expect(off.call.call).toBe('swingingStrike');
+    const away = run(2.2, 21);
+    expect(away.e.swing).toBe(null);
     const f = new Engine({ mode: 'quick', playerSide: 'top', seed: 22 });
     f.pitchOverride = () => ({ type: 'fastball', speedMph: 84, target: { x: 1.9, y: 2.5 }, intendedStrike: false });
     f.start();

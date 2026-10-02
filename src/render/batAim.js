@@ -45,6 +45,7 @@ export class BatAim {
    * @param {boolean} o.show       batting: the bat is up
    * @param {{x,y}} o.aim          where the sweet spot is (ft)
    * @param {'R'|'L'} o.hand
+   * @param {boolean} o.bunt     squared around to bunt: the bat is held level
    * @param {object|null} o.swing  the engine's swing ({ aim, tPress }) - freezes and fades the bat
    * @param {number} o.time        engine time
    * @param {number} dt            real seconds since the last frame
@@ -69,7 +70,7 @@ export class BatAim {
     this.spotMat.opacity = B.spotOpacity * this.fade;
     // the bat lies across the plate: knob back toward the batter, the barrel dipping a little more the lower the pitch
     const side = o.hand === 'L' ? -1 : 1; // a right-hander's bat reaches across toward +x
-    const dip = clamp(B.tilt + (B.tiltRefY - aim.y) * B.tiltPerFt, B.tiltRange[0], B.tiltRange[1]);
+    const dip = o.bunt ? B.buntTilt : clamp(B.tilt + (B.tiltRefY - aim.y) * B.tiltPerFt, B.tiltRange[0], B.tiltRange[1]);
     this.group.position.set(aim.x, aim.y, CONFIG.pitch.contactZ);
     // (the bat model's barrel points along +y: lay it down along +x - or -x for a lefty - then tip the barrel down by `dip`)
     this.batRot.rotation.set(0, 0, side > 0 ? -Math.PI / 2 - dip : Math.PI / 2 + dip);

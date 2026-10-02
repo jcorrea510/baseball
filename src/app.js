@@ -1056,7 +1056,8 @@ export class App {
     const shown = this.bot ? e.batAim : this.aimShown;
     const sw = e.swing && e.pitch && (e.phase === 'pitch' || e.phase === 'play' || e.phase === 'result') ? e.swing : null;
     this.batAim.update({
-      show: batting && this.cam.catcherDist < A.showWithin && (e.phase !== 'result' || !!sw) && !e.buntStance && !(sw && sw.bunt), // (squared around to bunt: no bat to aim - he bunts by himself)
+      show: batting && this.cam.catcherDist < A.showWithin && (e.phase !== 'result' || !!sw), // (squared around to bunt, it is the bat he holds out)
+      bunt: !!(e.buntStance || (sw && sw.bunt)),
       aim: shown, hand: e.batterHand, swing: sw, time: e.time,
     }, dt);
     this.ui.setSwingButton(batting && this.touch && !e.buntStance && (e.phase === 'windup' || e.phase === 'pitch' || e.phase === 'ready'));

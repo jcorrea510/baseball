@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import { CONFIG, MPH } from '../src/config.js';
 import { collide, hitBall } from '../src/physics/bat.js';
-import { computeSwing, computeBunt, contactWindow, contactPoint, batOffset } from '../src/game/contact.js';
+import { computeSwing, computeBunt, contactWindow, contactPoint, batOffset, buntWindow } from '../src/game/contact.js';
 import { buildPitch } from '../src/physics/pitch.js';
 import { simulateBattedBall, projectDistance } from '../src/physics/ballistics.js';
 import { createRng } from '../src/util/rng.js';
@@ -226,7 +226,7 @@ describe('the swing (game/contact.js)', () => {
 });
 
 describe('bunting', () => {
-  const bunt = (u, err = 0, seed = 1) => computeBunt({ errorMs: err, ball: pt.ball, aim: { x: pt.ball.x, y: pt.ball.y - u * win.up * CONFIG.bunt.windowScale }, window: win, batterHand: 'R', rng: createRng(seed) });
+  const bunt = (u, err = 0, seed = 1) => computeBunt({ errorMs: err, ball: pt.ball, aim: { x: pt.ball.x, y: pt.ball.y - u * buntWindow().up }, window: win, batterHand: 'R', rng: createRng(seed) });
   it('the bat on top of the ball pushes it down into the grass; under it, it pops up', () => {
     let down = 0, up = 0;
     for (let s = 1; s <= 40; s++) { down += bunt(-0.4, 0, s).launchAngle; up += bunt(0.6, 0, s).launchAngle; }
@@ -239,5 +239,13 @@ describe('bunting', () => {
     expect(b.exitVelocity).toBeLessThan(55);
     expect(bunt(1.3).made).toBe(false);
     expect(bunt(0, 400).made).toBe(false);
+  });
+  it('the bat has to really touch the ball: half a foot under it is a miss on every level', () => {
+    for (const ws of [1.5, 1, 0.78]) {
+      const r = computeBunt({ errorMs: 0, ball: pt.ball, aim: { x: pt.ball.x, y: pt.ball.y - 0.5 }, windowScale: ws, batterHand: 'R', rng: createRng(3) });
+      expect(r.made).toBe(false);
+      const ok = computeBunt({ errorMs: 0, ball: pt.ball, aim: { x: pt.ball.x, y: pt.ball.y - 0.1 }, windowScale: ws, batterHand: 'R', rng: createRng(3) });
+      expect(ok.made).toBe(true);
+    }
   });
 });

@@ -152,9 +152,11 @@ function followKey(e, start) {
 
 // ---------------------------------------------------------------- bunt
 // Squared around to bunt: hips and shoulders turned to face the pitcher, knees bent, the bat held level across the front of the
-// plate at chest height. `push` = { contact:[x,y,z] (ball in pose space), tStart, tHit } when he pushes the bat out to meet the ball.
+// plate. `aim` = [x,y,z] in pose space: where you hold the bat (its sweet spot follows it, so the bat you see is the bat you aim);
+// `push` = { contact:[x,y,z] (ball in pose space), tStart, tHit } when he pushes the bat out to meet the ball.
 const BUNT_DIR = (() => { const yaw = 0.16, p = 0.05; return [Math.sin(yaw) * Math.cos(p), Math.sin(p), Math.cos(yaw) * Math.cos(p)]; })();
-export function buntPose(P, time, push = null) {
+const BUNT_SWEET = 1.9; // how far up the bat (feet from the knob) the sweet spot is
+export function buntPose(P, time, push = null, aim = null) {
   resetPose(P);
   const breathe = Math.sin(time * 1.6);
   P.hipY = 2.62 + breathe * 0.015;
@@ -163,10 +165,13 @@ export function buntPose(P, time, push = null) {
   set3(P.footL, 0.5, ANK, -0.6); set3(P.footR, 0.15, ANK, 0.62);
   set3(P.kneeL, 1, 0.1, -0.2); set3(P.kneeR, 1, 0.1, 0.3);
   let knob = [0.85, 3.42, 0.3]; // (squared around: the bat level at the top of the strike zone, out over the plate)
+  if (aim) knob = [aim[0] - BUNT_DIR[0] * BUNT_SWEET, aim[1] - BUNT_DIR[1] * BUNT_SWEET, aim[2] - BUNT_DIR[2] * BUNT_SWEET];
+  // (a low bat: he bends lower to get down to it rather than reaching with straight arms)
+  P.hipY -= clamp(3.42 - knob[1], 0, 1.2) * 0.35;
   if (push && time >= push.tStart) {
     // the sweet spot (1.9 ft up the bat) goes out to where the ball crosses, then the bat gives a little as it "catches" the ball
     const C = push.contact;
-    const meet = [C[0] - BUNT_DIR[0] * 1.9, C[1] - BUNT_DIR[1] * 1.9, C[2] - BUNT_DIR[2] * 1.9];
+    const meet = [C[0] - BUNT_DIR[0] * BUNT_SWEET, C[1] - BUNT_DIR[1] * BUNT_SWEET, C[2] - BUNT_DIR[2] * BUNT_SWEET];
     const u = smoothstep(push.tStart, push.tHit, time);
     const give = time > push.tHit ? smoothstep(push.tHit, push.tHit + 0.25, time) : 0;
     knob = [lerp(knob[0], meet[0], u) - 0.25 * give, lerp(knob[1], meet[1], u), lerp(knob[2], meet[2], u)];

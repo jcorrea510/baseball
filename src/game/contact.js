@@ -163,6 +163,12 @@ export function derbyBatting(cfg = CONFIG) {
  * under it, it pops up. An early bunt goes down the pull-side line, a late one the other way.
  * @param {object} i  { errorMs, ball, aim, window, windowScale?, batterHand?, rng }
  */
+/** Where a bat held out to bunt still touches the ball (ft from its sweet spot), for a timing window scale (level x Contact). */
+export function buntWindow(windowScale = 1, cfg = CONFIG) {
+  const T = cfg.bunt.touch, k = 1 + (windowScale - 1) * cfg.bunt.touchByLevel;
+  return { up: T.up * k, tip: T.tip * k, handle: T.handle * k };
+}
+
 export function computeBunt(i, cfg = CONFIG) {
   const B = cfg.bunt;
   const rng = i.rng;
@@ -171,8 +177,7 @@ export function computeBunt(i, cfg = CONFIG) {
   const ratio = zoneRatio(ball.x, ball.y, cfg);
   const scale = i.windowScale ?? 1;
   const abs = Math.abs(i.errorMs);
-  const win = i.window || contactWindow('pro', cfg);
-  const off = batOffset(ball, aim, hand, { up: win.up * B.windowScale, tip: win.tip * B.windowScale, handle: win.handle * B.windowScale });
+  const off = batOffset(ball, aim, hand, buntWindow(scale, cfg));
   const base = { bunt: true, errorMs: i.errorMs, zoneRatio: ratio, timing: { grade: 'bunt', abs }, u: off.u, w: off.w, aim: { ...aim }, ball: { ...ball } };
   if (abs > B.windowMs[1] * scale) return { ...base, grade: 'miss', made: false, reason: 'timing' };
   if (Math.abs(off.u) > 1 || Math.abs(off.w) > 1) return { ...base, grade: 'miss', made: false, reason: Math.abs(off.u) > 1 ? (off.u > 0 ? 'under' : 'over') : 'end' };
@@ -186,8 +191,12 @@ export function computeBunt(i, cfg = CONFIG) {
   const pullSign = hand === 'R' ? -1 : 1;
   const early = -i.errorMs; // an early bunt goes toward the pull-side line
   // (i.side: the line he is bunting toward, -1 = third base, +1 = first base; else early / late decides)
-  const side = i.side ? Math.sign(i.side) : Math.abs(early) > 8 ? Math.sign(early) * pullSign : (rng.next() < 0.5 ? -1 : 1);
-  const placed = i.side || Math.abs(early) > 8 ? B.aimSpray : B.spray;
+  // (i.side: the line he is bunting toward, -1 = third base, +1 = first base; 'bat' = where on the bat it meets the ball decides: toward the
+  // end of the bat up the far line, near the hands up the near line, the middle back toward the pitcher; else early / late decides)
+  const fromBat = i.side === 'bat';
+  const sideBat = fromBat ? (Math.abs(off.w) < B.middleW ? 0 : Math.sign(off.w) * -pullSign) : 0;
+  const side = fromBat ? sideBat || (rng.next() < 0.5 ? -1 : 1) : i.side ? Math.sign(i.side) : Math.abs(early) > 8 ? Math.sign(early) * pullSign : (rng.next() < 0.5 ? -1 : 1);
+  const placed = fromBat ? (sideBat ? B.aimSpray : B.spray) : i.side || Math.abs(early) > 8 ? B.aimSpray : B.spray;
   let sprayAngle = side * rng.range(placed[0], placed[1]) + rng.gauss(0, B.sprayNoise * (1.4 - q));
   if (rng.next() < B.foulChance * (1 - q)) sprayAngle = side * rng.range(47, 70); // pushed foul
   const backspin = clamp(200 + 40 * Math.max(launchAngle, 0), 150, 1600);

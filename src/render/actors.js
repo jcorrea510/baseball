@@ -650,7 +650,11 @@ export class Actors {
     if (st) st.buntT = time;
     if (st && st.buntK > 0.01) {
       const bp = makePose();
-      buntPose(bp, time, swing && swing.bunt && sw ? sw : null);
+      // the bat he holds out follows your aim (locked once he has offered at the pitch)
+      const a = swing && swing.bunt && swing.aim ? swing.aim : E.batAim;
+      let aimLocal = null;
+      if (a) { const l = person.root.worldToLocal(this.tmpV.set(a.x, a.y, E.cfg.pitch.contactZ).clone()); aimLocal = [l.x, l.y, l.z]; }
+      buntPose(bp, time, swing && swing.bunt && sw ? sw : null, aimLocal);
       mixPose(P, P, bp, st.buntK);
     }
     // ease back to the stance for the next pitch after the swing is over

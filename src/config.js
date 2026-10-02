@@ -227,6 +227,7 @@ export const CONFIG = {
   batAim: {
     color: 0xffffff, opacity: 0.4, spotColor: 0xffe08a, spotOpacity: 0.95,
     tilt: 0.2, tiltRefY: 2.6, tiltPerFt: 0.22, tiltRange: [0.04, 0.6], // radians the barrel dips (more on a low pitch)
+    buntTilt: -0.05, // squared around to bunt the bat is held level (barrel a touch up)
     fadeTime: 0.18, // s to fade in / out
     holdAfterSwing: 0.35, fadeAfterSwing: 0.5, // after a swing it stays where it was swung this long, then fades
     follow: 0.03, // s: how closely it follows the cursor (a touch of weight, never a lag you can feel)
@@ -255,7 +256,11 @@ export const CONFIG = {
   bunt: {
     windowMs: [45, 115], // ms of timing error: inside the first, a clean bunt; worse up to the second; beyond it the bunt misses
     reachRatio: 1.3, // (zone widths) pitches further out than this cannot be bunted
-    windowScale: 1.35, // the bat held out square covers more of the ball than a swing: the contact window (above / below, along the bat) x this
+    // The bat held out square touches the ball only where it really is: ft from the bat's sweet spot to the ball's centre - above /
+    // below (ball + barrel radius, plus a hair for the see-through bat), toward the end of the bat, toward the hands. Easier levels
+    // (and a better Contact rating) widen it by half their timing help (`touchByLevel`).
+    touch: { up: 0.3, tip: 0.95, handle: 0.85 },
+    touchByLevel: 0.5,
     exitVelocity: [24, 42], // mph: a soft, well-placed bunt .. one that got away from you
     goodLaunch: -12, // degrees: a good bunt is pushed down into the grass
     popLaunch: 32, // ...a bad one pops up
@@ -265,14 +270,11 @@ export const CONFIG = {
     sprayNoise: 6,
     foulChance: 0.45, // chance a poor bunt is pushed foul (scaled down for a good one)
     leadMargin: 0.35, // s: on a bunt the fielder only goes after the lead runner when he would beat him by this much (else the sure out at first)
-    // Squared around, he bunts by himself (B): he decides `autoLead` s before the bat must start, takes a pitch further out than
-    // `offerRatio` zone widths, misses his timing by `autoTimingSd` ms (typically), and holds the bat `autoOnTop` of the contact window
-    // above the ball's middle (on top of it: down into the grass) give or take `autoAimSd` ft.
-    autoLead: 0.05,
-    offerRatio: 1.2,
-    autoTimingSd: 38,
-    autoOnTop: 0.32,
-    autoAimSd: 0.17,
+    // Squared around (B), he holds the bat out where you put it: the pitch meets it if the bat is there (inside `touch`). A bat further than `offerDist` ft from the pitch is pulled back (he takes it). His timing is off by about
+    // `holdTimingSd` ms. A ball met within `middleW` of the middle of the bat goes back toward the pitcher, nearer the end up a line.
+    offerDist: 1.25,
+    holdTimingSd: 18,
+    middleW: 0.3,
   },
 
   // --------------------------------------------------------------------------
