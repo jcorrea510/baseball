@@ -628,4 +628,24 @@ describe('foul tips', () => {
     expect(last.result).toBe('strikeoutSwinging');
     expect(last.detail).toBe('Foul tip');
   });
+  it('sending a runner during a foul tip keeps it a foul tip', () => {
+    const e = new Engine({ mode: 'quick', playerSide: 'top', seed: 8 });
+    e.pitchOverride = strikePitch;
+    e.contactOverride = tip;
+    e.start();
+    e.game.bases = [e.lineup[5], null, null];
+    e.game.strikes = 2;
+    let last = null;
+    e.on('result', (r) => { last = r; });
+    swingAt(e);
+    expect(untilPhase(e, 'play')).toBe(true);
+    expect(e.play.plan.foulTip).toBeTruthy();
+    for (let i = 0; i < 40 && !e.sendOpen; i++) e.update(DT);
+    expect(e.sendOpen).toBe(true);
+    e.applyRunnerOrder({ base: 2, t: e.time - e.play.t0, from: 1 });
+    expect(e.play.planIn.orders.length).toBe(1);
+    expect(e.play.plan.foulTip).toBeTruthy();
+    expect(untilPhase(e, 'result')).toBe(true);
+    expect(last.detail).toBe('Foul tip');
+  });
 });

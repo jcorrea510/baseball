@@ -711,6 +711,8 @@ export class Engine {
     const opt = { kind: o.tag !== undefined ? 'tag' : o.back ? 'back' : 'send' };
     p.planIn.orders.push(o);
     const plan = planPlay({ ...p.planIn, prev: { paths: p.plan.paths, t } }, this.cfg);
+    // a foul tip is decided by the engine, not the planner: keep it (the catcher still holds it)
+    if (p.plan.foulTip) { plan.foulTip = p.plan.foulTip; plan.ballHitEnd = p.plan.ballHitEnd; plan.endTime = p.plan.endTime; }
     p.plan = plan;
     p.events = buildEventList(p.sim, plan);
     p.nextEvent = p.events.findIndex((e) => e.t > t + 1e-9);
