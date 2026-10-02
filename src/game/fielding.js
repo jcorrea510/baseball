@@ -1577,7 +1577,7 @@ function finishInfieldOut(plan, at, ctx) {
     plan.moves.push({ from: 0, to: 1, out: false });
     plan.result = 'fieldersChoice';
     if (secondOutPossible) {
-      const tRelay = tOut + F.transfer.IF * 0.85;
+      const tRelay = tOut + F.pivot; // (the pivot man catches it, gets clear of the slide and throws)
       const arrival = arrivalAt(cfg, 0, 1);
       const opts = coverOptions({ base: 1, thrower: recv, tReady: tRelay, from: rp, runnerT: arrival }, plan, defense, cfg);
       if (opts.length) {

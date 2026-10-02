@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import { CONFIG } from '../src/config.js';
 import { simulateBattedBall } from '../src/physics/ballistics.js';
-import { createDefense, planPlay } from '../src/game/fielding.js';
+import { createDefense, alignDefense, planPlay } from '../src/game/fielding.js';
 import { auditPlan, fielderAt } from '../src/game/playAudit.js';
 import { runnerArrival } from '../src/game/runnerMotion.js';
 import { BASE_XZ } from '../src/physics/field.js';
@@ -165,8 +165,8 @@ describe('force plays and double plays', () => {
   it('a double play: the man on second has the ball and the bag, then the man on first gets the relay before the batter', () => {
     let seen = 0;
     for (let spray = -40; spray <= 40; spray += 2) {
-      for (const ev of [50, 58, 66]) {
-        const { plan, defense } = play(ev, -2, spray, { bases: [1, null, null], outs: 0 });
+      for (const ev of [72, 82, 92]) { // (hit firmly: a slow roller cannot be turned two at big-league depth)
+        const { plan, defense } = play(ev, -2, spray, { bases: [1, null, null], outs: 0, defense: alignDefense(createDefense(), [1, null, null], 0) }); // (double-play depth)
         if (plan.result !== 'doublePlay') continue;
         seen++;
         const outs = plan.events.filter((e) => e.type === 'out').sort((a, b) => a.t - b.t);

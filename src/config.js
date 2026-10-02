@@ -316,7 +316,7 @@ export const CONFIG = {
     aimSpray: [16, 30], // ...and toward the line you aim at (hold left / right)
     sprayNoise: 6,
     foulChance: 0.45, // chance a poor bunt is pushed foul (scaled down for a good one)
-    leadMargin: 0.35, // s: on a bunt the fielder only goes after the lead runner when he would beat him by this much (else the sure out at first)
+    leadMargin: 0.6, // s: on a bunt the fielder only goes after the lead runner when he would beat him by this much (else the sure out at first)
     // Squared around (B), he holds the bat out where you put it: the pitch meets it if the bat is there (inside `touch`). A bat further than `offerDist` ft from the pitch is pulled back (he takes it). His timing is off by about
     // `holdTimingSd` ms. A ball met within `middleW` of the middle of the bat goes back toward the pitcher, nearer the end up a line.
     offerDist: 1.25,
@@ -465,17 +465,17 @@ export const CONFIG = {
     positions: {
       P: [0, -60.5],
       C: [0, 4.0],
-      '1B': [54, -70],
-      '2B': [26, -113],
-      SS: [-27, -113],
-      '3B': [-54, -70],
+      '1B': [58, -80], // (big-league depth: the corners about 100 ft from home, the middle infielders about 140)
+      '2B': [36, -134],
+      SS: [-38, -136],
+      '3B': [-59, -88],
     },
     outfield: { LF: [-24, 272], CF: [0, 308], RF: [24, 272] },
     // Where they stand for the situation (set before every pitch): with a runner on first and second base open the first baseman
     // holds him on, on the front edge of the bag (`hold1B`); when a double play is on (a runner on first, fewer than two outs) the
     // shortstop and second baseman play double-play depth, a few steps nearer second and in (`dpDepth`).
-    align: { hold1B: [60.5, -61.5], dpDepth: { SS: [-20, -107], '2B': [20, -107] } },
-    speed: { IF: 21, OF: 22.5, P: 16, C: 16 }, // ft/s, average (effective, includes getting up to speed)
+    align: { hold1B: [60.5, -61.5], dpDepth: { SS: [-28, -126], '2B': [27, -124] } },
+    speed: { IF: 21, OF: 22.5, P: 21, C: 17 }, // ft/s, average (effective, includes getting up to speed)
     reaction: { IF: 0.23, OF: 0.37, P: 0.36, C: 0.36 }, // seconds before a fielder reads the ball (outfielders read a ball off the bat a little slower: well-hit balls drop in more often)
     glove: 2.4, // ft: how far a fielder can reach without diving
     diveExtra: 3.0, // extra ft when diving (dive only on low balls)
@@ -490,7 +490,9 @@ export const CONFIG = {
     // the infield fly rule (runners on 1st and 2nd or the bases loaded, fewer than two outs): a pop-up at least `apex` ft high that an
     // infielder settles under within `range` ft of home - the batter is out, caught or not; the umpire calls it `callBefore` s before it comes down
     infieldFly: { apex: 45, range: 160, callBefore: 1.0 },
-    transfer: { IF: 0.36, OF: 0.65, C: 0.4, P: 0.42 }, // catch-to-throw time (an outfielder gathers himself and crow-hops)
+    transfer: { IF: 0.36, OF: 0.65, C: 0.4, P: 0.42 },
+    homeThrowMargin: 0.45, // s: on a grounder with the runner on third breaking for home, the fielder throws home only when he has him by this much
+    pivot: 0.9, // s: the middle infielder turning a double play - catch, clear the sliding runner, throw to first // catch-to-throw time (an outfielder gathers himself and crow-hops)
     throwSpeed: { IF: 120, OF: 100, C: 112, P: 100 }, // ft/s, on average over the whole throw (a long outfield throw is lobbed a little)
     relayDistance: 200, // outfield throws longer than this use a cut-off man
     relayTransfer: 0.3,
@@ -534,8 +536,8 @@ export const CONFIG = {
       maxCarry: 45, // ft: farther from the bag than this he throws to whoever is covering instead of running it over
       firstMaxCarry: 95, // ft: a first baseman runs it over himself from up to this far away when that is quicker than the pitcher covering
       selfBonus: 0.25, // s: how much a close fielder prefers taking the bag himself over a throw (it is the natural play)
-      firstSelfDistance: 42, // ft: a first baseman who fields it this close to first base takes the bag himself (no flip to the pitcher)
-      firstSelfBonus: 0.9, // s: and strongly prefers that to a throw - the pitcher only covers when the first baseman is pulled far off the bag
+      firstSelfDistance: 20, // ft: a first baseman who fields it this close to first base takes the bag himself (no flip to the pitcher)
+      firstSelfBonus: 0.3, // s: and strongly prefers that to a throw - the pitcher only covers when the first baseman is pulled far off the bag
       traditionBonus: 0.35, // s: the usual man covers unless someone else is clearly quicker (the pitcher covers first when the first baseman is pulled off)
     },
     chaseShare: 0.72, // how much of the way to the ball the OTHER outfielder runs on a ball hit to the outfield (he runs at it too)
