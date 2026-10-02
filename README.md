@@ -89,7 +89,7 @@ node scripts/realism.mjs   # thousands of batted balls: who fields, covers, scor
 
 ## Publishing
 
-The game is published on **Vercel**, which rebuilds it by itself on every push to **`main`**. Vercel runs no checks of its own, so GitHub runs them: `.github/workflows/deploy.yml` ("Check the game") runs the tests, builds the game and opens it in a real browser (the smoke test) on every push to `main`. A red run in the repository's **Actions** tab means that push should not be trusted. (GitHub Pages is switched off; nothing is published there.)
+The game is played at **https://baseball-jtc11.vercel.app**. Vercel only hosts it: it rebuilds the game by itself on every push to **`main`** (the repository's only branch, and its default). Vercel runs no checks of its own, so GitHub runs them: `.github/workflows/deploy.yml` ("Check the game") runs the tests, builds the game and opens it in a real browser (the smoke test) on every push to `main`. A red run in the repository's **Actions** tab means that push should not be trusted. (GitHub Pages is switched off; nothing is published there.)
 
 Vercel settings (also in `vercel.json`):
 
@@ -101,7 +101,7 @@ Vercel settings (also in `vercel.json`):
 | Install Command | `npm ci` |
 | Root Directory | (leave empty) |
 | Environment Variables | **none** - never add `BASE_PATH` |
-| Production Branch | `main` (check this: GitHub's *default* branch is an old `claude/...` branch, and Vercel may have picked that) |
+| Production Branch | `main` |
 
 If the game ever shows an error screen instead of the title, read it: it says whether the game files didn't load or the browser couldn't start 3D graphics (turn on hardware acceleration or try another browser). **Technical details** on that screen has a short note for whoever runs the site. "The game files didn't load" on Vercel means a build made for another address was deployed: check that no `BASE_PATH` variable is set, then redeploy without the build cache.
 
