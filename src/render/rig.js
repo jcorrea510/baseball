@@ -327,9 +327,9 @@ export class Person {
     this.pelvisG = new THREE.Group();
     this.root.add(this.pelvisG);
     this._merged(this.pelvisG, [
-      { geo: sphere(0.5, 16, 10), color: pantsHex, y: 0.02, sx: 0.9, sy: 0.62, sz: 0.68, ao: 0.08 },
-      { geo: sphere(0.3, 10, 8), color: pantsHex, x: 0.2, y: -0.12, z: -0.13, sy: 0.9 },
-      { geo: sphere(0.3, 10, 8), color: pantsHex, x: -0.2, y: -0.12, z: -0.13, sy: 0.9 },
+      // hips and seat as ONE smooth shape, a little fuller behind, wide enough to take in the tops of the thighs (separate seat
+      // pieces left creases where they met)
+      { geo: sphere(0.5, 20, 14), color: pantsHex, y: -0.03, z: -0.03, sx: 1.08, sy: 0.7, sz: 0.78, ao: 0.06 },
       { geo: cyl(0.5, 0.5, 0.12, 22), color: beltHex, y: 0.12, sx: 0.98, sz: 0.68 },
       { geo: box(0.15, 0.1, 0.04), color: '#c8ccd2', y: 0.12, z: 0.345 },
     ]);
@@ -470,7 +470,7 @@ export class Person {
       this.pelvisG.add(hip);
       const thigh = new THREE.Group(); hip.add(thigh);
       this._merged(thigh, [
-        { geo: sphere(0.3, 12, 8), color: pantsHex, y: -0.12, sy: 1.1, ao: 0.06 }, // top of the thigh (a baggy pant leg)
+        { geo: sphere(0.285, 12, 8), color: pantsHex, y: -0.2, sy: 1.15, sz: 0.95, ao: 0.06 }, // top of the thigh (a baggy pant leg), tucked up into the hips
         { geo: cyl(0.3, 0.225, DIM.thigh - 0.3, 14), color: pantsHex, y: -DIM.thigh / 2 - 0.02 }, // thigh, tapering to the knee
         { geo: sphere(0.235, 10, 8), color: pantsHex, y: -DIM.thigh, sz: 1.04 }, // knee
         { geo: box(0.045, DIM.thigh - 0.34, 0.16), color: trimHex, x: side * 0.262, y: -DIM.thigh / 2 - 0.02 }, // side stripe
