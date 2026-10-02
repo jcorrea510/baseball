@@ -18,7 +18,8 @@ DIM.hipStand = DIM.ankle + DIM.shin + DIM.thigh; // hip height with straight leg
 // Where the hands hold the bat: feet up the bat from the knob to the middle of each fist (bottom hand just above the knob, the top
 // hand touching it - a pose can slide the top hand up the bat with `gripTop`, as for a bunt), and the point inside a closed fist
 // the handle runs through (wrist space: down toward the fingers, out toward the curled fingertips).
-const GRIP = { bottom: 0.17, top: 0.43, point: new THREE.Vector3(0, -0.2, 0.07) };
+// `reach`: how far beyond the arm's length (shoulder to wrist) the middle of the fist can be, keeping the elbow a touch bent.
+const GRIP = { bottom: 0.17, top: 0.43, point: new THREE.Vector3(0, -0.2, 0.07), reach: 0.08 };
 
 // ---------------------------------------------------------------- pose format
 export const SCALARS = ['hipY', 'pelvisYaw', 'pelvisPitch', 'pelvisRoll', 'torsoPitch', 'torsoYaw', 'torsoRoll', 'headYaw', 'headPitch', 'footLTilt', 'footRTilt', 'batYaw', 'batPitch', 'batVis', 'gloveOpen', 'gripTop'];
@@ -599,10 +600,24 @@ export class Person {
       this.bat.visible = p.batVis > 0.5;
       const cp = Math.cos(p.batPitch);
       _bd.set(Math.sin(p.batYaw) * cp, Math.sin(p.batPitch), Math.cos(p.batYaw) * cp).normalize();
-      this.bat.position.set(p.bat[0], p.bat[1], p.bat[2]);
+      // The bat never leaves his hands: if a pose puts a grip further from its shoulder than the arm (plus the fist) can reach, the
+      // bat is drawn back toward that shoulder by the difference - smoothly, so a bunt aimed far out or very low stays in his hands
+      // (the picture only: the bunt and the swing are decided by the aim, not by where the bat is drawn).
+      _knob.set(p.bat[0], p.bat[1], p.bat[2]);
+      if (p.batVis > 0.5) {
+        for (let pass = 0; pass < 2; pass++) {
+          for (const arm of this.arms) {
+            this.root.worldToLocal(arm.sh.getWorldPosition(_aim));
+            _t2.copy(_knob).addScaledVector(_bd, arm.side === 1 ? GRIP.bottom : (p.gripTop ?? GRIP.top));
+            const over = _t2.distanceTo(_aim) - (arm.len1 + arm.len2 + GRIP.reach);
+            if (over > 0) _knob.addScaledVector(_aim.sub(_t2).normalize(), over);
+          }
+        }
+      }
+      this.bat.position.copy(_knob);
       this.bat.quaternion.setFromUnitVectors(_up, _bd);
-      gripA = _ga.set(p.bat[0], p.bat[1], p.bat[2]).addScaledVector(_bd, GRIP.bottom);
-      gripB = _gb.set(p.bat[0], p.bat[1], p.bat[2]).addScaledVector(_bd, p.gripTop ?? GRIP.top);
+      gripA = _ga.copy(_knob).addScaledVector(_bd, GRIP.bottom);
+      gripB = _gb.copy(_knob).addScaledVector(_bd, p.gripTop ?? GRIP.top);
     }
 
     // arms
@@ -672,7 +687,7 @@ const _qw = new THREE.Quaternion(), _qr = new THREE.Quaternion(), _qk = new THRE
 const _e = new THREE.Euler();
 const _bd = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0), _ga = new THREE.Vector3(), _gb = new THREE.Vector3();
 const _hx = new THREE.Vector3(), _hy = new THREE.Vector3(), _hz = new THREE.Vector3(), _aim = new THREE.Vector3();
-const _hm = new THREE.Matrix4(), _hq = new THREE.Quaternion(), _hq2 = new THREE.Quaternion();
+const _hm = new THREE.Matrix4(), _hq = new THREE.Quaternion(), _hq2 = new THREE.Quaternion(), _knob = new THREE.Vector3();
 
 // ---------------------------------------------------------------- bat model (knob at the origin, barrel along +y)
 export const BAT_STYLES = {

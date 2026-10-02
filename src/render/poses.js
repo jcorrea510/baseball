@@ -48,8 +48,15 @@ export function resetPose(P) {
 }
 
 // ---------------------------------------------------------------- batter (right-handed pose space)
-// The bat handle ("knob") position in the stance: the hands a few inches in front of the back shoulder, at about shoulder height.
-const KNOB_STANCE = [-0.38, 4.0, 1.0];
+// The stance: the bat handle ("knob") with the hands relaxed in front of the back shoulder, a little below it and back from the
+// face, and the bat laid back at about 45 deg (yaw / pitch, radians). His weight sits back on the rear leg (`WEIGHT_BACK` ft).
+const KNOB_STANCE = [-0.55, 3.82, 0.95];
+const BAT_STANCE = { yaw: -1.5, pitch: 0.76 };
+const WEIGHT_BACK = 0.12;
+// Reaching in the swing (ft of pose space): a ball further out over the plate than `awayFrom` (forward of him) or lower than `lowFrom`
+// - per foot beyond: hips shift toward it `shift`, the upper body leans `lean` (radians), the front foot strides `stride` further
+// out, and for a low ball he leans `lowLean` and sinks `sink`.
+const REACH = { awayFrom: 2.6, lowFrom: 2.6, shift: 0.42, lean: 0.38, stride: 0.35, lowLean: 0.14, sink: 0.24 };
 
 export function batterPose(P, time, swing, aimY = null) {
   resetPose(P);
@@ -63,8 +70,11 @@ export function batterPose(P, time, swing, aimY = null) {
   // (aimY: where the bat is aimed - the hands come down a little and he sinks a touch for a low pitch, rise for a high one)
   const aimK = aimY === null ? 0 : clamp(aimY - 2.5, -1.4, 1.6);
   hip -= Math.max(0, -aimK) * 0.07;
-  let knob = [KNOB_STANCE[0], KNOB_STANCE[1] + wag * 0.05 + aimK * 0.16, KNOB_STANCE[2]];
-  let batYaw = -1.4 + wag * 0.05, batPitch = 0.88 + wag * 0.07;
+  // (not frozen: the hands drift in a slow small loop, the bat waggles, and his weight rocks a little on the back leg)
+  const loop = time * 1.7, rock = Math.sin(time * 0.9);
+  let knob = [KNOB_STANCE[0] + Math.cos(loop) * 0.04, KNOB_STANCE[1] + wag * 0.04 + Math.sin(loop) * 0.03 + aimK * 0.16, KNOB_STANCE[2]];
+  let batYaw = BAT_STANCE.yaw + wag * 0.06, batPitch = BAT_STANCE.pitch + wag * 0.09;
+  let pelvisX = -WEIGHT_BACK + rock * 0.03, pelvisZ = 0;
   // (the lead elbow points down in front of the chest, the back elbow out behind him at about shoulder height)
   let poleL = [0.3, -1, 0.45], poleR = [-0.5, -1, -0.35];
   let footLTilt = 0;
@@ -79,12 +89,22 @@ export function batterPose(P, time, swing, aimY = null) {
     const cKnob = [C[0] - 2.3 * Math.sin(dirYaw) * cP, C[1] - 2.3 * sinP, C[2] - 2.3 * Math.cos(dirYaw) * cP];
     const cPitch = Math.asin(sinP);
     const dur = Math.max(0.03, swing.tHit - swing.tStart);
+    // Reaching for a pitch away from him (out over the plate) or down low: he strides a little toward it, leans out over the plate
+    // and sinks, so his hands can still get the bat there - full at contact, easing off through the follow-through.
+    const away = clamp(C[2] - REACH.awayFrom, 0, 1.6), low = clamp(REACH.lowFrom - C[1], 0, 1.4);
+    const reach = (k) => {
+      pelvisZ = k * away * REACH.shift;
+      torsoPitch += k * (away * REACH.lean + low * REACH.lowLean);
+      hip -= k * (low * REACH.sink + away * 0.06);
+      footLz += k * away * REACH.stride;
+    };
     if (time < swing.tHit) {
       const u = clamp((time - swing.tStart) / dur, 0, 1);
       const load = smoothstep(0, 0.3, u);
       const ru = clamp((u - 0.2) / 0.8, 0, 1);
       const rot = ru * ru * (1.6 - 0.6 * ru); // accelerating
       pelvisYaw = lerp(-0.05 - 0.2 * load, 0.62, rot);
+      pelvisX = lerp(-WEIGHT_BACK - 0.04 * load, WEIGHT_BACK, rot); // (the weight goes from the back leg onto the front one)
       torsoYaw = lerp(-0.06 - 0.22 * load, 0.3, rot);
       torsoPitch = lerp(0.18, 0.36, rot); // (from his stance to the same position at contact as always)
       hip = 2.72 - 0.1 * load + 0.16 * rot;
@@ -97,15 +117,17 @@ export function batterPose(P, time, swing, aimY = null) {
         lerp(k0[1] - 0.05 * load, cKnob[1], hs),
         lerp(k0[2] - 0.32 * load, cKnob[2], hs),
       ];
-      batYaw = lerp(-1.4, dirYaw, Math.pow(rot, 1.15));
-      batPitch = lerp(0.93 + 0.15 * load, cPitch, hs);
+      batYaw = lerp(BAT_STANCE.yaw, dirYaw, Math.pow(rot, 1.15));
+      batPitch = lerp(BAT_STANCE.pitch + 0.05 + 0.15 * load, cPitch, hs);
       headYawAbs = 1.5 - 0.15 * rot;
       headPitch = 0.16 + 0.1 * rot;
       poleL = [0.9, -0.5, -0.4]; poleR = [-0.8, -0.2, -0.6];
+      reach(rot);
     } else {
       const f = clamp((time - swing.tHit) / Math.max(0.05, swing.follow), 0, 1);
       const e = 1 - Math.pow(1 - f, 2.2);
       pelvisYaw = lerp(0.62, 1.12, e);
+      pelvisX = WEIGHT_BACK;
       torsoYaw = lerp(0.3, 0.7, e);
       torsoPitch = lerp(0.36, 0.2, e);
       hip = lerp(2.88, 3.05, e);
@@ -117,9 +139,11 @@ export function batterPose(P, time, swing, aimY = null) {
       knob = k[0]; batYaw = k[1]; batPitch = k[2];
       headYawAbs = 1.5; headPitch = 0.24;
       poleL = [lerp(1.0, 0.6, e), lerp(-0.4, -1, e), lerp(-0.4, 0.3, e)]; poleR = [-0.6, lerp(0.2, -0.3, e), -0.8];
+      reach(1 - smoothstep(0, 0.45, e));
     }
   }
   P.hipY = hip;
+  P.pelvis[0] = pelvisX; P.pelvis[2] = pelvisZ;
   P.pelvisYaw = pelvisYaw; P.pelvisPitch = pelvisPitch; P.torsoYaw = torsoYaw; P.torsoPitch = torsoPitch;
   P.headYaw = clamp(headYawAbs - (pelvisYaw + torsoYaw), -0.5, 1.5);
   P.headPitch = headPitch;
@@ -168,8 +192,21 @@ export function buntPose(P, time, push = null, aim = null) {
   set3(P.kneeL, 1, 0.1, -0.2); set3(P.kneeR, 1, 0.1, 0.3);
   let knob = [0.85, 3.42, 0.3]; // (squared around: the bat level at the top of the strike zone, out over the plate)
   if (aim) knob = [aim[0] - BUNT_DIR[0] * BUNT_SWEET, aim[1] - BUNT_DIR[1] * BUNT_SWEET, aim[2] - BUNT_DIR[2] * BUNT_SWEET];
-  // (a low bat: he bends lower to get down to it rather than reaching with straight arms)
-  P.hipY -= clamp(3.42 - knob[1], 0, 1.2) * 0.35;
+  // He goes to the bat with his body rather than reaching with straight arms: a low bat - he bends his knees and sinks (right down
+  // into a crouch for one at his shins) and bends forward a little; a bat out over the plate - he leans out toward it; one out in
+  // front - he shifts toward the pitcher. (Feet stay planted; the rig keeps the bat in his hands whatever happens.)
+  const low = clamp(3.42 - knob[1], 0, 2.6);
+  const out = clamp(knob[2] - 0.3, -0.5, 1.2);
+  const fwd = clamp(knob[0] - 0.85, -0.8, 1.2);
+  // (his back stays fairly upright - the knees and hips do most of it - and his eyes stay up on the pitch)
+  const bend = Math.min(0.32, low * 0.1 + Math.max(0, out) * 0.14);
+  P.hipY -= low * 0.42;
+  P.torsoPitch += bend;
+  P.pelvisPitch += low * 0.04;
+  P.pelvis[2] += out * 0.3;
+  P.pelvis[0] += fwd * 0.2;
+  P.torsoRoll -= fwd * 0.08;
+  P.headPitch -= (bend + low * 0.04) * 0.85;
   if (push && time >= push.tStart) {
     // the sweet spot (1.9 ft up the bat) goes out to where the ball crosses, then the bat gives a little as it "catches" the ball
     const C = push.contact;
