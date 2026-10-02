@@ -170,6 +170,9 @@ export class Engine {
 
   beginPlateAppearance(first = false, quiet = false) {
     if (this.diamond) {
+      const g = this.diamond;
+      // (practice: nobody is ever out, so a runner can still be on base when his turn comes round - the next man bats instead)
+      for (let k = 0; this.pgame && k < 9 && g.bases.includes(this.lineup[g.lineupIdx[g.half] % 9]); k++) g.lineupIdx[g.half]++;
       this.batterIndex = this.diamond.lineupIdx[this.diamond.half] % 9;
       this.batter = this.lineup[this.batterIndex];
     } else {

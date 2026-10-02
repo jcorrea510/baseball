@@ -21,6 +21,7 @@ export function createBot(engine, o = {}) {
   const swingBall = o.swingBall ?? 0.06;
   const sendGamble = o.sendGamble ?? 0.015; // the chance (per look, every 0.4 s) it sends a runner it should not have (people misjudge too)
   let plan = null;
+  const sends = o.send ?? true; // false: it never sends a runner (a player who leaves the runners alone)
   let sendPlay = null, sendAt = 0;
   engine.on('windup', ({ pitch }) => {
     const r = zoneRatio(pitch.target.x, pitch.target.y, engine.cfg);
@@ -37,7 +38,7 @@ export function createBot(engine, o = {}) {
       if (engine.awaitingBatter) engine.batterReady(); // (a new batter: the bot is always ready)
       // sending runners: a moment after the ball is down it looks at each base it could send a runner to and sends him when he would
       // make it (it peeks at the planner: a well-judged send)
-      if (engine.phase === 'play' && engine.sendOpen) {
+      if (sends && engine.phase === 'play' && engine.sendOpen) {
         const p = engine.play;
         if (sendPlay !== p) { sendPlay = p; sendAt = engine.time + rng.range(0.15, 0.6); }
         const t = engine.time - p.t0;

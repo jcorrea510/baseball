@@ -282,6 +282,8 @@ describe('whole games', () => {
     const bot = createBot(e, { errSd: 25, seed: 5 });
     const states = [];
     e.on('practice', (s) => states.push(s));
+    let onBaseAtBat = 0, pas = 0;
+    e.on('paStart', () => { pas++; if (e.bases.includes(e.batter)) onBaseAtBat++; });
     e.start(); drive(e, 400, bot);
     expect(e.over).toBe(false);
     expect(states.length).toBeGreaterThan(10);
@@ -292,7 +294,8 @@ describe('whole games', () => {
     expect(e.pgame.outs).toBe(0);
     expect(e.stats.hits).toBeGreaterThan(0);
     // the batters take turns (a runner on base is never the man at the plate)
-    expect(e.bases.every((r) => r !== e.batter)).toBe(true);
+    expect(pas).toBeGreaterThan(10);
+    expect(onBaseAtBat).toBe(0);
   }, 30000);
 
   it('practice uses the pitch type and speed that were chosen', () => {

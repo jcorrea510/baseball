@@ -241,8 +241,8 @@ describe('what strength and ratings do', () => {
     // speed: the same ground balls, a slow batter and a fast one
     const rng = createRng(1);
     let fast = 0, slow = 0;
-    for (let k = 0; k < 400; k++) {
-      const c = { exitVelocity: rng.range(40, 80), launchAngle: rng.range(-12, 2), sprayAngle: rng.range(-40, 40), backspin: 900, hook: 0 };
+    for (let k = 0; k < 1200; k++) {
+      const c = { exitVelocity: rng.range(20, 60), launchAngle: rng.range(-14, 0), sprayAngle: rng.range(-40, 40), backspin: 900, hook: 0 }; // (slow rollers and choppers: the close plays)
       const sim = simulateBattedBall({ ...c, start: { x: 0, y: 2.6, z: -1 } });
       const hit = (spd) => { const pl = planPlay({ sim, contact: c, bases: [null, null, null], outs: 0, defense: createDefense(), speeds: { 0: spd } }, CONFIG); return pl.batterDest > 0 ? 1 : 0; };
       fast += hit(S.ratingEffects({ con: 50, pow: 50, spd: 95 }).speed);

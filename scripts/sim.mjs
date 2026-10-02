@@ -1,5 +1,5 @@
 // Headless playtest: run many simulated games/derbies with a bot and print statistics + sanity checks.
-// usage: node scripts/sim.mjs [games=200] [errSd=14] [difficulty=pro] [park=sandlot]
+// usage: node scripts/sim.mjs [games=200] [errSd=14] [difficulty=pro] [park=sandlot]   (NOSEND=1: the bot never sends a runner)
 import { Engine } from '../src/game/engine.js';
 import { createBot } from '../src/game/bot.js';
 import { setPark } from '../src/physics/field.js';
@@ -12,7 +12,7 @@ const DT = 1 / 120;
 
 function run(mode, seed, extra = {}) {
   const e = new Engine({ mode, difficulty, seed, ...extra });
-  const bot = createBot(e, { errSd, seed: seed + 1 });
+  const bot = createBot(e, { errSd, seed: seed + 1, send: !process.env.NOSEND });
   const counts = { pitches: 0, results: {} };
   const byGrade = {};
   e.on('result', (r) => { if (r.grade && r.result && r.kind !== 'pitch') { byGrade[r.grade] ||= {}; const k = ['homer','insideParkHomer'].includes(r.result) ? 'HR' : ['single','double','triple'].includes(r.result) ? 'hit' : 'out'; byGrade[r.grade][k] = (byGrade[r.grade][k] || 0) + 1; byGrade[r.grade].n = (byGrade[r.grade].n || 0) + 1; } });

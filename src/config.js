@@ -90,7 +90,7 @@ export const CONFIG = {
   physics: {
     gravity: 32.174, // ft/s^2
     ballRadius: 0.1208, // ft (1.45 in)
-    dragK: 0.0019, // air drag (higher = ball dies in the air sooner)
+    dragK: 0.0018, // air drag (higher = ball dies in the air sooner)
     magnusK: 2.55e-5, // lift from backspin (higher = ball carries farther)
     groundRestitution: 0.42, // how bouncy the grass is
     groundFriction: 0.8, // fraction of sideways speed kept each bounce
@@ -202,7 +202,7 @@ export const CONFIG = {
     batSpeed: 75, // mph: the barrel's speed at the sweet spot on a perfectly timed swing (a big-league average)
     q: 0.2, // collision efficiency (exit speed = q x pitch speed + (1 + q) x bat speed, head on): turns extra exit speed into bat speed
     // fraction of that speed the barrel has when it meets the ball, across each timing window (from its centre to its edge)
-    timingSpeed: { perfect: [1.0, 0.98], good: [0.97, 0.89], weak: [0.85, 0.66] },
+    timingSpeed: { perfect: [1.0, 0.98], good: [0.95, 0.86], weak: [0.84, 0.66] },
     attack: 10, // degrees: the barrel is moving slightly upward through the zone (an uppercut) at the middle of the zone...
     attackPerFt: 5, // ...more on a low pitch, less on a high one (degrees per foot below / above the middle)
     attackRange: [2, 18],
@@ -284,13 +284,13 @@ export const CONFIG = {
     rookie: {
       label: 'Rookie',
       swingCue: true, // the strike-zone box pulses at the perfect moment to press the button
-      windowScale: 1.5,
+      windowScale: 1.45,
       // The bat's contact window (ft): how far the ball's centre can be above / below the sweet spot (`up`) and toward the end of the
       // bat / the hands and still be hit. The middle of `up` hits a line drive, a little under it a fly ball, above it a grounder.
-      contactWindow: { up: 0.7, tip: 1.05, handle: 0.9 },
+      contactWindow: { up: 0.66, tip: 1.05, handle: 0.9 },
       // ...and the sweet zone inside it: how the ball comes off depends on where it is in THIS (smaller) part - beyond it, still
       // inside the contact window, the bat only gets a piece of the ball (a foul tip, a pop-up, a chopper).
-      sweetSpot: { up: 0.62, tip: 1.0, handle: 0.85 },
+      sweetSpot: { up: 0.58, tip: 1.0, handle: 0.85 },
       batBonus: 5, // mph of extra bat speed (slower pitches come off the bat slower: this keeps the easy level from being the weakest)
       fastball: [62, 72],
       mix: { fastball: 0.62, changeup: 0.12, curveball: 0.13, slider: 0.13, heater: 0 },
@@ -301,9 +301,10 @@ export const CONFIG = {
       // reveal = where it starts / finishes showing the pitch's break; error = feet the guess is typically off when it first shows; over
       // the `sharpen` part of the flight it homes in until it is exactly where the ball will cross.
       guide: { fadeIn: [0.02, 0.1], reveal: [0.0, 0.2], error: 0.1, sharpen: [0.05, 0.5] },
-      pitchPace: 1.1, // the ball takes this many times longer to reach the plate than a real pitch at the speed shown (the speed shown,
+      pitchPace: 1.25, // the ball takes this many times longer to reach the plate than a real pitch at the speed shown (the speed shown,
       // the timing windows and how hard the ball comes off the bat are unchanged: it is just easier to see and to get the bat on)
       commandSigma: 0.12, // ft of pitcher inaccuracy
+      hitBatter: 0.0012, // chance a pitch gets away from him, inside at the batter (hit by pitch: he takes first base)
       errorScale: 1.5, // how often the defense makes errors (x fielding.errors)
       catcherArm: 0.74, // x the catcher's exchange time on a steal. Set with each level's windup and pitch speed for steal success ~88% / 75% / 55%
       movementScale: 0.6,
@@ -318,16 +319,17 @@ export const CONFIG = {
     },
     pro: {
       label: 'Pro',
-      windowScale: 1.2,
-      contactWindow: { up: 0.56, tip: 0.9, handle: 0.76 },
-      sweetSpot: { up: 0.5, tip: 0.82, handle: 0.7 },
+      windowScale: 1.1,
+      contactWindow: { up: 0.53, tip: 0.9, handle: 0.76 },
+      sweetSpot: { up: 0.46, tip: 0.82, handle: 0.7 },
       batBonus: -0.5,
       fastball: [80, 90],
       mix: { fastball: 0.46, changeup: 0.18, curveball: 0.18, slider: 0.18, heater: 0 },
       locations: { heart: 0.52, edge: 0.08, chase: 0.21, waste: 0.19 },
       guide: { fadeIn: [0.03, 0.12], reveal: [0.04, 0.32], error: 0.2, sharpen: [0.08, 0.6] },
-      pitchPace: 1.26,
+      pitchPace: 1.42,
       commandSigma: 0.28,
+      hitBatter: 0.0016,
       errorScale: 1.0,
       catcherArm: 1.05,
       movementScale: 1.0,
@@ -342,16 +344,17 @@ export const CONFIG = {
     },
     allstar: {
       label: 'All-Star',
-      windowScale: 0.95,
-      contactWindow: { up: 0.54, tip: 0.84, handle: 0.72 },
-      sweetSpot: { up: 0.46, tip: 0.74, handle: 0.64 },
+      windowScale: 0.8,
+      contactWindow: { up: 0.48, tip: 0.84, handle: 0.72 },
+      sweetSpot: { up: 0.41, tip: 0.74, handle: 0.64 },
       batBonus: -1.5,
       fastball: [88, 98],
       mix: { fastball: 0.36, changeup: 0.18, curveball: 0.17, slider: 0.19, heater: 0.1 },
       locations: { heart: 0.32, edge: 0.15, chase: 0.29, waste: 0.24 },
       guide: { fadeIn: [0.045, 0.15], reveal: [0.05, 0.4], error: 0.26, sharpen: [0.1, 0.7] },
-      pitchPace: 1.24,
+      pitchPace: 1.42,
       commandSigma: 0.42,
+      hitBatter: 0.002,
       errorScale: 0.7,
       catcherArm: 1.1,
       movementScale: 1.25,
@@ -412,8 +415,8 @@ export const CONFIG = {
       '3B': [-54, -70],
     },
     outfield: { LF: [-24, 272], CF: [0, 308], RF: [24, 272] },
-    speed: { IF: 20, OF: 21, P: 16, C: 16 }, // ft/s, average (effective, includes getting up to speed)
-    reaction: { IF: 0.24, OF: 0.42, P: 0.36, C: 0.36 }, // seconds before a fielder reads the ball (outfielders read a ball off the bat a little slower: well-hit balls drop in more often)
+    speed: { IF: 21, OF: 22.5, P: 16, C: 16 }, // ft/s, average (effective, includes getting up to speed)
+    reaction: { IF: 0.23, OF: 0.37, P: 0.36, C: 0.36 }, // seconds before a fielder reads the ball (outfielders read a ball off the bat a little slower: well-hit balls drop in more often)
     glove: 2.4, // ft: how far a fielder can reach without diving
     diveExtra: 3.0, // extra ft when diving (dive only on low balls)
     groundGlove: 2.9, // ft: an infielder's reach for a ground ball without diving (he stretches and backhands it)...
@@ -424,8 +427,8 @@ export const CONFIG = {
     catchHeight: 5.2, // ft: a fielder who is there in time waits for the ball to come down to about this (chest / head height) before he takes it;
     // if he cannot wait he takes it at the lowest height he still can, and only jumps (up to reachHeight) for a ball he can get no other way - at the wall, say
     groundHeight: 3.2, // a ball this low counts as a ground ball for fielding
-    transfer: { IF: 0.36, OF: 0.5, C: 0.4, P: 0.42 }, // catch-to-throw time
-    throwSpeed: { IF: 120, OF: 132, C: 112, P: 100 }, // ft/s
+    transfer: { IF: 0.36, OF: 0.65, C: 0.4, P: 0.42 }, // catch-to-throw time (an outfielder gathers himself and crow-hops)
+    throwSpeed: { IF: 120, OF: 100, C: 112, P: 100 }, // ft/s, on average over the whole throw (a long outfield throw is lobbed a little)
     relayDistance: 200, // outfield throws longer than this use a cut-off man
     relayTransfer: 0.3,
     accel: 0.42, // seconds fielders take to get up to running speed (they cannot cover ground instantly)
@@ -525,7 +528,7 @@ export const CONFIG = {
     outLinger: 2.3, // s the play goes on after a runner is tagged out, so you see the tag and see him walk off
     walkOffDelay: 1.3, // s after the tag before he gets up and walks to the dugout
     walkOffSpeed: 6, // ft/s
-    autoMargin: 0.7, // s: a runner who would make one more base by this much takes it by himself (as the ball comes down, and again when the window closes)
+    autoMargin: 0.05, // s: a runner who would make one more base by this much takes it by himself (as the ball comes down, and again when the window closes)
     // On a ball to the outfield a runner rounds his base, pulls up `roundPast` ft beyond it (braking at `roundBrake` ft/s^2) and waits.
     roundPast: 14,
     roundBrake: 30,
@@ -536,6 +539,10 @@ export const CONFIG = {
     halfwayDepth: [150, 330], // ft: on a fly coming down this shallow he only takes a step (`stayStep`), this deep he goes `halfway`
     stayStep: 0.1,
     halfwayLine: 0.22, // (on a line drive only a few steps - after a moment's freeze, `read.line`)
+    // A ball in the air that no fielder gets within `sureHitFeet` ft of is a plain hit: runners read it `sureHitRead` s after contact
+    // and go, instead of waiting to see it land.
+    sureHitFeet: 10,
+    sureHitRead: 0.55,
     tagDepth: 320,
     tagBack: 0.12,
     downReact: 0.15,
@@ -543,7 +550,7 @@ export const CONFIG = {
     turnKeep: 0.9, // radians: told to go somewhere nearly the way he is already running, he carries on; anything more and he pulls up and turns
     tagRoll: 19, // ...with a rocking start: he is already moving at this many ft/s as he leaves
     tagWindow: 1.2, // s after a catch you can still send a runner to tag up
-    leadSecond: 18, // ft: the lead off second base (nobody holds him on there, so he takes a much bigger one)
+    leadSecond: 22, // ft: the lead off second base (nobody holds him on there, so he takes a much bigger one - and shuffles further as the pitch comes)
     // Rounding a base he keeps running through: he drifts out from the baseline over `turnLen` ft, goes round an arc of radius
     // `turnRadius` ft that touches the bag, and drifts back onto the next baseline over `turnLen` ft. (A smaller radius = a
     // sharper corner; he slows to at most sqrt(latAccel * radius) ft/s there.)

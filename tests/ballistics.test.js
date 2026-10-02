@@ -124,8 +124,8 @@ describe('fence, wall and home runs', () => {
   it('a routine fly ball falls in the field', () => {
     const s = simulateBattedBall({ exitVelocity: 78, launchAngle: 35, sprayAngle: 0, backspin: 2600 });
     expect(s.homerun).toBeNull();
-    expect(s.wallHit).toBeNull();
     expect(s.firstBounce).toBeTruthy();
+    expect(!s.wallHit || s.wallHit.t > s.firstBounce.t).toBe(true); // (it comes down in the field - it may roll to the wall)
   });
 });
 

@@ -1217,8 +1217,8 @@ export class App {
         zp.cue.scale.setScalar(1 + clamp(-dtI / 0.25, 0, 1) * 0.9 + clamp(dtI / 0.25, 0, 1) * 0.3);
       }
     }
-    // pitch guide: a soft circle that guesses where the pitch will cross the plate (fades in late, a little off; never in the Derby)
-    if (e && e.phase === 'pitch' && e.pitch && e.time < e.pitch.tCross && this.settings.pitchGuide && e.mode !== 'derby' && this.screen === 'game') {
+    // pitch guide: a soft circle that guesses where the pitch will cross the plate (fades in late, a little off; every mode)
+    if (e && e.phase === 'pitch' && e.pitch && e.time < e.pitch.tCross && this.settings.pitchGuide && this.screen === 'game') {
       this.guide.show(pitchGuide(e.pitch, e.time - e.pitch.tRelease, CONFIG, e.difficulty));
     } else this.guide.hide();
     // landing spot ring: shrinks as the ball in the air comes down; gone when it lands or is caught

@@ -79,7 +79,7 @@ describe('where the ring is', () => {
 });
 
 describe('how the ring looks', () => {
-  const { spot } = hit(88, 38, 12);
+  const { spot } = hit(84, 38, 12);
   it('appears after a moment, fades in, shrinks all the way down and is smallest when the ball lands', () => {
     expect(spot).not.toBe(null);
     expect(landingRing(spot, 0.1).visible).toBe(false); // the ball has only just left the bat

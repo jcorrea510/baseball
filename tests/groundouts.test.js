@@ -58,8 +58,8 @@ describe('an out needs a fielder with the ball on the bag before the runner', ()
   });
 
   it('runner beats the throw = safe', () => {
-    // the same grounder, but the shortstop is slow to pick it up: the batter is on first before the ball can be
-    const slow = createDefense(); slow.SS.react = 2.4; slow.SS.speed = 9;
+    // the same grounder, but the left side of the infield is slow to pick it up: the batter is on first before the ball can be
+    const slow = createDefense(); slow.SS.react = 2.4; slow.SS.speed = 9; slow['3B'].react = 2.4; slow['3B'].speed = 9; // (and the third baseman, who would dive for it)
     const { plan, defense } = play(48, -2, -18, { defense: slow });
     expect(plan.outsMade).toBe(0);
     expect(plan.result).not.toBe('groundout');

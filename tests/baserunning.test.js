@@ -135,19 +135,21 @@ describe('sending runners', () => {
     expect(scored).toBeGreaterThan(10);
   }, 120000);
 
-  it('a ball in the gap or off the wall: send the batter as soon as it is down and he makes second', () => {
+  it('a ball in the gap or off the wall: he makes second - by himself, or when you send him as soon as it is down', () => {
     const rng = createRng(17);
-    let n = 0, made = 0;
+    let n = 0, made = 0, alone = 0;
     for (let k = 0; k < 3000 && n < 80; k++) {
       const c = C(rng.range(88, 108), rng.range(12, 30), rng.range(-40, 40));
       const base = plan(c).plan;
-      if (base.result !== 'single' || !base.send || base.ballLandDistance < 300) continue;
+      if (!['single', 'double'].includes(base.result) || !base.send || base.ballLandDistance < 300) continue;
       n++;
+      if (base.batterDest >= 2) alone++;
       const p = plan(c, { orders: [{ base: 2, t: base.send.from }] }).plan;
-      if (p.batterDest === 2) made++;
+      if (p.batterDest >= 2) made++;
     }
     expect(n).toBeGreaterThan(30);
     expect(made / n).toBeGreaterThan(0.7);
+    expect(alone / n).toBeGreaterThan(0.4); // (a plain double needs no order)
   }, 60000);
 
   it('the throw goes after the runner you sent when it can get him', () => {

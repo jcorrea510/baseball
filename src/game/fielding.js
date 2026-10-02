@@ -4,7 +4,7 @@
 // "plan": a timeline (seconds after contact) the renderer simply plays back.
 import { CONFIG } from '../config.js';
 import { sampleBall, judgeFairFoul, battedBallType } from '../physics/ballistics.js';
-import { BASE_XZ, polar, fenceDistance, sprayOf, clampToField, distanceToWall, isInsideField } from '../physics/field.js';
+import { BASE_XZ, polar, fenceDistance, sprayOf, clampToField, distanceToWall, isInsideField, wallClearance } from '../physics/field.js';
 import { runnerArrival, runnerFinish, runnerState, runnerProfile, retreatArrival, moveArrival, moveFinish, extendLegs, backLegs } from './runnerMotion.js';
 import { planRun, planDiveRun, sampleRun, samplePath, covered, timeToCover, moverReturnTime, TAIL_MAX } from './fielderMotion.js';
 
@@ -127,6 +127,24 @@ function findAirCatch(sim, defense, cfg) {
     hit = lowest;
   }
   return hit;
+}
+
+// How close does anybody come to catching a ball in the air that nobody catches? The fewest feet any fielder is short of it at any
+// moment it could be caught (Infinity: never catchable). A ball nobody gets near is a plain hit that runners read at once.
+function airShortfall(sim, defense, cfg) {
+  const F = cfg.fielding;
+  const tEnd = Math.min(sim.contactTime, sim.duration);
+  let best = Infinity;
+  for (let t = 0.3; t <= tEnd + 1e-6; t += 1 / 60) {
+    const b = sampleBall(sim, t);
+    if (b.y > F.reachHeight || b.y < 0.5) continue;
+    for (const pos of POSITIONS) {
+      const f = defense[pos];
+      const short = dist(f.x, f.z, b.x, b.z) - F.glove - (b.y <= 5.2 ? F.diveExtra : 0) - covered(f.speed * effort(f, b.x, b.z), t - f.react, F.accel);
+      if (short < best) best = short;
+    }
+  }
+  return best;
 }
 
 // ---------------------------------------------------------------------------
@@ -286,7 +304,10 @@ function addMove(plan, f, toX, toZ, tArrive, opts = {}, cfg = CONFIG) {
   const wallLimit = (ax, az, bx, bz, atLeast) => {
     const d = Math.hypot(bx - ax, bz - az);
     if (d < 1e-6) return undefined;
-    const w = distanceToWall(ax, az, (bx - ax) / d, (bz - az) / d, F.wallBody);
+    const ux = (bx - ax) / d, uz = (bz - az) / d;
+    let w = distanceToWall(ax, az, ux, uz, F.wallBody);
+    // (running along a wall at a glancing angle he can come close to it without heading into it: walk the line and stop where it gets too close)
+    for (let s = Math.max(0, atLeast); s < Math.min(w, d + 40); s += 0.5) if (wallClearance(ax + ux * s, az + uz * s) < F.wallBody + 0.05) { w = s; break; }
     return Number.isFinite(w) ? Math.max(w, atLeast) : undefined;
   };
   [x1, z1] = clampToField(x1, z1, F.wallMargin);
@@ -560,7 +581,9 @@ function planPlayCore(i, cfg) {
   plan.ctx = { kind: 'ground', x: pf.x, z: pf.z, t: tF };
   if (f.type === 'OF' && fair) infieldAttempt(plan, sim, defense, cfg);
   plan.downT = Math.min(sim.firstBounce ? sim.firstBounce.t : Infinity, sim.wallHit ? sim.wallHit.t : Infinity, tF); // (the ball is down)
-  if (AIR[type]) plan.airRes = plan.downT; // (until then the runners do what they do on any ball in the air)
+  // (until then the runners do what they do on any ball in the air - unless nobody gets anywhere near it: then they see it is a hit
+  // as soon as it is past the infield and go)
+  if (AIR[type]) plan.airRes = !i.simple && airShortfall(sim, defense, cfg) > cfg.runner.sureHitFeet ? Math.min(plan.downT, cfg.runner.sureHitRead) : plan.downT;
   plan.events.push({ t: tF, type: 'field', pos: f.pos, dive: !!plan.fielderMoves[0].dive });
   const tr = F.transfer[f.type] + (plan.fielderMoves[0].dive ? F.dive.throwExtra : 0); // a fielder who dove throws from his knees
   const tReady = tF + tr;
@@ -1281,6 +1304,8 @@ function addSupport(plan, i, cfg) {
     const [bx, bz] = inside(c.x + ux * (F.backupDepth + 14), c.z + uz * (F.backupDepth + 14), 8);
     go(ofs[0], bx, bz, tBall + 0.4, 'backup', F.backupTravel);
   }
+  // ---- a grounder to the right side that the first baseman goes after: the pitcher breaks for first anyway, in case
+  if (c.kind === 'ground' && c.x > 0 && busy.has('1B') && !busy.has('P')) { const [x, z] = standAt(1); go('P', x, z, 2.0, 'cover'); }
 
   // ---- bases and battery on a hit that turns into a throw
   if (!i.simple && c.leadDest !== undefined) {
