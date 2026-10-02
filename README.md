@@ -43,6 +43,8 @@ When a batter comes up you see the whole field; press **Ready** and the camera z
 
 **Strategy:** bunt to move a runner up (a sacrifice), steal a base (your runner goes with the pitcher's first move - the catcher's throw decides it), or send the runners and swing for a hit-and-run. Watch out: a runner who is going when a line drive is caught can be doubled off. Fielders make the odd error, too.
 
+**Real baseball rules:** a foul tip held by the catcher is a strike (strike three with two strikes); a high pop-up on the infield with runners on first and second and fewer than two outs is an **infield fly** (the umpire calls the batter out while it is still in the air); a ball that bounces over the wall is a **ground-rule double**; a pitch in the dirt can get past the catcher (**wild pitch**: the runners move up); a pitch that hits you sends you to first (the computer's batters get hit now and then, too); in extra innings the runner on second is the batter just before the leadoff man; a walk-off scores only the runs it needs; there is no RBI on a double play or an error; and a batter who takes an extra base while the throw goes home is credited with a single (*to 2nd on the throw*). The fielders play the situation: the first baseman holds a runner on, the middle infielders play double-play depth, the right fielder backs up throws to first and the catcher runs down the line behind them.
+
 Two helpers can be switched on and off: the **pitch guide** and the **landing ring** (a ring on the grass where a ball hit in the air will come down).
 
 ## What's in the game
@@ -82,6 +84,7 @@ npm test        # the automated checks on the game rules, physics, season, sound
 npm run build   # makes the finished website in the "dist" folder
 npm run smoke   # after a build: opens the finished site in a real browser, clicks through the menus and checks every startup error screen
 npm run sim     # plays hundreds of computer-controlled games and prints statistics
+node scripts/realism.mjs   # thousands of batted balls: who fields, covers, scores - next to real big-league numbers
 ```
 
 ## Publishing
@@ -143,6 +146,12 @@ If something feels too hard, too easy, too slow or too fast, open **`src/config.
 | How a park looks (seats, decks, roof, skyline, landmarks, grass pattern) | `parks.looks.<park>` |
 | Runners too timid / too bold on their own | `runner.autoMargin`, `runner.sureHitFeet`, `fielding.throwSpeed.OF` |
 | Too many / too few hit batters | `difficulty.<level>.hitBatter` |
+| Too many / too few wild pitches | `wildPitch.chance` (per pitch in the dirt or way wide, with runners on) |
+| Double plays too easy / too hard | `fielding.pivot` (how long the turn at second takes), `fielding.align.dpDepth` |
+| Where the fielders stand | `fielding.positions`, `fielding.align` (holding a runner on, double-play depth) |
+| Balls bounce too much / too little | `physics.bounceSoftFrom`, `physics.bounceSoftTo`, `physics.bounceHardKeep`, `physics.trackRestitution` |
+| Runner on third too timid / too bold on grounders and fly balls | `runner.contactBreak`, `runner.leadThird`, `fielding.tagUpMargin`, `fielding.tagUpDepth` |
+| The camera loses a high pop-up | `camera.keepBall` |
 | Bunts too easy / too hard | `bunt.*` |
 | Steals too easy / too hard | `difficulty.<level>.catcherArm`, `steal.jump`, `runner.lead` |
 | Too many / too few errors | `fielding.errors`, `difficulty.<level>.errorScale` |
