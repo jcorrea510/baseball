@@ -631,6 +631,11 @@ export class App {
         audio.dirtThud(0.6);
         if (c && c.plan.result !== 'foul' && !c.homer && (c.big || c.distance > 200)) this.showDistanceCallout(c, false);
         break;
+      case 'infieldFly':
+        // the umpire calls the batter out while the pop-up is still in the air
+        ui.banner('INFIELD FLY', 'Batter is out', 'bad');
+        this.umpireCall('out', 0);
+        break;
       case 'groundRule':
         // it bounced over the wall: two bases for everybody
         ui.banner('GROUND-RULE DOUBLE', '', 'good');
@@ -659,7 +664,7 @@ export class App {
       case 'catch':
         audio.glovePop(0.8);
         // a caught ball that is an out: the umpire calls it (at a base the 'outCall' event does it)
-        if (e.mode !== 'derby' && c && !c.homer && c.plan.caught && c.plan.outsMade > 0) this.later(() => this.umpireCall('out', 0), 160);
+        if (e.mode !== 'derby' && c && !c.homer && c.plan.caught && c.plan.outsMade > 0 && !c.plan.infieldFly) this.later(() => this.umpireCall('out', 0), 160); // (an infield fly was called already)
         if (c && !c.homer) { audio.crowdSwell(c.big ? 0.55 : 0.28, 2); }
         if (ev.dive) {
           // a diving catch is a highlight: big crowd reaction and a banner

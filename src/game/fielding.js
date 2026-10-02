@@ -512,8 +512,14 @@ function planPlayCore(i, cfg) {
     plan.leap = !air.dive && air.ball.y - F.standReach > 0.3 ? { height: air.ball.y - F.standReach } : null;
     addMove(plan, f, air.ball.x, air.ball.z, air.t, { dive: air.dive, avail: air.avail, role: 'catch' }, cfg);
     plan.ctx = { kind: 'air', x: air.ball.x, z: air.ball.z, t: air.t };
+    // the infield fly rule: runners on first and second (or the bases loaded), fewer than two outs, an infielder settling under a
+    // high pop-up - the batter is out whether it is caught or not (so a dropped one cannot be turned into a cheap double play)
+    const IF = F.infieldFly;
+    const infieldFly = fair && !i.simple && outs < 2 && !!bases[0] && !!bases[1] && f.type !== 'OF' && sim.apex.y >= IF.apex && Math.hypot(air.ball.x, air.ball.z) < IF.range;
+    if (infieldFly) { plan.infieldFly = true; plan.notes.push('infield fly'); plan.events.push({ t: Math.max(0.6, air.t - IF.callBefore), type: 'infieldFly' }); }
     // a dropped fly ball (rare): it hits the glove and pops out; he picks it up and the runners take what they can
     if (fair && !i.simple && errorHappens(i, F.errors.fly * (air.dive || plan.leap ? F.errors.hardFactor : 1))) {
+      if (infieldFly) return infieldFlyDrop(plan, i, f, air, bases, cfg);
       return dropFly(plan, i, f, air, bases, outs, defense, cfg);
     }
     plan.ballHitEnd = air.t;
@@ -1172,6 +1178,30 @@ function dropFly(plan, i, f, air, bases, outs, defense, cfg) {
   plan.outsMade = 0; plan.batterDest = 0;
   finishHit(plan, { f, tF: tPick, tReady, pf: { x: lx, z: lz }, bases, forced, outs, defense, cfg });
   plan.result = 'error';
+  return plan;
+}
+
+// An infield fly that is dropped: the batter is out anyway and nobody is forced, so the runners simply stay (a runner who was going
+// with the pitch goes back to his bag).
+function infieldFlyDrop(plan, i, f, air, bases, cfg) {
+  const F = cfg.fielding;
+  const [lx, lz] = looseSpot(i, air.ball.x, air.ball.z, cfg);
+  plan.caught = false; plan.dropped = true;
+  plan.pickupT = air.t;
+  plan.ballHitEnd = air.t;
+  plan.events.push({ t: air.t, type: 'error', pos: f.pos, drop: true });
+  const tPick = chaseLoose(plan, f, { t0: air.t, ax: air.ball.x, ay: air.ball.y, az: air.ball.z, bx: lx, bz: lz }, air.t + F.errors.dropTime, cfg);
+  plan.carries.push({ pos: f.pos, t0: tPick, t1: tPick + 99 });
+  plan.downT = air.t; plan.airRes = air.t;
+  plan.result = 'popout'; plan.outsMade = 1; plan.batterDest = 0;
+  for (const b of [3, 2, 1]) {
+    if (!bases[b - 1]) continue;
+    if (rs(b) !== undefined) plan.moves.push({ from: b, to: b, back: true, tStart: rs(b), backAt: Math.max(rs(b) + 0.2, Math.min(air.t, cfg.steal.readFly)) });
+    else plan.moves.push({ from: b, to: b });
+  }
+  plan.endTime = tPick + 1.0;
+  const recs = makeRecords(bases, new Set(), () => [{ kind: 'run', from: 0, to: 0, t0: 0 }], null);
+  plan.send = { from: cfg.runner.sendFrom, by: air.t, res: air.t + 1, pre: viewOf(recs, cfg), post: null };
   return plan;
 }
 

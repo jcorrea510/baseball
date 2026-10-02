@@ -120,3 +120,28 @@ describe('fielding errors', () => {
     expect(seen).toBe(1);
   });
 });
+
+describe('the infield fly rule', () => {
+  it('runners on first and second, nobody out, a high pop-up on the infield: the batter is out even if it is dropped, and nobody is forced', async () => {
+    const { CONFIG } = await import('../src/config.js');
+    const { simulateBattedBall } = await import('../src/physics/ballistics.js');
+    const { createDefense, planPlay } = await import('../src/game/fielding.js');
+    let checked = 0;
+    for (const [ev, la, sp] of [[62, 62, -8], [58, 66, 12], [66, 60, 4], [55, 70, -20]]) {
+      const c = { exitVelocity: ev, launchAngle: la, sprayAngle: sp, backspin: 2400, hook: 0 };
+      const sim = simulateBattedBall({ ...c, start: { x: 0, y: 2.6, z: -1 } });
+      const caught = planPlay({ sim, contact: c, bases: ['a', 'b', null], outs: 0, defense: createDefense() }, CONFIG);
+      if (!caught.infieldFly) continue;
+      checked++;
+      const dropped = planPlay({ sim, contact: c, bases: ['a', 'b', null], outs: 0, defense: createDefense(), errorRoll: 0, errorScale: 1 }, CONFIG);
+      expect(dropped.dropped).toBe(true);
+      expect(dropped.result).toBe('popout');
+      expect(dropped.outsMade).toBe(1);
+      expect(dropped.batterDest).toBe(0);
+      for (const m of dropped.moves) expect(m.to).toBe(m.from); // (they stay)
+      // ...and with two outs there is no infield fly
+      expect(planPlay({ sim, contact: c, bases: ['a', 'b', null], outs: 2, defense: createDefense() }, CONFIG).infieldFly).toBeFalsy();
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+});

@@ -475,6 +475,9 @@ export const CONFIG = {
     catchHeight: 5.2, // ft: a fielder who is there in time waits for the ball to come down to about this (chest / head height) before he takes it;
     // if he cannot wait he takes it at the lowest height he still can, and only jumps (up to reachHeight) for a ball he can get no other way - at the wall, say
     groundHeight: 3.2, // a ball this low counts as a ground ball for fielding
+    // the infield fly rule (runners on 1st and 2nd or the bases loaded, fewer than two outs): a pop-up at least `apex` ft high that an
+    // infielder settles under within `range` ft of home - the batter is out, caught or not; the umpire calls it `callBefore` s before it comes down
+    infieldFly: { apex: 45, range: 160, callBefore: 1.0 },
     transfer: { IF: 0.36, OF: 0.65, C: 0.4, P: 0.42 }, // catch-to-throw time (an outfielder gathers himself and crow-hops)
     throwSpeed: { IF: 120, OF: 100, C: 112, P: 100 }, // ft/s, on average over the whole throw (a long outfield throw is lobbed a little)
     relayDistance: 200, // outfield throws longer than this use a cut-off man
