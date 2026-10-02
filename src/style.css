@@ -332,6 +332,12 @@ body.touch .swingbtn.show { display: flex; }
 .basepad .lines { fill: rgba(9, 16, 34, .72); stroke: rgba(255, 255, 255, .55); stroke-width: 2; }
 .basepad .bpdot { stroke: #0a1020; stroke-width: 2.2; }
 .basepad .bpdot.sent { stroke: #fff; stroke-width: 2.6; }
+/* a runner you sent: an orange ring on his dot - tap it (anywhere in its larger tap area, on top of everything) to call him back */
+.basepad .bpdot.canback { stroke: #ff9a4a; stroke-width: 3.4; animation: bpback .5s ease-in-out infinite alternate; }
+@keyframes bpback { to { stroke-width: 5; } }
+.basepad .bphits { z-index: 2; filter: none; }
+.basepad .bphit { fill: transparent; pointer-events: none; }
+.basepad .bphit.canback { pointer-events: all; cursor: pointer; }
 /* each base is a big invisible tap target with the base drawn in its middle */
 .bpbase { position: absolute; width: calc(var(--bp) * .3); height: calc(var(--bp) * .3); translate: -50% -50%; display: grid; place-items: center; appearance: none; padding: 0; border: 0; background: none; cursor: default; -webkit-tap-highlight-color: transparent; }
 .bpbase::before { content: ""; width: 36%; height: 36%; transform: rotate(45deg); background: rgba(255, 255, 255, .22); border: 2px solid rgba(255, 255, 255, .6); border-radius: 3px; transition: transform .12s var(--ease); }

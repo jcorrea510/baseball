@@ -263,6 +263,7 @@ export class App {
       case 'bunt': if (this.engine) this.engine.setBunt(!this.engine.buntStance); break;
       case 'steal': if (this.engine) this.engine.setSteal(!this.engine.stealArmed); break;
       case 'base': this.baseKey(d.base); break;
+      case 'runnerBack': this.runnerBack(d.from); break;
       case 'swing': this.swingInput(d); break;
       case 'practice': if (this.engine) { Object.assign(this.engine.practice, d); } break;
       default: break;
@@ -973,10 +974,11 @@ export class App {
         case 'ArrowDown': if (!inGame) break; e.preventDefault(); this.aimKeys.down = true; this.aimMode = 'keys'; break;
         case 'Equal': case 'NumpadAdd': if (inGame && this.engine.mode === 'practice') this.practiceSpeed(+2); break;
         case 'Minus': case 'NumpadSubtract': if (inGame && this.engine.mode === 'practice') this.practiceSpeed(-2); break;
-        case 'KeyH': if (inGame && this.engine.sendOpen) this.baseKey(4); break; // (while a hit is played: send the runner on third home)
+        case 'KeyH': if (inGame && this.engine.sendOpen) { if (e.shiftKey) this.backKey(4); else this.baseKey(4); } break; // (while a hit is played: send the runner on third home)
         case 'Digit1': case 'Digit2': case 'Digit3': case 'Digit4': case 'Digit5': case 'Digit6':
-          // while a hit is being played: 1 / 2 / 3 / 4 = tap that base on the diamond (4 = home)
-          if (inGame && this.engine.sendOpen) { const b = +e.code.slice(5); if (b <= 4) this.baseKey(b); break; }
+          // while a hit is being played: 1 / 2 / 3 / 4 = tap that base on the diamond (4 = home); with Shift, call back the runner
+          // you sent there
+          if (inGame && this.engine.sendOpen) { const b = +e.code.slice(5); if (b <= 4) { if (e.shiftKey) this.backKey(b); else this.baseKey(b); } break; }
           if (inGame && this.engine.mode === 'practice') {
             const types = ['fastball', 'changeup', 'curveball', 'slider', 'heater', 'mixed'];
             this.engine.practice.type = types[+e.code.slice(5) - 1];
@@ -1139,6 +1141,21 @@ export class App {
     if (e.tapBase(base)) this.audio.uiClick();
   }
 
+  // A tap on the dot of a runner you sent (from = the base he started on, 0 = the batter): he goes back to the base he came from.
+  runnerBack(from) {
+    const e = this.engine;
+    if (!e || this.paused || this.bot) return;
+    if (e.runnerOrder(from, 'back')) this.audio.uiClick();
+  }
+
+  // Shift + a base's key: call back the runner you sent to that base.
+  backKey(base) {
+    const e = this.engine;
+    if (!e) return;
+    const r = e.runnerTargets().find((q) => q.sent && q.goal === base && q.back !== null && q.back !== undefined);
+    if (r) this.runnerBack(r.from);
+  }
+
   // Every frame: the base diamond is up while you can send runners - the bases you can send someone to light up, and a dot shows
   // every runner where he is right now.
   updateBasePad(e) {
@@ -1147,11 +1164,13 @@ export class App {
     this.padShown = true;
     const p = e.play, t = e.time - p.t0;
     const dots = [];
+    // (a runner you sent can be called back: tap his dot)
+    const backs = new Set(e.runnerTargets().filter((r) => r.sent && r.back !== null && r.back !== undefined).map((r) => r.from));
     for (const m of p.plan.moves) {
       if (m.back && m.from === 0) continue;
       if (m.out && m.outAt !== undefined && t > m.outAt) continue; // (tagged out: off the diamond)
       const q = runnerState(m, t, e.cfg, this.padQ || (this.padQ = {}));
-      dots.push({ x: q.x, z: q.z, sent: !!m.sent && t < (m.outAt ?? Infinity), from: m.from });
+      dots.push({ x: q.x, z: q.z, sent: !!m.sent && t < (m.outAt ?? Infinity), from: m.from, canBack: backs.has(m.from) && !m.out });
     }
     // (the batter on a ball caught in the air has no move: he is still a dot on his way to first until the catch)
     if (!p.plan.moves.some((m) => m.from === 0) && !p.plan.homer && t < (p.plan.catchT ?? 0)) {

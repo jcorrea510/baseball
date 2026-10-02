@@ -485,3 +485,32 @@ describe('only forced runners move by themselves; you tap a base for the rest', 
     expect(taps).toBeGreaterThan(60);
   }, 120000);
 });
+
+describe('a runner you sent who turns back', () => {
+  it('a batter sent to second who sees the throw and goes back to first is on first with a single (not a double)', () => {
+    const rng = createRng(31);
+    const problems = [];
+    let found = 0;
+    for (let k = 0; k < 1500 && found < 12; k++) {
+      const c = C(rng.range(80, 104), rng.range(2, 18), rng.range(-40, 40));
+      const base = plan(c).plan;
+      if (base.result !== 'single' || !base.send) continue;
+      // send him to second just as the fielder gets the ball (late: the throw will beat him, so he turns back)
+      for (const t of [base.send.decide, (base.send.decide + base.send.by) / 2]) {
+        const p = plan(c, { orders: [{ base: 2, t, from: 0 }] }).plan;
+        if (!(p.retreated && p.retreated.from === 0)) continue;
+        found++;
+        const bm = p.moves.find((m) => m.from === 0);
+        if (p.batterDest !== 1) problems.push(`batterDest ${p.batterDest}`);
+        if (p.result !== 'single') problems.push(`result ${p.result}`);
+        if (!bm || bm.to !== 1 || bm.out) problems.push(`batter move ends on ${bm && bm.to}`);
+        const g = rules.createGame();
+        rules.applyPlay(g, { result: p.result, batterDest: p.batterDest, moves: [], outsMade: p.outsMade }, 'bat');
+        if (g.bases[0] !== 'bat' || g.bases[1]) problems.push(`bases after the play ${JSON.stringify(g.bases)}`);
+        break;
+      }
+    }
+    expect(problems).toEqual([]);
+    expect(found).toBeGreaterThan(3);
+  }, 120000);
+});

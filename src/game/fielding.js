@@ -1980,6 +1980,14 @@ function finishHit(plan, ctx) {
   }
   if (recvPos) followUpThrow(plan, recs, defense[recvPos], { x: rp.x, z: rp.z }, tBall, outs, defense, cfg, settled);
   if (batter.out) { plan.batterDest = 0; plan.result = resultOf(earned); plan.infieldHit = plan.result === 'single' && f.type !== 'OF'; }
+  else if (batter.to !== bd) {
+    // he did not end up where he was heading when the throw was chosen (he saw it would beat him and went back): his base - and his
+    // hit - is the one he is really standing on
+    bd = batter.to;
+    plan.batterDest = bd;
+    plan.result = resultOf(bd);
+    plan.infieldHit = plan.result === 'single' && f.type !== 'OF';
+  }
   // Scoring: a batter who takes an extra base while the throw goes to another base (at a runner ahead of him) gets it "on the throw" -
   // his hit is only the bases he would have made had the throw come to him (or that he took by himself)
   if (!batter.out && bd >= 2 && tgtBase !== bd) {
