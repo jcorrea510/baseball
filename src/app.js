@@ -697,6 +697,12 @@ export class App {
         else this.umpireCall('out', ev.base);
         // the out light comes on when the out is made, not when the whole play is over
         if (e.game) { this.playOuts = (this.playOuts || 0) + 1; ui.setCount(e.game.balls, e.game.strikes, Math.min(3, e.game.outs + this.playOuts)); }
+        // a runner tagged (or doubled off): the umpire's call and the banner come with the tag, not when the whole play is over
+        const pl = (e.play && e.play.plan) || (c && c.plan); // (the plan as it is now: you may have sent a runner since the hit)
+        if (pl && e.mode !== 'derby' && (pl.events.some((q) => q.type === 'out' && q.tag && q.base === ev.base && Math.abs(q.t - ev.t) < 0.05) || (pl.outNote && pl.outNote.base === ev.base))) {
+          ui.banner('OUT', `at ${['', '1st', '2nd', '3rd', 'home'][ev.base] || ''}`, 'bad');
+          audio.crowdGroan(0.4);
+        }
         break;
       case 'safe': this.umpireCall('safe', ev.base); break;
       case 'error':

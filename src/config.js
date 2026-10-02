@@ -598,9 +598,14 @@ export const CONFIG = {
     sendReact: 0.12,
     sendTag: 0.08, // s for the fielder to catch the throw and put the tag on a runner you sent (a throw that beats him gets him)
     tagLead: 0.1, // s: the tag goes on him this long before he would have touched the bag (he slides into the glove)
-    outLinger: 2.3, // s the play goes on after a runner is tagged out, so you see the tag and see him walk off
+    outLinger: 1.7, // s the play goes on after a runner is tagged out, so you see the tag and see him walk off
     walkOffDelay: 1.3, // s after the tag before he gets up and walks to the dugout
-    walkOffSpeed: 6, // ft/s
+    walkOffSpeed: 13, // ft/s: he jogs off (and is gone by the next pitch)
+    // after a play runners stand on their bag and only walk out to their lead `leadAfterSet` s after the pitcher is set again; a runner
+    // who holds on a hit goes back to his bag `holdBackDelay` s after the ball is fielded, at `holdBackSpeed` ft/s
+    leadAfterSet: 0.6,
+    holdBackDelay: 0.3,
+    holdBackSpeed: 10,
     autoMargin: 0.05, // s: a runner who would make one more base by this much takes it by himself (as the ball comes down, and again when the window closes)
     autoExtra: false, // false: a runner (the batter too) NEVER takes an extra base by himself - one base (or where he is forced), more only when you send him. true: he takes one more when it is safe by autoMargin
     retreatRead: 0.3, // s after the throw is let go: a runner you sent who sees it will beat him turns back to the bag he left (when he can make it back)

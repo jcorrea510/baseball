@@ -458,8 +458,11 @@ export class Actors {
       const dtC = playT - catchT;
       // the catch pose ends when his throw begins (afterwards he is following through, not catching again)
       const nextThrow = plan.throws.find((q) => q.from === pos && q.t0 > catchT - 0.05);
-      const catchEnd = nextThrow ? nextThrow.t0 - 0.32 - catchT : 1.2;
-      if (dtC > -0.5 && dtC < Math.min(1.2, catchEnd)) {
+      let catchEnd = nextThrow ? nextThrow.t0 - 0.32 - catchT : 1.2;
+      // a tag play: he stays down at the bag with the ball until the runner gets there (however early the throw beat him)
+      const tagWait = tagOut && tagOut.t >= catchT - 0.05 && (!nextThrow || nextThrow.t0 > tagOut.t);
+      if (tagWait) catchEnd = Math.max(Math.min(1.2, catchEnd), tagOut.t - catchT + 0.8);
+      if (dtC > -0.5 && dtC < (tagWait ? catchEnd : Math.min(1.2, catchEnd))) {
         // glove up to meet the ball, then to the chest
         person.root.updateMatrixWorld(true);
         const b = this.ballPos;
@@ -474,9 +477,11 @@ export class Actors {
         tx = lerp(tx, 0.5, settle); ty = lerp(ty, 3.6, settle); tz = lerp(tz, 0.7, settle);
         let crouch = clamp(1 - ty / 4.2, 0, 1) * 0.9;
         if (tagOut) {
-          // down to the runner's feet at the bag, then back up with the ball
-          const k = smoothstep(tagOut.t - 0.32, tagOut.t, playT) * (1 - smoothstep(tagOut.t + 0.25, tagOut.t + 0.7, playT));
-          tx = lerp(tx, 0.35, k); ty = lerp(ty, 0.75, k); tz = lerp(tz, 1.5, k); crouch = lerp(crouch, 0.95, k);
+          // the ball in, he gets down with the glove in front of the bag, waiting; the runner slides into the tag; he comes up with the ball
+          const ready = smoothstep(0.1, 0.45, dtC) * 0.8;
+          const hit = smoothstep(tagOut.t - 0.2, tagOut.t, playT);
+          const k = Math.max(ready, hit) * (1 - smoothstep(tagOut.t + 0.4, tagOut.t + 0.8, playT));
+          tx = lerp(tx, 0.35, k); ty = lerp(ty, lerp(1.15, 0.6, hit), k); tz = lerp(tz, lerp(1.7, 1.4, hit), k); crouch = lerp(crouch, 0.95, k);
         }
         catchPose(P, [tx, ty, tz], crouch);
         if (runW > 0.01) {
@@ -603,7 +608,7 @@ export class Actors {
       if (w.p.active) return false; // (he is needed again - at the plate, say)
       w.t += dt;
       const dx = this.door[0] - w.x, dz = this.door[1] - w.z, d = Math.hypot(dx, dz);
-      if (d < 1 || w.t > 12) return false;
+      if (d < 1 || w.t > 9 || E.phase === 'windup' || E.phase === 'pitch') return false; // (in the dugout - or off the field by the next pitch)
       const step = Math.min(d, v * dt);
       w.x += (dx / d) * step; w.z += (dz / d) * step;
       w.yaw = lerpAngle(w.yaw, Math.atan2(dx, dz), Math.min(1, dt * 6));
