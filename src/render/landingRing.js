@@ -10,10 +10,10 @@ function ringTexture() {
   const grad = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
   grad.addColorStop(0.0, 'rgba(255,255,255,0.06)');
   grad.addColorStop(0.66, 'rgba(255,255,255,0.08)');
-  grad.addColorStop(0.7, 'rgba(0,0,0,0.25)');
+  grad.addColorStop(0.7, 'rgba(0,0,0,0.4)');
   grad.addColorStop(0.74, 'rgba(255,255,255,0.95)');
   grad.addColorStop(0.9, 'rgba(255,255,255,0.95)');
-  grad.addColorStop(0.94, 'rgba(0,0,0,0.25)');
+  grad.addColorStop(0.94, 'rgba(0,0,0,0.4)');
   grad.addColorStop(1.0, 'rgba(0,0,0,0)');
   g.fillStyle = grad;
   g.fillRect(0, 0, s, s);
@@ -25,12 +25,14 @@ function ringTexture() {
 
 export class LandingRing {
   constructor(scene) {
-    // Lying flat on the grass like a chalk mark (depth-tested, nudged toward the camera so it never flickers into the grass).
-    const mat = new THREE.MeshBasicMaterial({ map: ringTexture(), color: CONFIG.landing.color, transparent: true, opacity: 0, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+    // Lying flat on the grass like a chalk mark - but always readable: no haze on it (the haze greys out the far outfield), and drawn
+    // after every see-through thing, so the dust the fielders kick up never covers it. (Still depth-tested and nudged toward the camera:
+    // the ball and the players pass in front of it, and it never flickers into the grass.)
+    const mat = new THREE.MeshBasicMaterial({ map: ringTexture(), color: CONFIG.landing.color, transparent: true, opacity: 0, depthWrite: false, fog: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
     this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat);
     this.mesh.rotation.x = -Math.PI / 2;
     this.mesh.position.y = 0.06;
-    this.mesh.renderOrder = 2;
+    this.mesh.renderOrder = 50;
     this.mesh.visible = false;
     scene.add(this.mesh);
   }
