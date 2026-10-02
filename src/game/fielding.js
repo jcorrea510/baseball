@@ -295,11 +295,12 @@ function addMove(plan, f, toX, toZ, tArrive, opts = {}, cfg = CONFIG) {
       opts = { ...opts, start: Math.max(opts.start ?? 0, PREV.tCut), cut: false };
       tArrive = Math.max(tArrive, PREV.tCut + 0.3);
     } else if (!same && start0 < PREV.tCut) { opts = { ...opts, start: PREV.tCut }; tArrive = Math.max(tArrive, PREV.tCut + 0.3); } // (a job he did not have before)
+    else if (!same && opts.start !== undefined && opts.start < PREV.tCut) opts = { ...opts, start: PREV.tCut }; // (nor does a new turn in a job start before then)
   }
   const prev = runs[runs.length - 1];
   // `cut`: he heads off from wherever the last run has got him at `start` (the last run is cut short there) instead of
   // first coming to a full stop - a fielder who has the ball turns for the bag at once
-  if (opts.cut && prev && opts.start !== undefined && opts.start < prev.tStop && !prev.dive) cutRun(prev, opts.start);
+  if (opts.cut && prev && opts.start !== undefined && opts.start < prev.tStop && opts.start > prev.tStart && !prev.dive) cutRun(prev, opts.start); // (never before that run has even begun)
   const x0 = prev ? prev.xStop : f.x, z0 = prev ? prev.zStop : f.z;
   const vmax = opts.vmax ?? f.speed * effort(f, toX, toZ);
   let tStart = opts.start ?? f.react;

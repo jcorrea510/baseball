@@ -645,7 +645,7 @@ export function sameUntil(a, b) {
   let t = 0;
   for (; t < a.duration; t += 1 / 120) {
     a.at(t, qa); b.at(t, qb);
-    if (Math.hypot(qa.x - qb.x, qa.z - qb.z) > 0.08 || Math.abs(qa.speed - qb.speed) > 0.25) break;
+    if (Math.hypot(qa.x - qb.x, qa.z - qb.z) > 0.03 || Math.abs(qa.speed - qb.speed) > 0.15) break; // (the same route to within an inch: nothing visible changes before the order)
   }
   const res = Math.max(0, t - 1 / 120);
   m.set(b, res);
