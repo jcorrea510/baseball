@@ -935,7 +935,13 @@ function caughtRunners(plan, i, f, air, type, bases, outs, defense, cfg) {
   const orders = (ORD || []).filter((o) => o.t >= R.sendFrom - 1e-6).sort((a, b) => a.t - b.t);
   const by = tC + R.tagWindow;
   plan.send = { from: R.sendFrom, by, res: tC };
-  for (const o of orders) if (o.t < tC) applyOrder(recs, o, cfg);
+  // (a runner standing on his bag to tag up - the man on third, or second on a deep fly - who is told to go before the catch tags up
+  // and goes as it is caught: he does not leave early and have to come back)
+  const tagStance = (from) => kind === 'fly' && outs < 2 && (from === 3 || (from === 2 && depthLand > R.tagDepth));
+  for (const o of orders) {
+    if (o.t >= tC) continue;
+    applyOrder(recs, !o.back && o.tag === undefined && tagStance(o.from) ? { ...o, tag: true } : o, cfg);
+  }
   plan.send.pre = viewOf(recs, cfg, outs < 2);
   const runners = recs.filter((r) => r.from > 0);
   if (outs + 1 >= 3) {
