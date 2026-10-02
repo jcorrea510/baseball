@@ -356,7 +356,7 @@ export const CONFIG = {
       pitchPace: 1.25, // the ball takes this many times longer to reach the plate than a real pitch at the speed shown (the speed shown,
       // the timing windows and how hard the ball comes off the bat are unchanged: it is just easier to see and to get the bat on)
       commandSigma: 0.12, // ft of pitcher inaccuracy
-      hitBatter: 0.0012, // chance a pitch gets away from him, inside at the batter (hit by pitch: he takes first base)
+      hitBatter: 0.006, // chance a pitch gets away from him, inside at the batter (hit by pitch: your batter takes first base) - about once every 3-5 games
       errorScale: 1.5, // how often the defense makes errors (x fielding.errors)
       catcherArm: 0.74, // x the catcher's exchange time on a steal. Set with each level's windup and pitch speed for steal success ~88% / 75% / 55%
       movementScale: 0.6,
@@ -381,7 +381,7 @@ export const CONFIG = {
       guide: { fadeIn: [0.03, 0.12], reveal: [0.04, 0.32], error: 0.2, sharpen: [0.08, 0.6] },
       pitchPace: 1.42,
       commandSigma: 0.28,
-      hitBatter: 0.0016,
+      hitBatter: 0.008,
       errorScale: 1.0,
       catcherArm: 1.05,
       movementScale: 1.0,
@@ -406,7 +406,7 @@ export const CONFIG = {
       guide: { fadeIn: [0.045, 0.15], reveal: [0.05, 0.4], error: 0.26, sharpen: [0.1, 0.7] },
       pitchPace: 1.42,
       commandSigma: 0.42,
-      hitBatter: 0.002,
+      hitBatter: 0.01,
       errorScale: 0.7,
       catcherArm: 1.1,
       movementScale: 1.25,

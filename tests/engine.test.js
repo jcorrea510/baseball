@@ -602,7 +602,7 @@ describe('hit by pitch', () => {
       return n / 20000;
     };
     const r = rate('rookie'), a = rate('allstar');
-    expect(r).toBeGreaterThan(0.0005); expect(a).toBeLessThan(0.008);
+    expect(r).toBeGreaterThan(0.003); expect(a).toBeLessThan(0.02);
     expect(a).toBeGreaterThan(r);
   });
 });
