@@ -48,9 +48,12 @@ export function simulateHalf(g, o, cfg = CONFIG) {
       res = rules.pitchStrike(g, { swinging: rng.chance(0.65) });
       text = describe('strikeout', name, rng);
     } else if (kind === 'bb') {
-      g.balls = 3;
-      res = rules.pitchBall(g, batter);
-      text = describe('walk', name, rng);
+      // (now and then it is a hit batsman instead of ball four: the same base)
+      if (rng.chance(cfg.ai.hbpShare)) { res = rules.hitByPitch(g, batter); text = `${name} is hit by a pitch.`; } else {
+        g.balls = 3;
+        res = rules.pitchBall(g, batter);
+        text = describe('walk', name, rng);
+      }
     } else {
       const play = buildPlay(g, kind, rng);
       res = rules.applyPlay(g, play, batter);

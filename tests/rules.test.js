@@ -300,3 +300,44 @@ describe('innings and game flow', () => {
     expect(rules.lineScore(g).bottom[2]).toBe('X');
   });
 });
+
+describe('walk-offs, RBIs and scoring credit', () => {
+  const lastBottom = (top, bottom) => { const g = g0({ innings: 3 }); g.inning = 3; g.half = 'bottom'; g.score = { top, bottom }; return g; };
+  it('a walk-off hit ends the game the moment the winning run scores: only the runs needed count', () => {
+    const g = lastBottom(3, 3);
+    g.bases = [runner(1), runner(2), runner(3)];
+    const r = rules.applyPlay(g, { result: 'double', batterDest: 2, moves: [{ from: 3, to: 4 }, { from: 2, to: 4 }, { from: 1, to: 4 }], outsMade: 0 }, runner(9));
+    expect(r.runs).toBe(1);
+    expect(g.score.bottom).toBe(4);
+    expect(g.over && g.walkOff).toBe(true);
+    expect(r.result).toBe('single'); // (the winning run only needed one base from third)
+  });
+  it('a walk-off home run counts every run', () => {
+    const g = lastBottom(3, 3);
+    g.bases = [runner(1), null, runner(3)];
+    const r = rules.applyPlay(g, { result: 'homer', batterDest: 4, moves: [{ from: 3, to: 4 }, { from: 1, to: 4 }], outsMade: 0 }, runner(9));
+    expect(r.runs).toBe(3);
+    expect(r.result).toBe('homer');
+  });
+  it('down two with the bases loaded: the winning run comes from first, so a double that scores all three counts three and stays a double', () => {
+    const g = lastBottom(5, 3);
+    g.bases = [runner(1), runner(2), runner(3)];
+    const r = rules.applyPlay(g, { result: 'double', batterDest: 2, moves: [{ from: 3, to: 4 }, { from: 2, to: 4 }, { from: 1, to: 4 }], outsMade: 0 }, runner(9));
+    expect(r.runs).toBe(3); // (two to tie, the third - from first - wins it)
+    expect(r.result).toBe('double');
+  });
+  it('no runs batted in on a double play or when the batter reached on an error', () => {
+    const g = g0();
+    g.bases = [runner(1), null, runner(3)];
+    const dp = rules.applyPlay(g, { result: 'doublePlay', batterDest: 0, moves: [{ from: 3, to: 4 }, { from: 1, out: true }], outsMade: 2 }, runner(9));
+    expect(dp.runs).toBe(1);
+    expect(dp.rbi).toBe(0);
+    const g2 = g0();
+    g2.bases = [null, null, runner(3)];
+    const e = rules.applyPlay(g2, { result: 'error', batterDest: 1, moves: [{ from: 3, to: 4 }], outsMade: 0 }, runner(9));
+    expect(e.rbi).toBe(0);
+    const g3 = g0();
+    g3.bases = [null, null, runner(3)];
+    expect(rules.applyPlay(g3, { result: 'single', batterDest: 1, moves: [{ from: 3, to: 4 }], outsMade: 0 }, runner(9)).rbi).toBe(1);
+  });
+});

@@ -163,11 +163,29 @@ export function applyPlay(g, play, batter) {
       for (const m of early) scoredRunners.push(oldBases[m.from - 1]);
     } else runs = 0;
   }
-  if (isHitResult(play.result)) g.hits[g.half]++;
-  if (play.result === 'error' && g.errors) g.errors[g.half === 'top' ? 'bottom' : 'top']++; // reached on an error: the fielding team is charged
+  // A walk-off ends the game the moment the winning run scores: only the runs needed count (all of them on a home run), and
+  // the batter is credited with only as many bases as the winning runner had to go (a walk-off "double" from third is a single).
+  let result = play.result;
+  const homer = result === 'homer' || result === 'insideParkHomer';
+  if (g.half === 'bottom' && g.inning >= g.innings && !homer && runs > 0) {
+    const need = g.score.top - g.score.bottom + 1;
+    if (need > 0 && runs >= need) {
+      const order = [3, 2, 1].filter((b) => oldBases[b - 1] && moves.some((m) => m.from === b && !m.out && m.to >= 4));
+      if (play.batterDest >= 4) order.push(0);
+      const winner = order[need - 1] ?? 0;
+      runs = need;
+      scoredRunners.length = Math.min(scoredRunners.length, need);
+      const credit = Math.min(basesForHit(result), winner === 0 ? 4 : 4 - winner);
+      if (isHitResult(result) && credit >= 1) result = ['', 'single', 'double', 'triple', 'homer'][credit];
+    }
+  }
+  if (isHitResult(result)) g.hits[g.half]++;
+  if (result === 'error' && g.errors) g.errors[g.half === 'top' ? 'bottom' : 'top']++; // reached on an error: the fielding team is charged
   addRuns(g, runs);
   endPlateAppearance(g);
-  return { result: play.result, paEnded: true, runs, outs: outsMade, scoredRunners, halfOver: halfIsOver(g), walkOff: g.walkOff };
+  // runs batted in: none on a double play or when he reached on an error
+  const rbi = result === 'doublePlay' || result === 'error' ? 0 : runs;
+  return { result, paEnded: true, runs, rbi, outs: outsMade, scoredRunners, halfOver: halfIsOver(g), walkOff: g.walkOff };
 }
 
 /**

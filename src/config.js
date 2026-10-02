@@ -411,6 +411,9 @@ export const CONFIG = {
     },
   },
 
+  // the computer's simulated half-innings: the share of its free passes that are a hit batsman rather than a walk
+  ai: { hbpShare: 0.1 },
+
   // --------------------------------------------------------------------------
   //  Pacing (seconds). Keep these short: the game is meant to feel snappy.
   // --------------------------------------------------------------------------

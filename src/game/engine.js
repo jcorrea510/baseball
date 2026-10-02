@@ -745,6 +745,7 @@ export class Engine {
     if (c.bunt && play.result === 'groundout' && g.outs < 2 && play.moves.some((m) => !m.out && m.to > m.from)) play.result = 'sacBunt';
     const outsBefore = g.outs;
     const res = rules.applyPlay(g, play, this.batter);
+    play.result = res.result; // (a walk-off hit is credited with only the bases the winning run needed)
     this.stats.pa++;
     const isHit = rules.isHitResult(play.result);
     if (play.result !== 'sacFly' && play.result !== 'sacBunt') this.stats.ab++;
@@ -755,12 +756,12 @@ export class Engine {
         this.stats.longestHR = Math.max(this.stats.longestHR, Math.round(p.distance));
       }
     }
-    this.stats.rbi += res.runs;
+    this.stats.rbi += res.rbi;
     this.stats.runs += res.scoredRunners.filter((r) => r === this.batter).length;
-    this.creditBatter(play.result, res.runs);
+    this.creditBatter(play.result, res.rbi);
     this.emitCount();
     this.emit('result', {
-      kind: 'pa', result: play.result, text: rules.RESULT_TEXT[play.result] || play.result.toUpperCase(),
+      kind: 'pa', result: play.result, text: plan.groundRule && play.result === 'double' ? 'GROUND-RULE DOUBLE' : rules.RESULT_TEXT[play.result] || play.result.toUpperCase(),
       runs: res.runs, outs: g.outs, outsBefore, halfOver: res.halfOver, walkOff: res.walkOff, batter: this.batter,
       ...summary,
     });
