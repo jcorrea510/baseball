@@ -1938,6 +1938,15 @@ function finishHit(plan, ctx) {
   }
   if (recvPos) followUpThrow(plan, recs, defense[recvPos], { x: rp.x, z: rp.z }, tBall, outs, defense, cfg, settled);
   if (batter.out) { plan.batterDest = 0; plan.result = resultOf(earned); plan.infieldHit = plan.result === 'single' && f.type !== 'OF'; }
+  // Scoring: a batter who takes an extra base while the throw goes to another base (at a runner ahead of him) gets it "on the throw" -
+  // his hit is only the bases he would have made had the throw come to him (or that he took by himself)
+  if (!batter.out && bd >= 2 && tgtBase !== bd) {
+    const own = Math.max(1, batter.autoTo ?? 1);
+    const madeIt = (b) => { const a = recArrive(cfg, batter, b); return a !== undefined && D[b] - (b === 4 ? F.tagTime : 0) + R.sendTag + F.outMargin > a; };
+    let credit = bd;
+    while (credit > own && !madeIt(credit)) credit--;
+    if (credit < bd) { plan.result = resultOf(credit); plan.onThrow = bd - credit; }
+  }
   if (plan.sentOut && outs + plan.outsMade >= 3) plan.timePlay = true; // runs that crossed the plate before the tag still count
   for (const r of recs) plan.moves.push(recToMove(r));
 

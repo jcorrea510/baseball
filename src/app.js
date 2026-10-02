@@ -842,6 +842,11 @@ export class App {
       else if (res === 'doublePlay') { sub = `${r.plan.doubledOff ? 'Doubled off' : 'Out at'} ${where}${runsText}`; noteText = sub; }
       else { noteText = `runner out at ${where}`; sub = `Runner out at ${where}${runsText}`; }
     }
+    // he took the extra base while the throw went home (scored a single, not a double)
+    if (!note && r.plan && r.plan.onThrow && isHitResult(res) && r.plan.batterDest) {
+      noteText = `to ${['', '1st', '2nd', '3rd', 'home'][r.plan.batterDest]} on the throw`;
+      sub = `${noteText.charAt(0).toUpperCase()}${noteText.slice(1)}${runsText}`;
+    }
     if (e.mode === 'practice' && r.kind === 'play') {
       big = r.text; sub = `${Math.round(r.exitVelocity)} mph · ${Math.round(r.distance)} ft${runsText}`;
       if (note) { if (note.from === 0 && isHitResult(res)) big = `OUT AT ${['', '1st', '2nd', '3rd', 'home'][note.base].toUpperCase()}`; sub = `${noteText} · ${sub}`; }

@@ -135,6 +135,36 @@ describe('sending runners', () => {
     expect(scored).toBeGreaterThan(10);
   }, 120000);
 
+  it('a batter who takes an extra base while the throw goes home is credited with a single ("on the throw"), not a double', () => {
+    const rng = createRng(23);
+    const BASE = { single: 1, double: 2, triple: 3, insideParkHomer: 4 };
+    let onThrow = 0, hits = 0;
+    const problems = [];
+    for (let k = 0; k < 600; k++) {
+      const c = C(rng.range(80, 100), rng.range(4, 16), rng.range(-35, 35));
+      const bases = [null, 2, null];
+      const first = plan(c, { bases }).plan;
+      if (first.result !== 'single' || !first.send) continue;
+      // send the runner on second home and the batter on to second, as soon as the pad offers them
+      const orders = [];
+      let cur = first;
+      for (let t = first.send.from; t <= cur.send.by && orders.length < 2; t += 0.1) {
+        for (const o of sendOptions(cur, t)) {
+          if (o.kind !== 'send' || orders.some((q) => q.from === o.from)) continue;
+          if ((o.from === 2 && o.base === 4) || (o.from === 0 && o.base === 2)) { orders.push({ base: o.base, t, from: o.from }); cur = plan(c, { bases, orders }).plan; break; }
+        }
+      }
+      const p = cur;
+      if (!(p.result in BASE) || !p.batterDest) continue;
+      hits++;
+      if (BASE[p.result] + (p.onThrow || 0) !== p.batterDest) problems.push(`${p.result} + ${p.onThrow} on the throw != base ${p.batterDest}`);
+      if (p.onThrow) onThrow++;
+    }
+    expect(problems).toEqual([]);
+    expect(hits).toBeGreaterThan(50);
+    expect(onThrow).toBeGreaterThan(5);
+  }, 120000);
+
   it('a ball in the gap or off the wall: he makes second - by himself, or when you send him as soon as it is down', () => {
     const rng = createRng(17);
     let n = 0, made = 0, alone = 0;
