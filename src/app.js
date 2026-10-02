@@ -262,7 +262,7 @@ export class App {
       case 'batterReady': if (this.engine) this.engine.batterReady(); break;
       case 'bunt': if (this.engine) this.engine.setBunt(!this.engine.buntStance); break;
       case 'steal': if (this.engine) this.engine.setSteal(!this.engine.stealArmed); break;
-      case 'runner': if (this.engine && !this.paused && !this.bot && this.engine.runnerOrder(d.from, d.kind)) this.audio.uiClick(); break;
+      case 'base': this.baseKey(d.base); break;
       case 'swing': this.swingInput(d); break;
       case 'practice': if (this.engine) { Object.assign(this.engine.practice, d); } break;
       default: break;
@@ -962,7 +962,6 @@ export class App {
         case 'KeyM': this.toggleMute(); break;
         case 'KeyF': if (!onControl) this.toggleFullscreen(); break;
         case 'KeyB':
-          if (inGame && this.engine && this.engine.sendOpen) { this.runnerKey(0, e.shiftKey); break; } // (during a play B is the batter's row)
           if (inGame && this.engine) this.engine.setBunt(!this.engine.buntStance);
           break;
         case 'KeyS': if (inGame && this.engine) this.engine.setSteal(!this.engine.stealArmed); break;
@@ -974,16 +973,10 @@ export class App {
         case 'ArrowDown': if (!inGame) break; e.preventDefault(); this.aimKeys.down = true; this.aimMode = 'keys'; break;
         case 'Equal': case 'NumpadAdd': if (inGame && this.engine.mode === 'practice') this.practiceSpeed(+2); break;
         case 'Minus': case 'NumpadSubtract': if (inGame && this.engine.mode === 'practice') this.practiceSpeed(-2); break;
-        case 'KeyT': // tag up (every runner who can) - press again to cancel
-          if (this.screen === 'game' && !this.ui.current && this.engine && this.engine.sendOpen) {
-            let any = false;
-            for (const r of this.engine.runnerTargets()) if (r.canTag && this.engine.runnerOrder(r.from, 'tag')) any = true;
-            if (any) this.audio.uiClick();
-          }
-          break;
+        case 'KeyH': if (inGame && this.engine.sendOpen) this.baseKey(4); break; // (while a hit is played: send the runner on third home)
         case 'Digit1': case 'Digit2': case 'Digit3': case 'Digit4': case 'Digit5': case 'Digit6':
-          // while a hit is being played: 1 / 2 / 3 = the runner who started on that base (Shift: back), as shown on his row
-          if (inGame && this.engine.sendOpen) { const b = +e.code.slice(5); if (b <= 3) this.runnerKey(b, e.shiftKey); break; }
+          // while a hit is being played: 1 / 2 / 3 / 4 = tap that base on the diamond (4 = home)
+          if (inGame && this.engine.sendOpen) { const b = +e.code.slice(5); if (b <= 4) this.baseKey(b); break; }
           if (inGame && this.engine.mode === 'practice') {
             const types = ['fastball', 'changeup', 'curveball', 'slider', 'heater', 'mixed'];
             this.engine.practice.type = types[+e.code.slice(5) - 1];
@@ -1138,16 +1131,16 @@ export class App {
     if (hideCursor !== this.cursorHidden) { this.cursorHidden = hideCursor; this.canvas.style.cursor = hideCursor ? 'none' : ''; }
   }
 
-  // ---------------------------------------------------------------- sending runners (one row per runner on the base pad)
-  // A key for a runner's row: send him one base further (Shift: back one base).
-  runnerKey(from, back) {
+  // ---------------------------------------------------------------- sending runners (tap a lit base on the diamond)
+  // A tap on base `base` (or its key): the runner behind it goes there.
+  baseKey(base) {
     const e = this.engine;
     if (!e || this.paused || this.bot) return;
-    if (e.runnerOrder(from, back ? 'back' : 'send')) this.audio.uiClick();
+    if (e.tapBase(base)) this.audio.uiClick();
   }
 
-  // Every frame: the base diamond is up while you can send runners - the bases you can send someone to glow, and a dot shows every
-  // runner where he is right now.
+  // Every frame: the base diamond is up while you can send runners - the bases you can send someone to light up, and a dot shows
+  // every runner where he is right now.
   updateBasePad(e) {
     const open = !this.paused && !this.ui.current && e.sendOpen;
     if (!open) { if (this.padShown) { this.padShown = false; this.ui.setBasePad(null); } return; }
@@ -1165,7 +1158,7 @@ export class App {
       const q = runnerProfile(0, 1, 'run', e.cfg).at(Math.max(0, t - e.cfg.runner.batterStart), this.padQ || (this.padQ = {}));
       dots.push({ x: q.x, z: q.z, sent: false, from: 0 });
     }
-    this.ui.setBasePad({ dots, runners: e.runnerTargets() });
+    this.ui.setBasePad({ dots, open: e.baseTargets().map((q) => q.base) });
   }
 
   swingInput(ev) {

@@ -9,7 +9,7 @@ import { simulateBattedBall, projectDistance } from '../physics/ballistics.js';
 import { resolveSwingTimes, describeError } from './timing.js';
 import { computeSwing, computeBunt, derbyBatting, contactWindow, contactPoint, scaleWindow } from './contact.js';
 import { choosePitch, pitchWindowScale } from './pitcherAI.js';
-import { createDefense, alignDefense, planPlay, sendOptions, runnerOptions, planSteal, planWildPitch, fielderBackTime } from './fielding.js';
+import { createDefense, alignDefense, planPlay, sendOptions, runnerOptions, tapOptions, planSteal, planWildPitch, fielderBackTime } from './fielding.js';
 import * as rules from './rules.js';
 import { simulateHalf } from './aiHalf.js';
 import { makeLineup, makePitcher, PLAYER_TEAM } from './teams.js';
@@ -665,10 +665,10 @@ export class Engine {
   }
 
   // ------------------------------------------------------------------ sending runners
-  // Runners take one base on their own; you send them further by tapping a base, from the moment the ball is hit (on a ball in the
-  // air everybody does the same until it is caught or down, so nothing gives a catch away) until just after the fielder is ready to
-  // throw (plan.send). Tapping the base a runner you sent is heading for calls him back. The play is planned again with your orders -
-  // everything up to the tap stays exactly as it was - and the defense throws at whoever it can get.
+  // Runners only move by themselves when they are forced; you send them on by tapping a base, from the moment the ball is hit (on a
+  // ball in the air everybody does the same until it is caught or down, so nothing gives a catch away) until just after the fielder
+  // is ready to throw (plan.send). The play is planned again with your orders - everything up to the tap stays exactly as it was -
+  // and the defense throws at whoever it can get.
   get sendOpen() {
     const p = this.play;
     if (this.phase !== 'play' || !p || p.steal || !p.plan.send || this.paused) return false;
@@ -680,6 +680,19 @@ export class Engine {
   sendTargets() {
     if (!this.sendOpen) return [];
     return sendOptions(this.play.plan, this.time - this.play.t0, this.cfg);
+  }
+
+  // The bases that light up on the diamond right now: [{ base, from }] (see fielding.tapOptions).
+  baseTargets() {
+    if (!this.sendOpen) return [];
+    return tapOptions(this.play.plan, this.time - this.play.t0);
+  }
+
+  // Tap a base: the runner behind it goes there. True when taken.
+  tapBase(base) {
+    const opt = this.baseTargets().find((q) => q.base === base);
+    if (!opt) return false;
+    return this.applyRunnerOrder({ base, t: this.time - this.play.t0, from: opt.from });
   }
 
   // Every runner you can give an order to right now: [{ from, goal, send, back, tag, canTag }] (see fielding.runnerOptions).

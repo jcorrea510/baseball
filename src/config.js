@@ -587,11 +587,11 @@ export const CONFIG = {
     // What a runner does while the ball is in the air: he waits this long (s) before breaking for the next base (a fly ball or a pop-up
     // might be caught; a grounder he goes on at once).
     read: { ground: 0, line: 0.12, fly: 0.5, pop: 0.7 },
-    // Sending runners (you tap a base on the little diamond): on their own runners only ever take ONE base. You can send them from
-    // `sendFrom` s after contact - on a ball in the air every runner does the same whether it will be caught or not, so the diamond
-    // gives nothing away - until `sendAfter` s after the fielder is ready to throw. The defense picks where to throw `sendLead` s
-    // before he is ready; a runner sent after that is chased by a second throw if it can get him. Tap the base a runner is heading
-    // for again to call him back. A runner reacts `sendReact` s after the tap.
+    // Sending runners (you tap a base on the little diamond: the runner behind it goes there - a base only lights up when nobody is
+    // already heading for it). You can send them from `sendFrom` s after contact - on a ball in the air every runner does the same
+    // whether it will be caught or not, so the diamond gives nothing away - until `sendAfter` s after the fielder is ready to throw.
+    // The defense picks where to throw `sendLead` s before he is ready; a runner sent after that is chased by a second throw if it
+    // can get him. A runner reacts `sendReact` s after the tap.
     sendFrom: 0.1,
     sendAfter: 0.45,
     sendLead: 0.1,
@@ -607,6 +607,11 @@ export const CONFIG = {
     holdBackDelay: 0.3,
     holdBackSpeed: 10,
     autoMargin: 0.05, // s: a runner who would make one more base by this much takes it by himself (as the ball comes down, and again when the window closes)
+    // false: on a hit or a ground ball a runner only moves by himself when he is FORCED (the batter pushes him on); a runner with an
+    // open base behind him stays put until you tap the base ahead of him. (Runners going with the pitch - a steal - keep going, and the
+    // man on third still tags up by himself on a fly ball when it is a sure thing.) true: a free runner takes the next base by himself
+    // when it is safe.
+    freeAdvance: false,
     autoExtra: false, // false: a runner (the batter too) NEVER takes an extra base by himself - one base (or where he is forced), more only when you send him. true: he takes one more when it is safe by autoMargin
     retreatRead: 0.3, // s after the throw is let go: a runner you sent who sees it will beat him turns back to the bag he left (when he can make it back)
     // On a ball to the outfield a runner rounds his base, pulls up `roundPast` ft beyond it (braking at `roundBrake` ft/s^2) and waits.

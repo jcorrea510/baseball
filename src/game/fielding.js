@@ -883,6 +883,27 @@ export function sendOptions(plan, t, cfg = CONFIG) {
   return out.sort((a, b) => a.base - b.base);
 }
 
+/**
+ * The bases you can tap right now (t = seconds after contact): [{ base, from }]. Tapping a base sends the runner heading for the base
+ * before it on to it. A base only lights up when nobody (not out) is heading for it already - home always can - so a tap never moves
+ * a runner you did not mean and never pushes a runner ahead along. Send the lead runner first.
+ */
+export function tapOptions(plan, t) {
+  const S = plan && plan.send;
+  if (!S || !(t >= S.from && t <= S.by)) return [];
+  const view = S.res !== undefined && t < S.res && S.pre ? S.pre : S.post;
+  if (!view) return [];
+  const out = [];
+  for (const v of view) {
+    if (v.out || (v.lockAt !== undefined && t >= v.lockAt)) continue;
+    const base = v.goal + 1;
+    if (!(base >= 1 && base <= 4)) continue;
+    if (base < 4 && view.some((q) => q !== v && !q.out && q.goal === base)) continue;
+    out.push({ base, from: v.from });
+  }
+  return out.sort((a, b) => a.base - b.base);
+}
+
 // A record back into a plan move.
 function recToMove(r) {
   const m = { from: r.from, to: r.to, out: false };
@@ -1526,7 +1547,7 @@ function tryInfieldOut({ f, tF, tReady, pf, bases, forced, outs, defense, cfg, p
   // The runner on third breaks for home on the ground ball (fewer than two outs, not forced): with no double play on, the fielder
   // throws home only if he clearly has him - otherwise he takes the sure out at first and gives up the run
   // (he only goes on a ball to the middle infielders playing back - on one to the pitcher, a corner or the catcher he holds)
-  if (bases[2] && !forced.has(3) && outs < 2 && !forced.has(1) && (f.pos === 'SS' || f.pos === '2B')) {
+  if (bases[2] && !forced.has(3) && outs < 2 && !forced.has(1) && (f.pos === 'SS' || f.pos === '2B') && (cfg.runner.freeAdvance || rs(3) !== undefined)) {
     const tHome = arrivalAt(cfg, 3, 4, rs(3) ?? cfg.runner.contactBreak);
     const wayH = outAt(4, tHome, ctx, plan, cfg);
     // (a runner who is going (a hit-and-run, a steal) is committed; one reading it holds on a ball hit so hard at the infielder that
@@ -1678,7 +1699,7 @@ function advanceOnGroundout({ plan = {}, bases, forced, outsAfter, f, pf, tReady
     if (!occupied[b] || (skip && skip.has(b))) continue;
     let d = b;
     if (forced.has(b)) d = b + 1;
-    else if (canAdvance) {
+    else if (canAdvance && (cfg.runner.freeAdvance || rs(b) !== undefined)) { // (not forced: he stays unless he is going with the pitch - or you send him)
       if (b === 3) {
         // he broke on contact; the ball went somewhere else for the out - the only way to get him now is a relay home from there
         const from = after ? BASE_XZ[after.base === 4 ? 4 : after.base] : [pf.x, pf.z];
@@ -1774,6 +1795,7 @@ function finishHit(plan, ctx) {
       let target = r.from;
       if (r.sent) target = r.to;
       else if (r.forced) target = r.from + 1;
+      else if (!R.freeAdvance && !r.running) target = r.from; // (not forced: he stays until you send him)
       else {
         const hyp = cloneRec(r);
         if (r.running) hyp.legs = [{ kind: 'run', from: r.from, to: r.from + 1, t0: rs(r.from) }];

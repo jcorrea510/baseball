@@ -159,13 +159,9 @@ export class UI {
       <div class="meter"><div class="bar"><div class="tick"></div><div class="mark"></div></div><div class="lab"><span>EARLY</span><span>LATE</span></div><div class="txt"></div></div>
       <button class="swingbtn" data-swing aria-label="Swing">${icon('bat')}<span>Swing</span></button>
       <div class="basepad" aria-label="Runners">
-        <div class="rrows"></div>
-        <div class="bphead">Runners</div>
-        <div class="bpdia">
         <svg class="bpfield" viewBox="0 0 160 160" aria-hidden="true"><path class="lines" d="M80 140 L140 80 L80 20 L20 80 Z"/></svg>
-        <i class="bpbase" data-base="1"></i><i class="bpbase" data-base="2"></i><i class="bpbase" data-base="3"></i><i class="bpbase home" data-base="4"></i>
+        <button class="bpbase" data-base="1" tabindex="-1" aria-label="1st"></button><button class="bpbase" data-base="2" tabindex="-1" aria-label="2nd"></button><button class="bpbase" data-base="3" tabindex="-1" aria-label="3rd"></button><button class="bpbase home" data-base="4" tabindex="-1" aria-label="Home"></button>
         <svg class="bpfield bpover" viewBox="0 0 160 160" aria-hidden="true"><g class="dots"></g></svg>
-        </div>
       </div>
       <div class="acts"><button class="stealbtn" data-a="steal" aria-pressed="false" title="Steal (S)">${icon('go')}<span>Steal</span></button><button class="buntbtn" data-a="bunt" aria-pressed="false" title="Bunt (B)">${icon('bat')}<span>Bunt</span></button></div>
       <div class="practice panel collapsed">
@@ -185,11 +181,11 @@ export class UI {
       derby: $(hud, '.derbybox'), bug: $(hud, '.bug'), tag: $(hud, '.batter-tag'), practice: $(hud, '.practice'), flash: $(hud, '.flash'),
       lineup: $(hud, '.lineup'), swingBtn: $(hud, '.swingbtn'), batterUp: $(hud, '.batterup'), basepad: $(hud, '.basepad'),
     };
-    // the base diamond (sending runners): a base is taken the moment it is touched
+    // the base diamond (sending runners): a lit base is taken the moment it is touched - the runner behind it goes there
     this.q.basepad.addEventListener('pointerdown', (e) => {
       e.preventDefault(); e.stopPropagation();
-      const r = e.target.closest('[data-ro]');
-      if (r && !r.disabled) { r.classList.add('hit'); setTimeout(() => r.classList.remove('hit'), 220); this.act('runner', { from: +r.closest('.rrow').dataset.from, kind: r.dataset.ro }); }
+      const b = e.target.closest('.bpbase.open');
+      if (b) { b.classList.add('hit'); setTimeout(() => b.classList.remove('hit'), 220); this.act('base', { base: +b.dataset.base }); }
     });
     hud.addEventListener('click', (e) => {
       const b = e.target.closest('[data-a]');
@@ -388,9 +384,9 @@ export class UI {
         <div class="step"><span class="n">1</span><svg class="pic" viewBox="0 0 120 70"><rect x="40" y="8" width="40" height="50" fill="rgba(255,255,255,.06)" stroke="#fff" stroke-opacity=".5"/><path d="M18 46 L74 34" stroke="#fff" stroke-opacity=".55" stroke-width="7" stroke-linecap="round"/><circle cx="66" cy="36" r="4.5" fill="none" stroke="#ffe08a" stroke-width="2"/><circle cx="67" cy="30" r="5" fill="#fff" stroke="#c62828" stroke-width="1.2"/></svg><h4>Aim</h4><p>${touch ? 'Drag the bat' : 'Move the mouse'}</p></div>
         <div class="step"><span class="n">2</span><svg class="pic" viewBox="0 0 120 70"><circle cx="26" cy="35" r="11" fill="#fff" stroke="#c62828" stroke-width="1.5"/><path d="M40 30 Q60 8 78 12" stroke="#ffb52e" stroke-width="2.5" fill="none"/><path d="M40 35 L78 35" stroke="#fff" stroke-width="2.5" opacity=".8"/><path d="M40 40 Q58 52 72 60" stroke="#8fb3ff" stroke-width="2.5" fill="none"/><text x="82" y="15" font-size="7.5" font-weight="800" fill="#ffb52e">FLY</text><text x="82" y="38" font-size="7.5" font-weight="800" fill="#fff">LINER</text><text x="76" y="64" font-size="7.5" font-weight="800" fill="#8fb3ff">GROUNDER</text></svg><h4>Contact</h4><p>Under · middle · top</p></div>
         <div class="step"><span class="n">3</span><svg class="pic" viewBox="0 0 120 70"><rect x="14" y="24" width="92" height="10" rx="2" fill="url(#hg)"/><defs><linearGradient id="hg"><stop offset="0" stop-color="#7a2a2a"/><stop offset=".5" stop-color="#3ddc7c"/><stop offset="1" stop-color="#7a2a2a"/></linearGradient></defs><rect x="58" y="18" width="4" height="22" rx="1" fill="#fff"/><rect x="32" y="48" width="56" height="14" rx="7" fill="#ffb52e"/><text x="60" y="58" text-anchor="middle" font-size="9" font-weight="800" fill="#1b1204">${touch ? 'TAP' : 'CLICK'}</text></svg><h4>Swing</h4><p>On time</p></div>
-        <div class="step"><span class="n">4</span><svg class="pic" viewBox="0 0 120 70"><path d="M60 64 L88 36 L60 8 L32 36 Z" fill="rgba(255,255,255,.08)" stroke="#fff" stroke-opacity=".55" stroke-width="2"/><rect x="53" y="1" width="14" height="14" transform="rotate(45 60 8)" fill="rgba(255,255,255,.3)" stroke="#fff"/><rect x="81" y="29" width="14" height="14" transform="rotate(45 88 36)" fill="rgba(255,255,255,.3)" stroke="#fff"/><circle cx="76" cy="22" r="4.5" fill="#ffe08a" stroke="#0a1020" stroke-width="1.5"/><path d="M80 18 L70 10" stroke="#ffb52e" stroke-width="2" stroke-dasharray="3 3"/></svg><h4>Run</h4><p>Send to on his row</p></div>
+        <div class="step"><span class="n">4</span><svg class="pic" viewBox="0 0 120 70"><path d="M60 64 L88 36 L60 8 L32 36 Z" fill="rgba(255,255,255,.08)" stroke="#fff" stroke-opacity=".55" stroke-width="2"/><rect x="53" y="1" width="14" height="14" transform="rotate(45 60 8)" fill="rgba(255,255,255,.3)" stroke="#fff"/><rect x="81" y="29" width="14" height="14" transform="rotate(45 88 36)" fill="rgba(255,255,255,.3)" stroke="#fff"/><circle cx="76" cy="22" r="4.5" fill="#ffe08a" stroke="#0a1020" stroke-width="1.5"/><path d="M80 18 L70 10" stroke="#ffb52e" stroke-width="2" stroke-dasharray="3 3"/></svg><h4>Run</h4><p>Tap a base</p></div>
       </div>
-      <div class="keys">${touch ? key(['Drag'], 'Aim') + key(['Swing'], 'Swing') + key(['Send'], 'Runner') : key(['Mouse'], 'Aim') + key(['Click', 'Space'], 'Swing') + key(['Arrows'], 'Aim') + key(['1', '2', '3', 'B'], 'Send runner') + key(['B'], 'Bunt') + key(['S'], 'Steal') + key(['Z'], 'Zone') + key(['M'], 'Mute') + key(['Esc'], 'Pause')}</div>
+      <div class="keys">${touch ? key(['Drag'], 'Aim') + key(['Swing'], 'Swing') + key(['Base'], 'Send runner') : key(['Mouse'], 'Aim') + key(['Click', 'Space'], 'Swing') + key(['Arrows'], 'Aim') + key(['1', '2', '3', 'H'], 'Send runner') + key(['B'], 'Bunt') + key(['S'], 'Steal') + key(['Z'], 'Zone') + key(['M'], 'Mute') + key(['Esc'], 'Pause')}</div>
       <div class="row"><button class="btn" data-a="howtoDone">${icon('check')}Got it</button></div>`;
     s.appendChild(d);
     s.onclick = (e) => { const b = e.target.closest('[data-a]'); if (b) { this.act('howtoDone'); if (onDone) onDone(); } };
@@ -918,42 +914,24 @@ export class UI {
   hideTiming() { this.q.meter.classList.remove('show'); }
   // the Swing button shows (phones) while you are up
   setSwingButton(on) { this.q.swingBtn.classList.toggle('show', !!on); }
-  // The runner pad while you can send runners: o = null hides it, else { runners: [runnerOptions rows], dots: [{ x, z, sent, from }] }.
+  // The base diamond while you can send runners: o = null hides it, else { open: [bases that light up], dots: [{ x, z, sent, from }] }.
   setBasePad(o) {
     const el = this.q.basepad;
     const on = !!o;
     if (on !== this.padOn) { this.padOn = on; el.classList.toggle('show', on); this.hud.classList.toggle('sending', on); }
     if (!on) return;
-    // One row per runner, in his own colour (the same colour as his dot on the little diamond): who he is, where he is going, and
-    // a button for each thing you can tell HIM to do - nothing is guessed from a tapped base. Keys: 1 / 2 / 3 the runner who started
-    // on that base, B the batter (with Shift: back), T tag up.
-    const rows = o.runners || [];
-    const rkey = rows.map((r) => `${r.from}:${r.goal}:${r.send}:${r.back}:${r.canTag ? (r.tag === true ? 'T' : r.tag === false ? 'N' : 'A') : '-'}:${r.out ? 1 : 0}`).join('|') + (this.touchKeys ? 't' : '');
-    if (rkey !== this.rowKey) {
-      this.rowKey = rkey;
-      const nm = (b) => ['Home', '1st', '2nd', '3rd', 'Home'][b] || '';
-      const status = (r) => (r.out ? 'Out' : r.goal >= 4 ? 'Scores' : r.goal === r.from && r.from > 0 ? `Holds ${nm(r.from)}` : `To ${nm(r.goal)}`);
-      const keyOf = (r) => (r.from === 0 ? 'B' : String(r.from));
-      el.querySelector('.rrows').innerHTML = rows.map((r) => `<div class="rrow${r.out ? ' isout' : ''}" data-from="${r.from}" style="--rc:${RUNNER_COLORS[r.from]}">
-        <span class="rbadge"><kbd>${keyOf(r)}</kbd>${r.from === 0 ? 'Batter' : `On ${nm(r.from)}`}</span><span class="rdest">${status(r)}</span>
-        ${r.back === null ? '<span class="rgap"></span>' : `<button data-ro="back" aria-label="Back to ${nm(r.back)}">${icon('chevLeft')}<span class="lw">Back to&nbsp;</span>${nm(r.back)}</button>`}
-        ${r.send === null ? '<span class="rgap"></span>' : `<button data-ro="send" aria-label="Send to ${nm(r.send)}"><span class="lw">Send to&nbsp;</span>${nm(r.send)}${icon('chevRight')}</button>`}
-        ${r.canTag ? `<button data-ro="tag" class="tag ${r.tag === true ? 'on' : r.tag === false ? 'off' : ''}" aria-label="Tag up">Tag</button>` : ''}
-      </div>`).join('');
-    }
+    for (const b of el.querySelectorAll('.bpbase')) b.classList.toggle('open', o.open.includes(+b.dataset.base));
     const g = el.querySelector('.dots');
-    while (g.children.length < o.dots.length * 2) { g.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'circle')); g.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'text')); }
-    for (let i = 0; i < g.children.length; i += 2) {
-      const c = g.children[i], tx = g.children[i + 1], d = o.dots[i / 2];
-      if (!d) { c.setAttribute('r', 0); tx.textContent = ''; continue; }
+    while (g.children.length < o.dots.length) g.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'circle'));
+    for (let i = 0; i < g.children.length; i++) {
+      const c = g.children[i], d = o.dots[i];
+      if (!d) { c.setAttribute('r', 0); continue; }
       // field feet -> the diamond's picture: home (80,140), first (140,80), second (80,20), third (20,80)
       const k = 60 / 63.64;
       const cx = (80 + d.x * k).toFixed(1), cy = (140 + d.z * k).toFixed(1);
       c.setAttribute('cx', cx); c.setAttribute('cy', cy); c.setAttribute('r', 8);
       c.setAttribute('class', d.sent ? 'bpdot sent' : 'bpdot');
       c.style.fill = RUNNER_COLORS[d.from] || '#fff';
-      tx.setAttribute('x', cx); tx.setAttribute('y', (+cy + 3.6).toFixed(1)); tx.setAttribute('class', 'bplab');
-      tx.textContent = d.from === 0 ? 'B' : String(d.from);
     }
   }
   hint(text, ms = 2600) {

@@ -1,9 +1,9 @@
-// Runners read the ball, take one base on their own, go further only when you send them (and are tagged out or just safe), and
-// hold on caught balls.
+// Runners read the ball, only move by themselves when they are forced, go further only when you tap a base (and are tagged out or
+// just safe), and hold on caught balls.
 import { describe, it, expect } from 'vitest';
 import { CONFIG } from '../src/config.js';
 import { simulateBattedBall } from '../src/physics/ballistics.js';
-import { createDefense, planPlay, sendOptions } from '../src/game/fielding.js';
+import { createDefense, planPlay, sendOptions, tapOptions } from '../src/game/fielding.js';
 import { runnerState, moveArrival, leadSpot } from '../src/game/runnerMotion.js';
 import { BASE_XZ } from '../src/physics/field.js';
 import { auditPlan } from '../src/game/playAudit.js';
@@ -15,8 +15,9 @@ const plan = (c, o = {}) => {
   const defense = createDefense();
   if (o.slow) for (const k in defense) { defense[k].speed *= 0.05; defense[k].react += 9; } // (nobody gets to anything: the same ball drops)
   const i = { sim, contact: c, bases: o.bases || [null, null, null], outs: o.outs ?? 0, defense, orders: o.orders || [] };
-  return { plan: planPlay(i, CONFIG), defense, i };
+  return { plan: planPlay(i, o.cfg || CONFIG), defense, i };
 };
+const FREE = { ...CONFIG, runner: { ...CONFIG.runner, freeAdvance: true } }; // (the old rule: a free runner takes the next base when safe)
 const C = (ev, la, spray) => ({ exitVelocity: ev, launchAngle: la, sprayAngle: spray, backspin: 900, hook: 0 });
 
 // Where every runner of a plan is at time t (the batter is 0).
@@ -218,8 +219,8 @@ describe('sending runners', () => {
     for (let k = 0; k < 800 && tested < 15; k++) {
       const c = C(rng.range(85, 100), rng.range(6, 16), rng.range(-25, 5));
       const base = plan(c, { bases: [null, 2, null] }).plan;
-      if (base.result !== 'single' || !base.send || base.moves.find((m) => m.from === 2).to !== 3) continue;
-      const p = plan(c, { bases: [null, 2, null], orders: [{ base: 4, t: base.send.decide }] }).plan;
+      if (base.result !== 'single' || !base.send || base.moves.find((m) => m.from === 2).to !== 2) continue; // (he holds by himself)
+      const p = plan(c, { bases: [null, 2, null], orders: [{ base: 3, t: base.send.from }, { base: 4, t: base.send.decide }] }).plan;
       const th = p.throws[p.throws.length - 1];
       if (p.sentOut) { tested++; expect(th.toBase).toBe(4); expect(p.events.some((e) => e.type === 'out' && e.base === 4)).toBe(true); }
     }
@@ -268,13 +269,22 @@ describe('reading the ball', () => {
 
   it('on a grounder runners go at once', () => {
     const rng = createRng(4);
-    let ground = 0;
+    let ground = 0, free = 0;
+    const bad = [];
     for (let k = 0; k < 300; k++) {
-      const b = plan(C(rng.range(60, 90), rng.range(-8, 2), rng.range(-30, 30)), { bases: [null, 2, null] }).plan;
-      const g = b.moves.find((q) => q.from === 2 && !q.back);
-      if (g && g.to > 2) { ground++; expect(g.tStart === undefined || g.tStart <= CONFIG.runner.startDelay + 1e-9).toBe(true); }
+      const c = C(rng.range(60, 90), rng.range(-8, 2), rng.range(-30, 30));
+      // a forced runner (first and second taken)...
+      const b = plan(c, { bases: [1, 2, null] }).plan;
+      const g = b.moves.find((q) => q.from === 2 && !q.back && !q.out);
+      if (g && g.to > 2) { ground++; if (!(g.tStart === undefined || g.tStart <= CONFIG.runner.startDelay + 1e-9)) bad.push(g.tStart); }
+      // ...and, with the old rule, a free one who takes the base by himself
+      const f = plan(c, { bases: [null, 2, null], cfg: FREE }).plan;
+      const h = f.moves.find((q) => q.from === 2 && !q.back);
+      if (h && h.to > 2) { free++; if (!(h.tStart === undefined || h.tStart <= CONFIG.runner.startDelay + 1e-9)) bad.push(h.tStart); }
     }
+    expect(bad).toEqual([]);
     expect(ground).toBeGreaterThan(5);
+    expect(free).toBeGreaterThan(5);
   });
 
   it('a caught fly ball: runners who were not sent end up back on their bag', () => {
@@ -414,5 +424,64 @@ describe('changing your mind, again and again', () => {
     expect([...new Set(problems)].slice(0, 10)).toEqual([]);
     expect(chains).toBeGreaterThan(150);
     expect(turns).toBeGreaterThan(50);
+  }, 120000);
+});
+
+describe('only forced runners move by themselves; you tap a base for the rest', () => {
+  const FORCED = (bases) => { const f = new Set(); if (bases[0]) { f.add(1); if (bases[1]) { f.add(2); if (bases[2]) f.add(3); } } return f; };
+
+  it('a runner who is not forced stays on his base on hits and ground balls; a forced one takes exactly one base', () => {
+    const rng = createRng(21);
+    const problems = [];
+    let free = 0, pushed = 0;
+    for (let k = 0; k < 700; k++) {
+      const c = C(rng.range(55, 105), rng.range(-10, 30), rng.range(-40, 40));
+      const bases = [rng.chance(0.5) ? 1 : null, rng.chance(0.5) ? 2 : null, rng.chance(0.5) ? 3 : null];
+      const { plan: p } = plan(c, { bases, outs: rng.chance(0.5) ? 1 : 0 });
+      if (p.caught || p.homer || !p.fair || p.result === 'error' || p.result === 'foul') continue;
+      const forced = FORCED(bases);
+      for (const m of p.moves) {
+        if (m.from === 0 || m.out || m.back) continue;
+        if (forced.has(m.from)) { pushed++; if (m.to !== m.from + 1) problems.push(`${p.result}: forced runner from ${m.from} ended on ${m.to}`); }
+        else { free++; if (m.to !== m.from) problems.push(`${p.result}: free runner from ${m.from} moved to ${m.to} by himself`); }
+      }
+    }
+    expect(problems).toEqual([]);
+    expect(free).toBeGreaterThan(100);
+    expect(pushed).toBeGreaterThan(100);
+  }, 120000);
+
+  it('a base lights up only when nobody is heading for it (home always can), and a tap moves exactly the runner behind it', () => {
+    const rng = createRng(22);
+    const problems = [];
+    let taps = 0;
+    for (let k = 0; k < 400 && taps < 120; k++) {
+      const c = C(rng.range(70, 105), rng.range(-6, 24), rng.range(-40, 40));
+      const bases = [rng.chance(0.6) ? 1 : null, rng.chance(0.5) ? 2 : null, rng.chance(0.4) ? 3 : null];
+      const { plan: p, defense } = plan(c, { bases });
+      if (!p.send || !p.fair || p.homer) continue;
+      const t = (p.send.from + p.send.by) / 2;
+      const view = p.send.res !== undefined && t < p.send.res && p.send.pre ? p.send.pre : p.send.post;
+      for (const o of tapOptions(p, t)) {
+        if (o.base < 4 && view.some((v) => !v.out && v.goal === o.base)) problems.push(`base ${o.base} lit while a runner is heading there`);
+        const runner = view.find((v) => v.from === o.from);
+        if (!runner || runner.goal !== o.base - 1) problems.push(`base ${o.base} lit for a runner who is not behind it`);
+        const q = plan(c, { bases, orders: [{ base: o.base, t, from: o.from }] }).plan;
+        taps++;
+        const moved = q.moves.find((m) => m.from === o.from && !m.back);
+        // (he goes - unless he sees the throw will beat him and turns back, or the ball is caught and everybody goes back to his bag)
+        const went = moved && (moved.out || moved.to === o.base || (o.base === 4 && moved.to === 0));
+        const turned = (q.retreated && q.retreated.from === o.from) || (q.caught && t < q.catchT);
+        if (!went && !turned) problems.push(`tap ${o.base}: runner from ${o.from} did not go there`);
+        for (const m of q.moves) {
+          if (m.from === o.from || m.out || m.back) continue;
+          const before = p.moves.find((x) => x.from === m.from && !x.back);
+          if (before && !before.out && m.to > before.to) problems.push(`tap ${o.base}: runner from ${m.from} was pushed from ${before.to} to ${m.to}`);
+        }
+        problems.push(...auditPlan(q, defense));
+      }
+    }
+    expect(problems).toEqual([]);
+    expect(taps).toBeGreaterThan(60);
   }, 120000);
 });

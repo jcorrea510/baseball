@@ -28,7 +28,7 @@ for (const sz of sizes) {
       if (a.engine.mode === 'quick' && state === 'pitch') ui.showBatterUp({ number: 12, name: 'J. Delgado-Whitfield', pos: 'SS' }, { pa: 2, ab: 2, h: 1, hr: 1, rbi: 2, bb: 0 }, ['.312 AVG', '14 HR', 'Contact 62 · Power 70 · Speed 55']);
       if (a.engine.mode === 'quick') { ui.setSteal(true, true); a.refreshLineup(); }
       if (state === 'pitch') ui.setSwingButton(true); // (the Steal button next to Bunt)
-      else ui.setBasePad({ targets: [2, 3, 4], dots: [{ x: 0, z: 0 }, { x: 60, z: -60, sent: true }] }); // (during a play: the base diamond, no Swing button)
+      else ui.setBasePad({ open: [3, 4], dots: [{ x: 0, z: 0, from: 0 }, { x: 60, z: -60, sent: true, from: 1 }] }); // (during a play: the base diamond, no Swing button)
       ui.q.banner.style.opacity = '1';
       a.tick(0.001, true);
       // overlap check between visible HUD boxes

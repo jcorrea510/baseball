@@ -36,8 +36,8 @@ export function createBot(engine, o = {}) {
   return {
     update() {
       if (engine.awaitingBatter) engine.batterReady(); // (a new batter: the bot is always ready)
-      // sending runners: a moment after the ball is down it looks at each base it could send a runner to and sends him when he would
-      // make it (it peeks at the planner: a well-judged send)
+      // sending runners: a moment after the ball is down it looks at each base that is lit on the diamond (lead runner first) and
+      // taps it when the runner would make it (it peeks at the planner: a well-judged send)
       if (sends && engine.phase === 'play' && engine.sendOpen) {
         const p = engine.play;
         if (sendPlay !== p) { sendPlay = p; sendAt = engine.time + rng.range(0.15, 0.6); }
@@ -45,11 +45,10 @@ export function createBot(engine, o = {}) {
         const res = p.plan.send && p.plan.send.res;
         if (engine.time >= sendAt && !(res !== undefined && t < res)) { // (it waits to see the ball caught or down)
           sendAt = engine.time + 0.4;
-          for (const tg of engine.sendTargets().reverse()) {
-            if (tg.kind !== 'send') continue;
+          for (const tg of engine.baseTargets().reverse()) {
             const hyp = planPlay({ ...p.planIn, orders: [...p.planIn.orders, { base: tg.base, t, from: tg.from }] }, engine.cfg);
             const goes = hyp.moves.some((m) => m.from === tg.from && m.sent && !m.out && m.to === tg.base);
-            if ((goes && !hyp.sentOut) || (hyp.sentOut && rng.chance(sendGamble))) { engine.sendRunner(tg.base); break; }
+            if ((goes && !hyp.sentOut) || (hyp.sentOut && rng.chance(sendGamble))) { engine.tapBase(tg.base); break; }
           }
         }
         return;
