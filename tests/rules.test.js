@@ -341,3 +341,14 @@ describe('walk-offs, RBIs and scoring credit', () => {
     expect(rules.applyPlay(g3, { result: 'single', batterDest: 1, moves: [{ from: 3, to: 4 }], outsMade: 0 }, runner(9)).rbi).toBe(1);
   });
 });
+
+describe('extra innings', () => {
+  it('an extra inning starts with a runner on second: whoever the caller picks for that half', () => {
+    const g = g0({ innings: 3 });
+    g.inning = 3; g.half = 'bottom'; g.score = { top: 2, bottom: 2 }; g.outs = 3;
+    const r = rules.advanceHalf(g, (half) => ({ id: 'last-' + half }));
+    expect(r.gameOver).toBe(false);
+    expect([g.inning, g.half]).toEqual([4, 'top']);
+    expect(g.bases[1]).toEqual({ id: 'last-top' });
+  });
+});

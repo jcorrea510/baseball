@@ -839,10 +839,18 @@ export class Engine {
     this.finishPitch(this.cfg.pace.playEndPause);
   }
 
+  // The runner who starts an extra inning on second: your player who bats just before this half's leadoff man (the computer's is just
+  // "Runner" - its half is simulated).
+  extraRunner(half) {
+    const g = this.game;
+    if (half !== this.playerSide) return { ghost: true, name: 'Runner' };
+    return this.lineup[(g.lineupIdx[half] + 8) % 9];
+  }
+
   // ------------------------------------------------------------------ half innings (quick game)
   endHalf() {
     const g = this.game;
-    const res = rules.advanceHalf(g, { ghost: true, name: 'Runner' });
+    const res = rules.advanceHalf(g, (half) => this.extraRunner(half));
     this.emit('halfEnd', { game: g });
     if (res.gameOver) return this.finishGame();
     if (g.half !== this.playerSide) return this.runAiHalf();
@@ -872,7 +880,7 @@ export class Engine {
   afterAiSummary() {
     const g = this.game;
     this.aiSummary = null;
-    const res = rules.advanceHalf(g, { ghost: true, name: 'Runner' });
+    const res = rules.advanceHalf(g, (half) => this.extraRunner(half));
     if (res.gameOver) return this.finishGame();
     this.emit('inningChange', { inning: g.inning, half: g.half, newInning: true });
     this.beginPlateAppearance(true);

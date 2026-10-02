@@ -244,7 +244,9 @@ export function advanceHalf(g, ghostRunner = null) {
   }
   g.outs = 0; g.balls = 0; g.strikes = 0;
   g.bases = [null, null, null];
-  if (g.extraRunner && g.inning > g.innings) g.bases[1] = ghostRunner || { ghost: true };
+  // extra innings start with a runner on second: the player who bats just before this half's leadoff man (`ghostRunner` may be a
+  // function of the half that picks him)
+  if (g.extraRunner && g.inning > g.innings) g.bases[1] = (typeof ghostRunner === 'function' ? ghostRunner(g.half) : ghostRunner) || { ghost: true };
   return { gameOver: false, winner: null, newInning };
 }
 
