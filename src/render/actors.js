@@ -856,9 +856,30 @@ export class Actors {
     const [leadX, leadZ] = leadSpot(base, cfg);
     const face = Math.atan2(MOUND_XZ[0] - leadX, MOUND_XZ[1] - leadZ);
     if (!st.init) { st.x = leadX; st.z = leadZ; st.yaw = face; st.init = true; }
+    const R = cfg.runner;
     if (move && playT >= 0) {
       const r = runnerState(move, playT, cfg, st.rs || (st.rs = {}));
       st.x = r.x; st.z = r.z;
+      // a runner who holds on the play goes back to his bag once the ball is fielded (he does not stand out at his lead)
+      let backing = false;
+      if (r.waiting && move.to === move.from && !move.out) {
+        const [bx, bz] = BASE_XZ[base];
+        const tBack = (plan.pickupT ?? plan.catchT ?? plan.downT ?? 1) + R.holdBackDelay;
+        const dLead = Math.hypot(leadX - bx, leadZ - bz);
+        const k = clamp(((playT - tBack) * R.holdBackSpeed) / Math.max(1, dLead), 0, 1);
+        if (k > 0) {
+          st.x = lerp(leadX, bx, k); st.z = lerp(leadZ, bz, k);
+          backing = k < 1;
+          st.yaw = lerpAngle(st.yaw, backing ? Math.atan2(bx - leadX, bz - leadZ) : face, Math.min(1, dt * 8));
+          rp.place(st.x, 0, st.z, st.yaw);
+          rp.root.updateMatrixWorld(true);
+          if (backing) { st.phase = (st.phase || 0) + runCadence(R.holdBackSpeed) * TAU * dt; runPose(rp.pose, st.phase, R.holdBackSpeed, 0, { accel: 0, side: 0 }); } else standingPose(rp.pose, time);
+          rp.pose.batVis = 0;
+          if (rp.bat) rp.bat.visible = false;
+          st.running = backing;
+          return;
+        }
+      }
       // he turns from watching the pitcher to running as he takes off
       const tRun = r.waiting ? 0 : smoothstep(0, 0.4, playT - r.tStart);
       if (r.waiting) st.yaw = face;
@@ -873,9 +894,11 @@ export class Actors {
       this.fx && r.speed > 8 && Math.random() < dt * 8 && this.fx.dustPuff(st.x, st.z, 0.25);
     } else {
       st.sliding = false; st.getT = undefined;
-      // walk out to the lead-off spot (players who just arrived at a base take their lead; a runner who went with the pitch
-      // comes back to it) - at a walk or a jog, never a glide
-      const dx = leadX - st.x, dz = leadZ - st.z, d = Math.hypot(dx, dz);
+      // after a play every runner stands ON his bag; once the pitcher is back on the rubber with the ball he walks out to his lead
+      // (a runner who went with the pitch comes back to it) - at a walk or a jog, never a glide
+      const leadOK = E.phase === 'windup' || E.phase === 'pitch' || (E.phase === 'ready' && E.time >= Math.max(E.fieldersSetAt || 0, E.phaseSince) + R.leadAfterSet);
+      const [tx, tz] = leadOK ? [leadX, leadZ] : BASE_XZ[base];
+      const dx = tx - st.x, dz = tz - st.z, d = Math.hypot(dx, dz);
       const v = Math.min(d > 0.05 ? Math.max(4.5, d * 1.6) : 0, 16);
       const step = Math.min(d, v * dt);
       if (d > 0.05) { st.x += (dx / d) * step; st.z += (dz / d) * step; }
@@ -884,7 +907,8 @@ export class Actors {
       rp.place(st.x, 0, st.z, st.yaw);
       rp.root.updateMatrixWorld(true);
       if (walking) { st.phase = (st.phase || 0) + runCadence(v) * TAU * dt; runPose(rp.pose, st.phase, v, 0, { accel: 0, side: 0 }); }
-      else runnerLeadPose(rp.pose, time);
+      else if (leadOK) runnerLeadPose(rp.pose, time);
+      else standingPose(rp.pose, time); // (on the bag: standing up, not crouched in a lead)
       rp.pose.batVis = 0;
       if (rp.bat) rp.bat.visible = false;
     }
