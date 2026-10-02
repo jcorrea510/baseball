@@ -724,10 +724,19 @@ export const CONFIG = {
     crowdCountMobile: 3200,
     shadowMapSize: 2048,
     shadowMapSizeMobile: 1024,
+    // Sharpness = screen dots drawn per layout point (phones have 3; 2 looks sharp at a fraction of the cost). Edges are smoothed
+    // on every device. The game draws fewer dots only while it stays slow, and goes back up when it is smooth (render/resolution.js).
     maxPixelRatio: 2,
-    maxPixelRatioMobile: 1.6,
-    targetFrameMs: 18.5, // if frames are slower than this, resolution scales down
-    minPixelRatio: 0.7,
+    maxPixelRatioMobile: 2,
+    minPixelRatio: 1, // never blurrier than this (a phone screen's own layout size)
+    slowFrameMs: 24, // frames slower than this on average (under ~42 a second) = too slow: draw fewer dots
+    smoothFrameMs: 20, // frames faster than this (a 60-a-second screen keeping up) = smooth: draw more dots again
+    hiccupMs: 100, // a single frame longer than this (a park loading, the tab hidden) is ignored
+    checkEvery: 1.2, // seconds between sharpness checks
+    stepDown: 0.85, // how much sharper/blurrier one step is
+    stepUp: 1.1,
+    helpGain: 0.9, // a step down must make frames at least this much quicker, or it is undone (a phone locked at 30 a second)
+    noHelpHold: 60, // seconds before trying a step down again after one that did not help
   },
 
   // --------------------------------------------------------------------------

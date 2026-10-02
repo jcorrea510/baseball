@@ -1209,7 +1209,7 @@ export class App {
       this.rawDtMs = now - this.last;
       this.last = now;
       this.lastFrameStamp = now;
-      this.S.adapt(this.rawDtMs, realDt);
+      this.S.adapt(this.rawDtMs);
       this.tick(realDt, true);
       this.frameErrors = 0;
       if (!this.running) {
