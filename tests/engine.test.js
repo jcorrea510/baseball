@@ -4,6 +4,7 @@ import { Engine } from '../src/game/engine.js';
 import { createBot } from '../src/game/bot.js';
 import { resolveSwingTimes } from '../src/game/timing.js';
 import { fielderBackTime } from '../src/game/fielding.js';
+import { createRng } from '../src/util/rng.js';
 
 const DT = 1 / 120;
 function drive(e, seconds, bot) {
@@ -568,4 +569,40 @@ describe('saving and resuming a game (League games survive quitting)', () => {
     expect(a.target).toEqual(b.target);
     expect(a.speedMph).toBe(b.speedMph);
   }, 60000);
+});
+
+describe('hit by pitch', () => {
+  it('a pitch that hits the batter sends him to first, and a runner moves up only if he is forced', () => {
+    const e = new Engine({ mode: 'quick', playerSide: 'top', seed: 4 });
+    e.start();
+    expect(untilPhase(e, 'ready')).toBe(true);
+    e.game.bases[0] = e.lineup[6]; e.game.bases[2] = e.lineup[7];
+    const inside = e.batterHand === 'L' ? 2.2 : -2.2; // (in at the batter's ribs)
+    e.pitchOverride = () => ({ type: 'fastball', speedMph: 84, target: { x: inside, y: 3.2 }, intendedStrike: false, tell: { slot: 0, lag: 0 } });
+    const batter = e.batter;
+    let res = null;
+    e.on('result', (r) => { if (r.kind === 'pa') res = r; });
+    expect(untilPhase(e, 'pitch')).toBe(true);
+    expect(e.pitch.hitsBatter).toBe(true);
+    expect(untilPhase(e, 'result')).toBe(true);
+    expect(res && res.result).toBe('hitByPitch');
+    expect(e.game.bases[0]).toBe(batter);
+    expect(e.game.bases[1]).toBe(e.lineup[6]); // (forced up)
+    expect(e.game.bases[2]).toBe(e.lineup[7]); // (not forced: stays)
+    expect(e.lineOf(batter).ab).toBe(0);
+    expect(e.lineOf(batter).pa).toBe(1);
+  });
+  it('the computer pitcher hits a batter only now and then, more often on the harder levels', async () => {
+    const { choosePitch } = await import('../src/game/pitcherAI.js');
+    const { hitsBatter } = await import('../src/physics/pitch.js');
+    const rate = (difficulty) => {
+      const rng = createRng(9);
+      let n = 0;
+      for (let i = 0; i < 20000; i++) { const p = choosePitch({ mode: 'quick', difficulty, count: { balls: 1, strikes: 1 }, rng, batterHand: 'R' }); if (hitsBatter(p.target.x, p.target.y, 'R')) n++; }
+      return n / 20000;
+    };
+    const r = rate('rookie'), a = rate('allstar');
+    expect(r).toBeGreaterThan(0.0005); expect(a).toBeLessThan(0.008);
+    expect(a).toBeGreaterThan(r);
+  });
 });

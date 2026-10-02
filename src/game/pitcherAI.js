@@ -1,7 +1,7 @@
 // Decides what the pitcher throws: type, speed and where it is aimed.
 import { CONFIG, PITCH_ORDER } from '../config.js';
 import { clamp } from '../util/math.js';
-import { isStrike, zoneRatio } from '../physics/pitch.js';
+import { isStrike, zoneRatio, hitsBatter } from '../physics/pitch.js';
 
 /**
  * @param {object} o
@@ -73,12 +73,16 @@ export function choosePitch(o, cfg = CONFIG) {
   let { x, y } = pickTarget(kind, type, away, cfg, rng, { zoneMidY, hw, halfH }, breakDir);
   x += rng.gauss(0, d.commandSigma * 0.5);
   y += rng.gauss(0, d.commandSigma * 0.5);
-  if (kind === 'waste') { // never let his wildness bring a wasted pitch back toward the zone
+  const wild = rng.next() < (d.hitBatter || 0); // (one gets away from him, in at the batter)
+  if (wild) { const H = cfg.pitch.hitBatter; x = -away * rng.range(H.inner + 0.1, H.inner + 0.75); y = rng.range(1.5, 4.2); }
+  else if (kind === 'waste') { // never let his wildness bring a wasted pitch back toward the zone
     const r = zoneRatio(x, y, cfg);
     if (r < cfg.pitch.wasteMinRatio) { const k = cfg.pitch.wasteMinRatio / Math.max(0.5, r); x = zoneMidX(x, k); y = zoneMidY + (y - zoneMidY) * k; }
   }
   y = clamp(y, 0.5, 5.6);
   x = clamp(x, -3.4, 3.4);
+  // (a pitch he means to waste inside stays just off the batter - he leans back from it; only one that gets away hits him)
+  if (!wild && hitsBatter(x, y, o.batterHand || 'R', cfg)) x = -away * (cfg.pitch.hitBatter.inner - 0.1);
   const strike = isStrike(x, y, cfg);
 
   let speed;

@@ -3,7 +3,7 @@
 // (swingPressed) and announces what happens through events. The renderer, HUD and audio listen.
 import { CONFIG } from '../config.js';
 import { createRng } from '../util/rng.js';
-import { buildPitch, isStrike, zoneRatio } from '../physics/pitch.js';
+import { buildPitch, isStrike, zoneRatio, hitsBatter } from '../physics/pitch.js';
 import { clamp } from '../util/math.js';
 import { simulateBattedBall, projectDistance } from '../physics/ballistics.js';
 import { resolveSwingTimes, describeError } from './timing.js';
@@ -247,6 +247,7 @@ export class Engine {
       tWindup: this.time, windupDur: windup, tRelease,
       tCross: tRelease + flight.T, tCatch: tRelease + flight.tCatch,
       isStrike: isStrike(p.target.x, p.target.y, this.cfg),
+      hitsBatter: this.mode !== 'derby' && hitsBatter(p.target.x, p.target.y, this.batterHand, this.cfg), // (if he lets it go: hit by pitch)
       resolved: false, caught: false,
     };
     this.swing = null;
@@ -398,6 +399,11 @@ export class Engine {
       if (s.made) return this.resolveContact();
       this.emit('whiff', { swing: s, pitch, reason: s.contact.reason, errorMs: s.errorMs });
     }
+    // a pitch that hits him (he did not swing at it): he takes his base
+    if (pitch.hitsBatter && !s && !pitch.caught && this.time >= pitch.tCross) {
+      pitch.caught = true; pitch.hbp = true;
+      return this.resolveHitByPitch();
+    }
     if (!pitch.caught && this.time >= pitch.tCatch) {
       pitch.caught = true;
       this.emit('catch', { pitch, swung: !!s });
@@ -459,6 +465,31 @@ export class Engine {
       if (stealPlay) return this.startStealPlay(res);
       this.finishPitch(this.cfg.pace.callDisplay);
     }
+  }
+
+  // Hit by pitch: like ball four - the batter takes first and runners move up only if they are forced.
+  resolveHitByPitch() {
+    const pitch = this.pitch;
+    this.stats.pitchesSeen++;
+    const info = { pitch, swung: false, strike: false, errorMs: null, grade: null, hbp: true };
+    const g = this.diamond;
+    const res = rules.hitByPitch(g, this.batter);
+    this.steal = null; // (runners who were going stop: only a forced runner moves up)
+    if (this.mode === 'practice') {
+      g.outs = 0; g.balls = 0; g.strikes = 0;
+      this.stats.runs += res.runs; this.stats.rbi += res.runs;
+      this.emit('pitchCall', { ...info, call: 'hitByPitch' });
+      this.emit('practice', this.practiceState());
+      this.emit('result', { kind: 'pitch', call: 'hitByPitch', text: rules.RESULT_TEXT.hitByPitch, runs: res.runs, ...info });
+      this.finishPitch(this.cfg.pace.callDisplay + 0.45, false, true);
+      return;
+    }
+    this.emit('pitchCall', { ...info, call: 'hitByPitch', result: res.result, strikes: g.strikes, balls: g.balls });
+    this.emitCount();
+    this.stats.pa++; this.stats.hbp = (this.stats.hbp || 0) + 1; this.stats.rbi += res.runs;
+    this.creditBatter(res.result, res.runs);
+    this.emit('result', { kind: 'pa', result: res.result, text: rules.RESULT_TEXT.hitByPitch, runs: res.runs, outs: g.outs, halfOver: res.halfOver, batter: this.batter, ...info });
+    this.finishPitch(this.cfg.pace.callDisplay + 0.45, res.halfOver, true, res.result);
   }
 
   // ------------------------------------------------------------------ stolen bases
@@ -742,6 +773,7 @@ export class Engine {
     const L = this.lineOf(b);
     L.pa++;
     if (result === 'walk') L.bb++;
+    else if (result === 'hitByPitch') L.hbp = (L.hbp || 0) + 1; // (not an at-bat)
     else if (result !== 'sacFly' && result !== 'sacBunt') L.ab++;
     if (rules.isHitResult(result)) L.h++;
     if (result === 'homer' || result === 'insideParkHomer') L.hr++;

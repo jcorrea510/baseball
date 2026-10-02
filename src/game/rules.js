@@ -87,6 +87,14 @@ export function pitchBall(g, batter) {
   return { result: 'ball', paEnded: false, runs: 0, halfOver: false };
 }
 
+/** A pitch that hits the batter: he takes first base (runners move up only if forced, like a walk). */
+export function hitByPitch(g, batter) {
+  const runs = forceAdvance(g, batter);
+  addRuns(g, runs);
+  endPlateAppearance(g);
+  return { result: 'hitByPitch', paEnded: true, runs, halfOver: halfIsOver(g) };
+}
+
 /** Called strike or swinging strike. */
 export function pitchStrike(g, { swinging = false } = {}) {
   g.strikes++;
@@ -247,7 +255,7 @@ export function inningLabel(g) {
 export const RESULT_TEXT = {
   single: 'SINGLE', double: 'DOUBLE', triple: 'TRIPLE', homer: 'HOME RUN', insideParkHomer: 'INSIDE-THE-PARK HR',
   groundout: 'GROUNDOUT', flyout: 'FLYOUT', lineout: 'LINEOUT', popout: 'POP OUT', foulOut: 'FOUL OUT', sacFly: 'SAC FLY', sacBunt: 'SAC BUNT',
-  doublePlay: 'DOUBLE PLAY', error: 'ERROR', fieldersChoice: "FIELDER'S CHOICE", walk: 'WALK', strikeoutSwinging: 'STRIKEOUT', strikeoutLooking: 'STRIKEOUT',
+  doublePlay: 'DOUBLE PLAY', error: 'ERROR', fieldersChoice: "FIELDER'S CHOICE", walk: 'WALK', hitByPitch: 'HIT BY PITCH', strikeoutSwinging: 'STRIKEOUT', strikeoutLooking: 'STRIKEOUT',
   stolenBase: 'STOLEN BASE', doubleSteal: 'DOUBLE STEAL', caughtStealing: 'CAUGHT STEALING',
   foul: 'FOUL', ball: 'BALL', calledStrike: 'STRIKE', swingingStrike: 'STRIKE',
 };

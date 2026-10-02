@@ -117,6 +117,8 @@ export const CONFIG = {
     // How far from the middle of the zone the pitcher's targets are, in 'zone widths' (1.0 = the edge of the zone; the bat can
     // reach out to timing.reachRatio, and hits only weakly beyond timing.chaseRatio).
     locations: { edge: [0.9, 1.3], chase: [1.3, 1.9], waste: [1.9, 2.9] },
+    // Where the batter is: a pitch crossing this far inside (ft from the middle of the plate, toward him) at this height hits him
+    hitBatter: { inner: 1.75, outer: 3.3, low: 0.6, high: 5.3 },
     wasteMinRatio: 1.75, // a 'waste' pitch is never wilder in the wrong direction than this: it stays out of reach
     ballScale: 1.5, // pitches are drawn a bit bigger so they are easy to track
     // Seeing the ball (all of it is picture only): a thin dark rim keeps a white ball visible against clouds, dirt and crowd; a soft

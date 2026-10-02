@@ -524,7 +524,7 @@ export class Actors {
     const paDone = E.mode === 'quick' && phase === 'result' && E.paEnded;
     const lastKind = paDone && E.lastPA ? E.lastPA.result : '';
     const isK = /strikeout/.test(lastKind);
-    const isWalk = lastKind === 'walk';
+    const isWalk = lastKind === 'walk' || (lastKind === 'hitByPitch' && E.time - E.phaseSince > 0.6); // (hit by pitch: a moment to shake it off, then he walks to first)
     let showBatter = phase !== 'aiSummary' && phase !== 'idle' && phase !== 'gameOver';
     if (paDone) showBatter = isWalk || (isK && E.time - E.phaseSince < 0.55);
     batterP.active = showBatter;
@@ -643,6 +643,11 @@ export class Actors {
       if (!swing.made) sw.early = clamp(-swing.errorMs / 100, -0.6, 0.6);
     }
     batterPose(P, time, sw, E.batAim ? E.batAim.y : null); // (in his stance his hands follow where the bat is aimed, a little)
+    if (pitch && pitch.hitsBatter && !swing) {
+      // a pitch coming in at him: he turns away from it, and it hits him in the back / the arm
+      const k = smoothstep(pitch.tCross - 0.22, pitch.tCross + 0.02, time);
+      P.torsoYaw -= 0.9 * k; P.pelvisYaw -= 0.45 * k; P.headYaw -= 0.8 * k; P.torsoPitch += 0.25 * k; P.hipY -= 0.12 * k;
+    }
     // squared around to bunt: blend into the bunt stance (and push the bat out if he bunts at this pitch)
     const st = this.state.get(person);
     const bunting = E.buntStance || (swing && swing.bunt && phase !== 'ready');
@@ -909,7 +914,15 @@ export class Actors {
     } else if (phase === 'pitch' || (phase === 'result' && pitch && !play)) {
       const pt = time - pitch.tRelease;
       const f = pitch.flight;
-      if (pt < f.tCatch) {
+      if (pitch.hbp && pt >= f.T) {
+        // it hit him: it glances off and drops in front of the plate, rolling away a little
+        const q = f.at(f.T), u = Math.min(pt - f.T, 1.6);
+        const tDown = (5 + Math.sqrt(25 + 2 * 32 * Math.max(0.1, q.y - 0.12))) / 32; // (up a touch at 5 ft/s, then down)
+        const ta = Math.min(u, tDown);
+        const side = q.x < 0 ? 1 : -1; // (away from the batter, toward the plate)
+        bp.set(q.x + side * (6 * ta + 1.5 * Math.max(0, u - tDown)), Math.max(0.12, q.y + 5 * ta - 16 * ta * ta), q.z - 9 * ta - 2.5 * Math.max(0, u - tDown));
+        kind = 'pitch';
+      } else if (pt < f.tCatch) {
         const q = f.at(pt);
         bp.set(q.x, q.y, q.z);
         kind = 'pitch';

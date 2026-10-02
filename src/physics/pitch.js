@@ -100,6 +100,13 @@ export function isStrike(x, y, cfg = CONFIG) {
   return Math.abs(x) <= cfg.pitch.zoneHalfWidth && y >= cfg.pitch.zoneBottom - r && y <= cfg.pitch.zoneTop + r;
 }
 
+/** Does a pitch crossing at (x, y) hit a batter of this hand? (a right-hander stands on the -x side of the plate) */
+export function hitsBatter(x, y, hand = 'R', cfg = CONFIG) {
+  const H = cfg.pitch.hitBatter;
+  const inside = hand === 'L' ? x : -x; // how far toward the batter it crosses
+  return inside >= H.inner && inside <= H.outer && y >= H.low && y <= H.high;
+}
+
 // Pitch location relative to the middle of the zone, normalised so 1.0 = edge of the zone.
 export function zoneRatio(x, y, cfg = CONFIG) {
   const t = cfg.timing;
