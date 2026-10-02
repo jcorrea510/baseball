@@ -103,9 +103,13 @@ describe('a steal attempt', () => {
 
   it('success rate by level: easiest on Rookie, hardest on All-Star', () => {
     const rate = (difficulty) => {
-      let s = 0;
-      for (let seed = 1; seed <= 60; seed++) if (stealAttempt([{ id: 'r' }, null, null], { seed, difficulty }).res.result === 'stolenBase') s++;
-      return s / 60;
+      let s = 0, n = 0;
+      for (let seed = 1; seed <= 60; seed++) {
+        const { res } = stealAttempt([{ id: 'r' }, null, null], { seed, difficulty });
+        if (!res) continue; // (the pitch hit the batter: he takes first and the runner is waved on - no steal)
+        n++; if (res.result === 'stolenBase') s++;
+      }
+      return s / n;
     };
     const r = rate('rookie'), p = rate('pro'), a = rate('allstar');
     expect(r).toBeGreaterThan(p - 0.05);
