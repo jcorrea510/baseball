@@ -463,6 +463,10 @@ export const CONFIG = {
       '3B': [-54, -70],
     },
     outfield: { LF: [-24, 272], CF: [0, 308], RF: [24, 272] },
+    // Where they stand for the situation (set before every pitch): with a runner on first and second base open the first baseman
+    // holds him on, on the front edge of the bag (`hold1B`); when a double play is on (a runner on first, fewer than two outs) the
+    // shortstop and second baseman play double-play depth, a few steps nearer second and in (`dpDepth`).
+    align: { hold1B: [60.5, -61.5], dpDepth: { SS: [-20, -107], '2B': [20, -107] } },
     speed: { IF: 21, OF: 22.5, P: 16, C: 16 }, // ft/s, average (effective, includes getting up to speed)
     reaction: { IF: 0.23, OF: 0.37, P: 0.36, C: 0.36 }, // seconds before a fielder reads the ball (outfielders read a ball off the bat a little slower: well-hit balls drop in more often)
     glove: 2.4, // ft: how far a fielder can reach without diving

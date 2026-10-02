@@ -9,7 +9,7 @@ import { simulateBattedBall, projectDistance } from '../physics/ballistics.js';
 import { resolveSwingTimes, describeError } from './timing.js';
 import { computeSwing, computeBunt, derbyBatting, contactWindow, contactPoint, scaleWindow } from './contact.js';
 import { choosePitch, pitchWindowScale } from './pitcherAI.js';
-import { createDefense, planPlay, sendOptions, runnerOptions, planSteal, fielderBackTime } from './fielding.js';
+import { createDefense, alignDefense, planPlay, sendOptions, runnerOptions, planSteal, fielderBackTime } from './fielding.js';
 import * as rules from './rules.js';
 import { simulateHalf } from './aiHalf.js';
 import { makeLineup, makePitcher, PLAYER_TEAM } from './teams.js';
@@ -181,6 +181,7 @@ export class Engine {
       this.batter = this.lineup[0];
     }
     this.pitch = null; this.swing = null; this.play = null;
+    if (this.diamond) alignDefense(this.defense, this.bases, this.outs, this.cfg); // (they take up their spots for the situation)
     this.setPhase('ready');
     this.readyUntil = this.time + (first ? this.cfg.pace.firstPitchDelay + 0.3 : this.cfg.pace.firstPitchDelay * 0.65);
     this.batterReadyFlag = !this.waitForBatter;
@@ -226,6 +227,7 @@ export class Engine {
 
   // ------------------------------------------------------------------ pitching
   startWindup() {
+    if (this.diamond) alignDefense(this.defense, this.bases, this.outs, this.cfg); // (a steal may have changed the situation)
     // (`pitchOverride` lets tests and demos throw an exact pitch)
     const p = this.pitchOverride ? this.pitchOverride(this) : choosePitch({
       mode: this.mode, difficulty: this.difficulty, count: this.count, rng: this.rng,

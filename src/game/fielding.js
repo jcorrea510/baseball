@@ -45,6 +45,20 @@ export function createDefense(cfg = CONFIG, rng = null) {
 
 const dist = (ax, az, bx, bz) => Math.hypot(ax - bx, az - bz);
 
+/** Puts the infielders where they stand for this situation (holding a runner on, double-play depth) - see fielding.align. */
+export function alignDefense(defense, bases, outs, cfg = CONFIG) {
+  const F = cfg.fielding, A = F.align;
+  for (const pos of POSITIONS) {
+    const f = defense[pos];
+    if (f.baseX === undefined) { f.baseX = f.homeX; f.baseZ = f.homeZ; }
+    let [x, z] = [f.baseX, f.baseZ];
+    if (pos === '1B' && bases[0] && !bases[1]) [x, z] = A.hold1B;
+    if ((pos === 'SS' || pos === '2B') && bases[0] && outs < 2) [x, z] = A.dpDepth[pos];
+    f.x = f.homeX = x; f.z = f.homeZ = z;
+  }
+  return defense;
+}
+
 // (covered / timeToCover - the movement model - live in fielderMotion.js so the planner and the renderer share them)
 
 // Fielders run in easier than back: a ball hit over their head is harder to run down.
