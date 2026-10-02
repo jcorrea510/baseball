@@ -6,6 +6,7 @@ import { Engine } from '../src/game/engine.js';
 import { createRng } from '../src/util/rng.js';
 import { simulateBattedBall } from '../src/physics/ballistics.js';
 import { createDefense, planPlay } from '../src/game/fielding.js';
+import { createBot } from '../src/game/bot.js';
 
 const play = (s, won, rf = 5, ra = 3) => S.recordGame(s, { won, runsFor: won ? Math.max(rf, ra + 1) : Math.min(rf, ra - 1), runsAgainst: ra, lines: {} });
 
@@ -289,4 +290,36 @@ describe('all thirty clubs', () => {
     expect(s.others.length).toBe(21);
     expect(s.others.reduce((t, x) => t + x.w + x.l, 0)).toBeGreaterThan(0);
   });
+});
+
+describe('home and away', () => {
+  it('League games alternate home and away: at home you bat last in your park, on the road first in theirs', () => {
+    let s = S.newSeason(null, { seed: 21, team: 'bos' });
+    const seen = [];
+    for (let k = 0; k < 4; k++) {
+      const set = S.gameSetup(s);
+      seen.push(set.home);
+      if (set.home) { expect(set.playerSide).toBe('bottom'); expect(set.park).toBe('bos'); }
+      else { expect(set.playerSide).toBe('top'); expect(set.park).toBe(set.opponent.id); }
+      // two clubs never wear the same look: the home side in its colours, the visitors in road grey
+      expect(set.playerTeam.uniform).not.toEqual(set.opponent.uniform);
+      S.recordGame(s, { won: true, runsFor: 3, runsAgainst: 1, lines: {} });
+    }
+    expect(seen).toEqual([true, false, true, false]);
+  });
+  it('a road game: you bat in the top half and the game ends the same way', () => {
+    const s = S.newSeason(null, { seed: 22 });
+    S.recordGame(s, { won: true, runsFor: 3, runsAgainst: 1, lines: {} });
+    const set = S.gameSetup(s);
+    expect(set.home).toBe(false);
+    const e = new Engine({ mode: 'quick', difficulty: set.level, innings: set.innings, lineup: set.lineup, opponent: set.opponent, playerTeam: set.playerTeam, oppLineup: set.oppLineup, seed: 3, playerSide: set.playerSide }, set.cfg);
+    const bot = createBot(e, { errSd: 30, seed: 2 });
+    let over = null;
+    e.on('gameOver', (p) => { over = p; });
+    e.start();
+    for (let t = 0; t < 4000 && !e.over; t += 1 / 60) { e.update(1 / 60); bot.update(); }
+    expect(over).toBeTruthy();
+    expect(over.game.playerSide).toBe('top');
+    expect(over.game.pf).toBe(over.game.score.top);
+  }, 60000);
 });

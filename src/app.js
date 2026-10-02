@@ -325,7 +325,8 @@ export class App {
     this.seasonLineup = saved ? saved.lineup : setup.lineup;
     this.seasonSeed = saved ? saved.seed : setup.seed;
     this.startGame('quick', {
-      engine: { difficulty: setup.level, innings: setup.innings, lineup: this.seasonLineup, opponent: setup.opponent, playerTeam: setup.playerTeam, oppLineup: setup.oppLineup, seed: this.seasonSeed },
+      engine: { difficulty: setup.level, innings: setup.innings, lineup: this.seasonLineup, opponent: setup.opponent, playerTeam: setup.playerTeam, oppLineup: setup.oppLineup, seed: this.seasonSeed, playerSide: setup.playerSide },
+      park: setup.park,
       cfg: setup.cfg,
       resume: saved ? saved.state : null,
     });
@@ -336,7 +337,7 @@ export class App {
     const sea = this.prog.data.season;
     if (this.quickSave && !this.seasonGame) {
       // a Quick Game is saved at every pitch too (not before the first one: a game nobody has started is not worth resuming)
-      if (st.pitchCount > 0) { this.prog.data.quick = { seed: this.quickSave.seed, difficulty: this.quickSave.difficulty, park: this.quickSave.park, state: st }; this.prog.save(); }
+      if (st.pitchCount > 0) { this.prog.data.quick = { seed: this.quickSave.seed, difficulty: this.quickSave.difficulty, park: this.quickSave.park, lineup: this.quickSave.lineup, state: st }; this.prog.save(); }
       return;
     }
     if (!this.seasonGame || !sea) return;
@@ -424,8 +425,13 @@ export class App {
       if (q && q.state && q.state.game) { quickResume = q.state; this.quickSave = { seed: q.seed, difficulty: q.difficulty, park: q.park }; }
       else this.quickSave = { seed: (Math.random() * 2 ** 32) >>> 0, difficulty: st.difficulty, park: st.park || 'sandlot' };
     }
-    // the ballpark: a League game in your club's own park, a resumed Quick Game where it started, anything else where you chose
-    const park = extra ? (this.prog.data.season && this.prog.data.season.teamId) || 'sandlot' : (this.quickSave && this.quickSave.park) || st.park || 'sandlot';
+    // your League club plays every mode: the same team, jersey and batters (a resumed Quick Game keeps the nine it started with)
+    const sea = this.prog.data.season;
+    let club = !extra && sea && sea.teams ? SEA.clubSetup(sea) : null;
+    if (club && quickResume) club = this.prog.data.quick.lineup ? { ...club, lineup: this.prog.data.quick.lineup } : null; // (a game saved before: its own nine)
+    if (club && this.quickSave) this.quickSave.lineup = club.lineup;
+    // the ballpark: a League game in the home team's park, a resumed Quick Game where it started, anything else where you chose
+    const park = extra ? extra.park || 'sandlot' : (this.quickSave && this.quickSave.park) || st.park || 'sandlot';
     this.S.setPark(park);
     const eng = new Engine({
       mode, difficulty: this.quickSave ? this.quickSave.difficulty : st.difficulty,
@@ -433,6 +439,7 @@ export class App {
       waitForBatter: mode === 'quick' && !this.params.get('bot'), // the pitcher waits for Ready before each new batter
       practice: this.engine && this.engine.mode === 'practice' ? { ...this.engine.practice } : undefined,
       seed: this.params.get('seed') ? +this.params.get('seed') : this.quickSave ? this.quickSave.seed : undefined,
+      ...(club ? { playerTeam: club.playerTeam, lineup: club.lineup } : {}),
       ...(extra ? extra.engine : {}),
     }, extra && extra.cfg ? extra.cfg : CONFIG);
     this.engine = eng;
@@ -451,7 +458,7 @@ export class App {
     this.ui.showHud(mode);
     this.ui.setBunt(false);
     this.ui.setSteal(false, false);
-    this.ui.setTeams({ abbr: eng.opponent.abbr, color: eng.opponent.color }, { abbr: eng.playerTeam.abbr, color: eng.playerTeam.color }); // (visitors on top: you are the home team)
+    { const sd = this.sides(eng); this.ui.setTeams({ abbr: sd.away.abbr, color: sd.away.color }, { abbr: sd.home.abbr, color: sd.home.color }); } // (visitors on top)
     this.ui.setMuteIcon(this.audio.muted);
     if (eng.game) this.ui.setGameState(eng.game);
     if (mode === 'derby') this.ui.setDerby({ ...eng.derby });
@@ -707,6 +714,9 @@ export class App {
     this.ui.setLineup(e.lineup, e.batterIndex ?? 0, today);
   }
 
+  // Which team is the visitor (bats in the top half) and which the home team: you, unless it is a League road game.
+  sides(e) { return e.playerSide === 'top' ? { away: e.playerTeam, home: e.opponent } : { away: e.opponent, home: e.playerTeam }; }
+
   toggleFullscreen() {
     const d = document;
     const on = !!(d.fullscreenElement || d.webkitFullscreenElement);
@@ -862,7 +872,8 @@ export class App {
     const g = p.game;
     if (g) g.line = lineScore(e.game);
     this.ui.buildTitle(this.prog);
-    const names = { away: e.opponent.name.toUpperCase(), home: e.playerTeam.name.toUpperCase(), awayAbbr: e.opponent.abbr, homeAbbr: e.playerTeam.abbr };
+    const sd = this.sides(e);
+    const names = { away: sd.away.name.toUpperCase(), home: sd.home.name.toUpperCase(), awayAbbr: sd.away.abbr, homeAbbr: sd.home.abbr };
     this.later(() => {
       this.ui.showGameOver(p, records, unlocked, names, seasonInfo); // (new unlocks are listed on it as badges)
       if (unlocked.length) this.audio.unlockChime();
@@ -877,9 +888,10 @@ export class App {
     if (e.mode === 'quick' && e.game) {
       const g = e.game;
       const ls = lineScore(g);
+      const sd = this.sides(e);
       sb.set({
         mode: 'quick', title: parkName(), innings: Math.max(g.innings, g.inning), inning: g.inning, half: g.half,
-        teams: [{ abbr: e.opponent.abbr, color: e.opponent.color, runs: ls.top, R: g.score.top, H: g.hits.top, E: (g.errors || {}).top || 0 }, { abbr: e.playerTeam.abbr, color: e.playerTeam.color, runs: ls.bottom, R: g.score.bottom, H: g.hits.bottom, E: (g.errors || {}).bottom || 0 }],
+        teams: [{ abbr: sd.away.abbr, color: sd.away.color, runs: ls.top, R: g.score.top, H: g.hits.top, E: (g.errors || {}).top || 0 }, { abbr: sd.home.abbr, color: sd.home.color, runs: ls.bottom, R: g.score.bottom, H: g.hits.bottom, E: (g.errors || {}).bottom || 0 }],
         count: { b: g.balls, s: g.strikes, o: g.outs },
       });
     } else if (e.mode === 'derby') {

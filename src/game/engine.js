@@ -51,7 +51,9 @@ export class Engine {
     this.stealArmed = false; // the runners will go on the next pitch (S)
     this.steal = null; // this pitch's steal attempt: { bases, start: { base: engine time he took off } }
     this.practice = { type: 'fastball', speed: cfg.modes.practice.speedDefault, location: 'random', ...(o.practice || {}) };
-    const oppTeam = MLB_TEAMS[this.rng.int(0, MLB_TEAMS.length - 1)];
+    let oi = this.rng.int(0, MLB_TEAMS.length - 1);
+    if (o.playerTeam && MLB_TEAMS[oi].id === o.playerTeam.id) oi = (oi + 1) % MLB_TEAMS.length; // (never your own club)
+    const oppTeam = MLB_TEAMS[oi];
     this.opponent = o.opponent || { id: oppTeam.id, name: teamName(oppTeam), abbr: oppTeam.abbr, color: oppTeam.color, uniform: uniformFor(oppTeam, 'away') };
     this.playerTeam = o.playerTeam || PLAYER_TEAM; // (League games: your own big-league club, with its own jersey)
 

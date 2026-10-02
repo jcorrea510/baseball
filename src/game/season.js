@@ -242,18 +242,20 @@ export function nextGame(s) {
     const mine = r && r.find((p) => p[0] === 0 || p[1] === 0);
     if (!mine) return null;
     const played = s.teams[0].w + s.teams[0].l;
-    return { kind: 'regular', opp: mine[0] === 0 ? mine[1] : mine[0], label: `Game ${played + 1} of ${myGames(s)}`, gameNo: played + 1, of: myGames(s) };
+    // (home and away in turn: the first game at home)
+    return { kind: 'regular', opp: mine[0] === 0 ? mine[1] : mine[0], label: `Game ${played + 1} of ${myGames(s)}`, gameNo: played + 1, of: myGames(s), home: played % 2 === 0 };
   }
   if (s.phase === 'playoffs') {
     const po = s.playoffs;
     if (po.final) {
       const f = po.final;
       if (f.a !== 0 && f.b !== 0) return null;
-      return { kind: 'final', opp: f.a === 0 ? f.b : f.a, label: `World Series · Game ${f.wa + f.wb + 1}`, gameNo: f.wa + f.wb + 1, of: f.bestOf, series: [f.a === 0 ? f.wa : f.wb, f.a === 0 ? f.wb : f.wa] };
+      const no = f.wa + f.wb + 1;
+      return { kind: 'final', opp: f.a === 0 ? f.b : f.a, label: `World Series · Game ${no}`, gameNo: no, of: f.bestOf, series: [f.a === 0 ? f.wa : f.wb, f.a === 0 ? f.wb : f.wa], home: (no % 2 === 1) === (f.a === 0) };
     }
     const semi = po.semis.find((m) => m.a === 0 || m.b === 0);
     if (!semi || semi.winner !== undefined) return null;
-    return { kind: 'semi', opp: semi.a === 0 ? semi.b : semi.a, label: 'Semifinal', gameNo: 1, of: 1 };
+    return { kind: 'semi', opp: semi.a === 0 ? semi.b : semi.a, label: 'Semifinal', gameNo: 1, of: 1, home: semi.a === 0 }; // (the higher seed is at home)
   }
   return null;
 }
@@ -498,16 +500,28 @@ export function gameConfig(level, rating, cfg = CONFIG) {
   return { ...cfg, difficulty: { ...cfg.difficulty, [level]: dd } };
 }
 
+/** Your League club for the other modes (Quick Game, Derby, Practice): the same team in its home jersey, the same nine batters. */
+export function clubSetup(s, cfg = CONFIG) {
+  const club = teamById(s.teams[0].id);
+  return {
+    playerTeam: { id: club.id, name: s.teams[0].name, abbr: s.teams[0].abbr, color: s.teams[0].color, uniform: uniformFor(club, 'home') },
+    lineup: lineup(s, cfg).map((p, i) => ({ ...p, order: i })),
+  };
+}
+
 /** Everything the engine needs for your next game. */
 export function gameSetup(s, cfg = CONFIG) {
   const g = nextGame(s);
   if (!g) return null;
   const t = s.teams[g.opp];
-  const home = teamById(s.teams[0].id), away = teamById(t.id);
-  const opp = { id: t.id, name: t.name, abbr: t.abbr, color: t.color, uniform: uniformFor(away, 'away') };
-  const mine = { id: home.id, name: s.teams[0].name, abbr: s.teams[0].abbr, color: s.teams[0].color, uniform: uniformFor(home, 'home') };
+  const club = teamById(s.teams[0].id), them = teamById(t.id);
+  const atHome = g.home !== false;
+  const opp = { id: t.id, name: t.name, abbr: t.abbr, color: t.color, uniform: uniformFor(them, atHome ? 'away' : 'home') };
+  const mine = { id: club.id, name: s.teams[0].name, abbr: s.teams[0].abbr, color: s.teams[0].color, uniform: uniformFor(club, atHome ? 'home' : 'away') };
   return {
-    game: g, opponent: opp, playerTeam: mine, oppLineup: teamLineup(away, t.lineupSeed || 7, 'o'), lineup: lineup(s, cfg).map((p, i) => ({ ...p, order: i })),
+    // at home you bat last in your own park; on the road you bat first, in theirs
+    home: atHome, playerSide: atHome ? 'bottom' : 'top', park: atHome ? club.id : them.id,
+    game: g, opponent: opp, playerTeam: mine, oppLineup: teamLineup(them, t.lineupSeed || 7, 'o'), lineup: lineup(s, cfg).map((p, i) => ({ ...p, order: i })),
     cfg: gameConfig(s.level, t.rating, cfg), level: s.level, innings: cfg.season.innings,
     seed: ((s.seed ^ ((s.games.length + 1) * 40503)) >>> 0),
   };

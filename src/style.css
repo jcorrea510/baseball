@@ -69,6 +69,7 @@ svg.i .f { fill: currentColor; stroke: none; }
 .row { display: flex; gap: var(--sp-3); align-items: center; justify-content: center; flex-wrap: wrap; }
 .col { display: flex; flex-direction: column; gap: var(--sp-3); align-items: center; }
 .label { font: 700 11px/1 var(--cond); letter-spacing: .22em; text-transform: uppercase; color: var(--ink-3); }
+.label small { font: inherit; letter-spacing: .12em; color: var(--gold); opacity: .8; margin-left: 4px; }
 .dim-text { color: var(--ink-2); }
 .spacer { flex: 1; }
 
@@ -439,6 +440,7 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
 .next .vs { font: italic 800 clamp(20px, 3vw, 30px)/1 var(--cond); color: var(--gold); letter-spacing: .2em; text-transform: uppercase; }
 .next .oppname { display: flex; align-items: center; gap: 10px; font: 700 14px/1 var(--cond); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); }
 .next .oppname svg.i { color: var(--gold-hi); }
+.next .parkname { font: 700 11px/1 var(--cond); letter-spacing: .2em; text-transform: uppercase; color: var(--ink-3); margin-top: -4px; }
 .next .result { font-family: var(--font-display); font-style: italic; font-size: clamp(34px, 7vw, 58px); line-height: 1; }
 .next .result.win { color: var(--gold-hi); } .next .result.loss { color: #ff9c92; }
 .next .result svg.wordart { height: 1.1em; }

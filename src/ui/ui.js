@@ -351,7 +351,7 @@ export class UI {
     const qg = prog.data.quick;
     const me = sea ? sea.teams[0] : null;
     const tiles = [
-      { mode: 'season', cls: 't-league', art: 'league', eyebrow: `${CONFIG.season.innings} innings · Playoffs`, title: 'League', sub: sea ? `Year ${sea.year} · ${me.w}–${me.l}` : 'Pick your team', tag: sea ? (sea.inProgress ? 'Resume' : me.abbr) : 'New', accent: me ? me.color : null, ic: 'trophy' },
+      { mode: 'season', cls: 't-league', art: 'league', eyebrow: `${CONFIG.season.innings} innings · Playoffs`, title: 'League', sub: sea ? `Year ${sea.year} · ${me.w}–${me.l} · ${CONFIG.difficulty[sea.level].label}` : 'Pick your team', tag: sea ? (sea.inProgress ? 'Resume' : me.abbr) : 'New', accent: me ? me.color : null, ic: 'trophy' },
       { mode: 'quick', cls: 't-quick', art: 'quick', eyebrow: qg ? 'Game in progress' : '3 innings · vs CPU', title: 'Quick Game', sub: qg ? `${qg.state.game.half === 'top' ? 'Top' : 'Bottom'} ${qg.state.game.inning} · ${qg.state.game.score.top}–${qg.state.game.score.bottom}` : q ? `Best ${q.runs}–${q.against}` : '', tag: qg ? 'Resume' : q ? '' : 'New', ic: 'ball', fresh: !!qg },
       { mode: 'derby', cls: 't-derby', art: 'derby', eyebrow: '10 outs', title: 'Home Run Derby', sub: derbyBest ? `Best ${derbyBest} HR` : '', tag: derbyBest ? '' : 'New', ic: 'bolt' },
       { mode: 'practice', cls: 't-practice', art: 'practice', eyebrow: 'Pick the pitch', title: 'Practice', sub: c.practiceSwings ? `${c.practiceSwings} swings` : '', tag: c.practiceSwings ? '' : 'New', ic: 'target' },
@@ -365,7 +365,7 @@ export class UI {
         ${tiles.map((m) => `<button class="tile ${m.cls}" data-a="start" data-mode="${m.mode}" style="${m.accent ? `--accent:${m.accent};` : ''}"><span class="art" style="background-image:${artUrl(m.art)}"></span>${m.tag ? `<span class="tag ${m.tag === 'New' ? '' : ''}">${m.tag}</span>` : ''}<span class="eyebrow">${m.eyebrow}</span><h3>${m.title}</h3>${m.sub ? `<span class="sub">${m.sub}</span>` : ''}${m.fresh ? `<span class="tilebtn" role="button" tabindex="0" data-a="quickNew">${icon('restart')}New game</span>` : ''}<span class="go">${icon('chevRight')}</span></button>`).join('')}
       </div>
       <div class="opts">
-        <div class="grp"><span class="label">Level</span>${seg('difficulty', DIFFICULTIES.map((d) => [d, CONFIG.difficulty[d].label]), st.difficulty)}</div>
+        <div class="grp"><span class="label">Level <small>Quick · Derby · Practice</small></span>${seg('difficulty', DIFFICULTIES.map((d) => [d, CONFIG.difficulty[d].label]), st.difficulty)}</div>
         <div class="grp"><span class="label">Time</span>${seg('tod', [['day', 'Day'], ['dusk', 'Dusk'], ['night', 'Night']], st.tod)}</div>
         <div class="grp"><span class="label">Bats</span>${seg('hand', [['auto', 'Mixed'], ['R', 'Right'], ['L', 'Left']], st.hand)}</div>
         <div class="grp"><span class="label">Park</span><div class="cycler"><button data-a="parkPrev" aria-label="Previous park">${icon('chevLeft')}</button><span>${(CONFIG.parks.list[st.park] || CONFIG.parks.list.sandlot).name}</span><button data-a="parkNext" aria-label="Next park">${icon('chevRight')}</button></div></div>
@@ -463,7 +463,7 @@ export class UI {
       </div>
       <div class="label">Game</div>
       <div class="setgrid">
-        ${seg('difficulty', 'star', 'Level', DIFFICULTIES.map((k) => [k, CONFIG.difficulty[k].label]), st.difficulty)}
+        ${seg('difficulty', 'star', 'Level · Quick, Derby, Practice', DIFFICULTIES.map((k) => [k, CONFIG.difficulty[k].label]), st.difficulty)}
         ${seg('hand', 'bat', 'Bats', [['auto', 'Mixed'], ['R', 'Right'], ['L', 'Left']], st.hand)}
         ${seg('tod', 'sun', 'Time', [['day', 'Day'], ['dusk', 'Dusk'], ['night', 'Night']], st.tod)}
         ${sw('zone', 'zone', 'Strike zone', st.zone)}
@@ -639,7 +639,7 @@ export class UI {
           </div>
         </div>
         <div class="setup">
-          <div class="grp"><span class="label">Level</span>${seg('level', DIFFICULTIES.map((k) => [k, CONFIG.difficulty[k].label]), pick.level)}</div>
+          <div class="grp"><span class="label">League level</span>${seg('level', DIFFICULTIES.map((k) => [k, CONFIG.difficulty[k].label]), pick.level)}</div>
           <div class="grp"><span class="label">Length</span>${seg('length', [['short', `${n('short')} games`], ['full', `${n('full')} games`]], pick.length)}</div>
           <button class="btn" data-a="seasonNew">${icon('play')}Start league</button>
         </div>`;
@@ -656,12 +656,11 @@ export class UI {
         const series = g.kind === 'final' ? `<span class="chip">Series ${g.series[0]}–${g.series[1]}</span>` : '';
         const ip = sea.inProgress;
         hero = `<div class="next" style="--me:${me.color};--them:${t.color}">
-          <div class="label">${g.label}</div>
+          <div class="label">${g.label} · ${g.home !== false ? 'Home' : 'Away'}</div>
           <div class="match">
-            <div class="side">${crest(me, 'xl')}<b>${me.abbr}</b><small>${me.w}–${me.l}</small></div>
-            <span class="vs">at</span>
-            <div class="side">${crest(t, 'xl')}<b>${t.abbr}</b><small>${t.w}–${t.l}</small></div>
+            ${(g.home !== false ? [t, me] : [me, t]).map((x, k) => `${k ? '<span class="vs">at</span>' : ''}<div class="side">${crest(x, 'xl')}<b>${x.abbr}</b><small>${x.w}–${x.l}</small></div>`).join('')}
           </div>
+          <div class="parkname">${(CONFIG.parks.list[g.home !== false ? me.id : t.id] || CONFIG.parks.list.sandlot).name}</div>
           <div class="oppname">${t.name}${stars(t.rating, true)}${series}</div>
           <button class="btn wide" data-a="seasonPlay">${icon('play')}${ip ? 'Resume' : 'Play'}</button>${ip ? `<div class="chips"><span class="chip">${ip.state.game.half === 'top' ? 'Top' : 'Bottom'} ${ip.state.game.inning}</span><span class="chip">${ip.state.game.score.top}–${ip.state.game.score.bottom}</span></div>` : ''}
         </div>`;
@@ -677,7 +676,7 @@ export class UI {
       }
       const last = sea.games[sea.games.length - 1];
       const lastTxt = last ? `<span class="chip ${last.won ? 'w' : 'l'}">${last.won ? 'W' : 'L'} ${last.rf}–${last.ra} ${sea.teams[last.opp].abbr}</span>` : '';
-      const chips = `<span class="summary-row"><span class="chip">${CONFIG.difficulty[sea.level].label}</span><span class="chip">${me.w}–${me.l}</span>${me.w + me.l ? `<span class="chip">${ordinal(place)}</span>` : ''}${lastTxt}</span>`;
+      const chips = `<span class="summary-row"><span class="chip">League level · ${CONFIG.difficulty[sea.level].label}</span><span class="chip">${me.w}–${me.l}</span>${me.w + me.l ? `<span class="chip">${ordinal(place)}</span>` : ''}${lastTxt}</span>`;
       const nav = (a, ic, title, small) => `<button class="navtile" data-a="${a}"><span class="ico">${icon(ic)}</span><span><h4>${title}</h4><small>${small}</small></span><span class="go">${icon('chevRight')}</span></button>`;
       d.innerHTML = `${this.backHead(teamName(mine), chips + `<span class="coins">${icon('coin')}${sea.coins}</span>`, `League · Year ${sea.year}`)}
         <div class="hubgrid">
