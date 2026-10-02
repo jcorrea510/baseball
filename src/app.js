@@ -118,6 +118,8 @@ export class App {
     this.ui.show('title');
     this.ui.setMuteIcon(this.audio.muted);
     this.bindInput();
+    document.addEventListener('fullscreenchange', () => this.onFullscreenChange());
+    document.addEventListener('webkitfullscreenchange', () => this.onFullscreenChange());
     this.loop = this.loop.bind(this);
     requestAnimationFrame((t) => { this.lastFrameStamp = t; this.last = t; requestAnimationFrame(this.loop); });
 
@@ -708,9 +710,28 @@ export class App {
   toggleFullscreen() {
     const d = document;
     const on = !!(d.fullscreenElement || d.webkitFullscreenElement);
+    const kb = navigator.keyboard;
     try {
-      if (on) { (d.exitFullscreen || d.webkitExitFullscreen).call(d); } else { const el = d.documentElement; (el.requestFullscreen || el.webkitRequestFullscreen).call(el); }
+      if (on) {
+        this.fsLeaving = true; // (we are leaving on purpose: no pause menu for it)
+        if (kb && kb.unlock) kb.unlock();
+        (d.exitFullscreen || d.webkitExitFullscreen).call(d);
+      } else {
+        const el = d.documentElement;
+        const p = (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
+        // Esc should open the pause menu, not throw you out of full screen: browsers that allow it hand the Esc key to the game while in
+        // full screen (holding Esc still leaves it)
+        if (p && p.then) p.then(() => { if (kb && kb.lock) kb.lock(['Escape']).catch(() => {}); }).catch(() => {});
+      }
     } catch (err) { /* not allowed here: nothing to do */ }
+  }
+
+  // Full screen ended without our button (a browser that keeps Esc for itself): Esc was meant for the pause menu, so open it.
+  onFullscreenChange() {
+    const d = document;
+    if (d.fullscreenElement || d.webkitFullscreenElement) return;
+    const meant = this.fsLeaving; this.fsLeaving = false;
+    if (!meant && this.screen === 'game' && !this.paused && !this.ui.current) this.setPaused(true);
   }
 
   // Small facts on the next batter's card (bats left / right; season numbers are added in Season mode).
