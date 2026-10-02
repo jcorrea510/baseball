@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { Person, makeBat, restyleBat, disposeBat, mixPose, makePose, copyPose } from './rig.js';
-import { batterPose, buntPose, pitcherPose, catcherPose, fielderReady, runPose, runReachPose, runCadence, runnerLeadPose, slidePose, slideGetUp, throwPose, catchPose, divePose, celebratePose, standingPose, umpirePose, THROW_RELEASE_U } from './poses.js';
+import { batterPose, buntPose, pitcherPose, catcherPose, fielderReady, runPose, runReachPose, runCadence, runnerLeadPose, slidePose, slideGetUp, throwPose, catchPose, divePose, celebratePose, standingPose, umpirePose, THROW_RELEASE_U, PITCHER_BALL_TO_HAND, pitcherSetAfter } from './poses.js';
 import { UNIFORMS } from '../game/teams.js';
 import { BASE_XZ, MOUND_XZ, clampToField, dugoutSpot } from '../physics/field.js';
 import { sampleBall } from '../physics/ballistics.js';
@@ -317,7 +317,7 @@ export class Actors {
       if (pos === 'P') done = this.pitcherPoseUpdate(E, person, P, time, pitch, plan, playT, move, moving, speed, st, dt);
       else if (pos === 'C') done = this.catcherPoseUpdate(E, person, P, time, pitch, plan, playT, move, moving, speed, st, dt);
       if (!done) this.fielderPoseUpdate(E, person, P, time0, pos, plan, playT, move, speed, st, dt, lookYaw, dive);
-      this.crossfadePose(person, P, done ? (pos === 'P' ? 'pitching' : 'catching-crouch') : person.animState, st, dt);
+      this.crossfadePose(person, P, done ? (pos === 'P' ? st.pitchLabel || 'pitching' : 'catching-crouch') : person.animState, st, dt);
       person.setShadows(Math.hypot(x, z + 62) < 120);
       person.apply();
     }
@@ -328,30 +328,31 @@ export class Actors {
     if (move && playT >= 0 && (moving || playT > move.keys[1].t)) return false; // fielding the ball: generic fielder logic
     if (speed > 1.0) return false; // jogging back to the rubber: he runs, he does not glide in his set pose
     const phase = E.phase;
-    const relW = this.tmpV;
+    // One continuous delivery (poses.pitcherPose): the windup, the release, the follow-through and the walk back up onto the rubber.
+    // The last pitch is remembered so that the walk back carries on after the engine has forgotten it (the next pitch's 'ready').
+    if (st.lastEngine !== E) { st.lastEngine = E; st.lastPitch = st.lastDone = null; } // (a new game: nothing to finish)
+    if (pitch) st.lastPitch = pitch;
+    const last = st.lastPitch;
     let u = 0, post = 0;
-    if (pitch && (phase === 'windup')) u = clamp((time - pitch.tWindup) / pitch.windupDur, 0, 1);
-    else if (pitch && (phase === 'pitch' || phase === 'result' || phase === 'play')) { u = 1; post = Math.max(0, time - pitch.tRelease); }
-    else u = 0;
-    // after the follow-through settles, return toward the ready pose
-    const R = pitch ? pitch.flight.release : { x: -1.5, y: 5.8, z: -54.5 };
-    relW.set(R.x, R.y, R.z);
-    const rel = person.root.worldToLocal(relW.clone());
-    const tell = pitch ? pitch.tell : { slot: 0, lag: 0 };
-    if (phase === 'ready' && !plan) { u = 0; post = 0; }
-    pitcherPose(P, u, post, [rel.x, rel.y - 0.0, rel.z], tell);
-    // stay on the ground of the mound slope
-    P.footL[1] += Math.max(-0.3, moundY(person.root.position.x + P.footL[0], person.root.position.z + P.footL[2]) - person.root.position.y);
-    if (P.footL[1] > 0.3 + 0.1) { /* lifted foot: leave */ }
-    P.footR[1] += Math.max(-0.3, moundY(person.root.position.x + P.footR[0], person.root.position.z + P.footR[2]) - person.root.position.y) * (P.footR[1] < 0.5 ? 1 : 0);
-    // relax back toward ready after a moment
-    if (post > 0.9) {
-      const k = smoothstep(0.9, 1.5, post);
-      const r = makePose();
-      pitcherPose(r, 0, 0, [rel.x, rel.y, rel.z], tell);
-      mixPose(P, P, r, k);
+    if (pitch && phase === 'windup') u = clamp((time - pitch.tWindup) / pitch.windupDur, 0, 1);
+    else if (last && time >= last.tRelease) { u = 1; post = time - last.tRelease; }
+    const src = phase === 'windup' ? pitch : last;
+    const R = src ? src.flight.release : { x: -1.55, y: 5.75, z: CONFIG.pitch.releaseZ };
+    person.root.updateMatrixWorld(true);
+    const rel = person.root.worldToLocal(this.tmpV.set(R.x, R.y, R.z));
+    pitcherPose(P, u, post, [rel.x, rel.y, rel.z], src ? src.tell : undefined, src ? src.windupDur : undefined);
+    // a new windup that starts before he is quite set again blends in from where he was (never a jump)
+    if (phase === 'windup' && pitch && st.pitchId !== pitch.id) {
+      st.pitchId = pitch.id;
+      const prev = st.lastDone;
+      st.pitchLabel = prev && prev.tRelease < pitch.tWindup && pitch.tWindup - prev.tRelease < pitcherSetAfter(prev.windupDur) ? 'pitching-' + pitch.id : st.pitchLabel || 'pitching';
     }
-    void moving; void speed; void st; void dt; void plan;
+    if (phase !== 'windup' && last) st.lastDone = last;
+    // stay on the ground of the mound slope (a foot in the air is left where the pose put it)
+    const gy = (f) => Math.max(-0.3, moundY(person.root.position.x + f[0], person.root.position.z + f[2]) - person.root.position.y);
+    P.footL[1] += gy(P.footL) * (P.footL[1] < 0.5 ? 1 : 0);
+    P.footR[1] += gy(P.footR) * (P.footR[1] < 0.5 ? 1 : 0);
+    void moving; void dt; void plan;
     return true;
   }
 
@@ -956,7 +957,7 @@ export class Actors {
       const rh = pitcherP.handWorld('R', this.tmpV);
       // hands together: the ball is in the glove; as the hands break it goes with the throwing hand (smoothly - it never jumps)
       const lh = pitcherP.handWorld('L', this.tmpV2);
-      const g = 0.5 * (1 - smoothstep(0.34, 0.46, u));
+      const g = 0.5 * (1 - smoothstep(PITCHER_BALL_TO_HAND[0], PITCHER_BALL_TO_HAND[1], u));
       bp.copy(rh).lerp(lh, g);
       bp.y += 0.05;
       kind = 'hand';

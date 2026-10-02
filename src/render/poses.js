@@ -230,82 +230,200 @@ export function buntPose(P, time, push = null, aim = null) {
 }
 
 // ---------------------------------------------------------------- pitcher
-// u runs 0..1 up to the moment of release; `post` is seconds after release.
-// release = hand position at release in pose space; tell = { slot: -1..1 (arm height), lag: 0..1 (slower arm) }
-export function pitcherPose(P, u, post, release, tell = { slot: 0, lag: 0 }) {
+// A right-hander's delivery from the stretch, as ONE continuous timeline (a left-hander is the same figure mirrored). The phase `p`
+// runs 0..1 over the windup up to the release, and on after it at the same rate (p = 1 + seconds after release / windup length), so
+// the body and the arm come through the release without a hitch:
+//   0     set: side on to the plate (glove-side shoulder toward it), hands together at the chest, eyes on the catcher
+//   .38   balance point: front knee up to the belt, hips over the back foot, turned a little away from the plate
+//   .44   the hands break (the ball goes with the throwing hand) and the hips lead down the mound
+//   .72   front foot lands: hips starting to open, shoulders still closed, glove arm out at the plate, throwing arm cocked in an "L"
+//   .84   the hips are open, the shoulders turn, the forearm lays back
+//   1     release out in front, chest over the front knee, trunk tilted to the glove side (from here on p advances at the same rate)
+//   1.4   follow-through: the arm finishes outside the front knee, the back leg swings round beside the front one
+//   1.62  up into a fielding stance facing the plate, then five steps back up onto the rubber, turning side on: set again by 2.9
+// Directions: person space (+z toward the plate, +x his glove side). A yaw < 0 turns his front toward third base (closed).
+// Times are phases; positions in feet; angles in radians.
+const PITCH = {
+  set: 2.9, // phase by which he is back in his set position
+  stance: 1.62, // phase of the fielding stance after the follow-through (where the walk back starts)
+  walkDur: 1.1, // the walk back runs at least as slowly as after a windup this long (s)
+  ballToHand: [0.36, 0.46], // phases over which the ball goes from between the hands into the throwing hand
+  slotRoll: 0.8, // share the trunk's tilt to the glove side grows by per unit of arm slot (a higher slot tilts further)
+  slotTall: 0.3, // ft he stays taller on his front leg through the release per unit of arm slot (so a high slot's hand reaches)
+  slotCock: 0.35, // ft higher the cocked hand sits per unit of arm slot
+  lag: 0.05, // phase the arm trails the body by on a changeup (a subtle tell)
+};
+// [phase, hipY, pelvisYaw, torsoYaw, torsoPitch, pelvisPitch, torsoRoll, pelvisX, pelvisZ]
+const P_BODY = [
+  [0, 3.06, -1.42, -0.06, 0.08, 0.04, 0, 0, 0.98],
+  [0.14, 3.1, -1.45, -0.08, 0.06, 0.03, 0, 0, 0.62],
+  [0.38, 3.18, -1.62, -0.14, 0.02, -0.04, 0.02, 0, 0.38],
+  [0.5, 3.02, -1.6, -0.16, 0.0, 0.0, 0.04, 0, 0.95],
+  [0.6, 2.82, -1.48, -0.22, 0.0, 0.02, 0.04, 0, 1.95],
+  [0.72, 2.56, -0.9, -0.5, 0.06, 0.04, 0.0, 0, 2.75],
+  [0.84, 2.5, -0.15, -0.38, 0.22, 0.06, -0.14, 0, 3.25],
+  [0.93, 2.47, 0.08, -0.08, 0.44, 0.08, -0.12, 0, 3.55],
+  [1.0, 2.45, 0.2, 0.05, 0.64, 0.1, -0.15, 0, 3.75],
+  [1.15, 2.4, 0.4, 0.3, 0.92, 0.12, -0.1, -0.05, 4.05],
+  [1.3, 2.42, 0.5, 0.45, 1.0, 0.1, -0.05, -0.25, 4.4],
+  [1.45, 2.52, 0.22, 0.12, 0.72, 0.06, 0, -0.55, 4.8],
+  [1.62, 2.74, 0.02, 0.0, 0.38, 0.04, 0, -0.62, 5.05],
+  [1.8, 3.0, 0, 0, 0.15, 0.03, 0, -0.6, 4.95],
+  [1.95, 3.08, 0, 0, 0.1, 0.02, 0, -0.5, 4.4],
+  [2.15, 3.08, -0.05, 0, 0.08, 0.02, 0, -0.45, 3.45],
+  [2.35, 3.08, -0.2, 0, 0.08, 0.02, 0, -0.3, 2.3],
+  [2.55, 3.07, -0.7, -0.03, 0.08, 0.03, 0, -0.1, 1.6],
+  [2.72, 3.06, -1.25, -0.05, 0.08, 0.04, 0, 0, 1.08],
+  [2.9, 3.06, -1.42, -0.06, 0.08, 0.04, 0, 0, 0.98],
+];
+// feet: [phase, x, y, z, yaw, tilt (+ = toes down)]
+const P_FOOT_L = [
+  [0, -0.05, ANK, 1.78, -1.3, 0],
+  [0.1, -0.05, ANK, 1.78, -1.3, 0],
+  [0.22, -0.3, 1.05, 1.15, -1.42, 0.35],
+  [0.38, -0.7, 1.72, 0.55, -1.5, 0.5],
+  [0.5, -0.5, 1.3, 1.6, -1.45, 0.4],
+  [0.6, -0.22, 0.72, 3.45, -1.05, 0.1],
+  [0.68, -0.08, ANK + 0.12, 4.75, -0.5, -0.05],
+  [0.72, -0.05, ANK, 5.0, -0.35, 0],
+  [1.45, -0.05, ANK, 5.0, -0.35, 0],
+  [1.7, -0.05, ANK, 5.0, -0.2, 0],
+  [2.0, -0.05, ANK, 5.0, -0.2, 0],
+  [2.08, -0.1, ANK + 0.35, 3.9, -0.4, 0.1],
+  [2.16, -0.15, ANK, 2.8, -0.6, 0],
+  [2.4, -0.15, ANK, 2.8, -0.6, 0],
+  [2.47, -0.1, ANK + 0.25, 2.3, -1.0, 0.1],
+  [2.54, -0.05, ANK, 1.78, -1.3, 0],
+  [2.9, -0.05, ANK, 1.78, -1.3, 0],
+];
+const P_FOOT_R = [
+  [0, 0, ANK, 0.22, -1.5, 0],
+  [0.62, 0, ANK, 0.22, -1.5, 0],
+  [0.72, 0, ANK + 0.02, 0.25, -1.3, 0.25],
+  [0.84, -0.02, ANK + 0.06, 0.45, -0.9, 0.75],
+  [1.0, -0.12, ANK + 0.08, 1.2, -0.5, 1.05],
+  [1.15, -0.35, 1.05, 2.6, -0.3, 0.7],
+  [1.3, -0.85, 0.85, 4.3, -0.1, 0.3],
+  [1.45, -1.25, ANK, 5.25, 0, 0],
+  [1.82, -1.25, ANK, 5.25, 0, 0],
+  [1.9, -1.05, ANK + 0.35, 4.6, -0.1, 0.1],
+  [1.98, -0.85, ANK, 3.9, -0.2, 0],
+  [2.2, -0.85, ANK, 3.9, -0.2, 0],
+  [2.28, -0.6, ANK + 0.35, 2.7, -0.5, 0.1],
+  [2.36, -0.4, ANK, 1.5, -0.8, 0],
+  [2.6, -0.4, ANK, 1.5, -0.8, 0],
+  [2.68, -0.15, ANK + 0.3, 0.85, -1.2, 0.1],
+  [2.76, 0, ANK, 0.22, -1.5, 0],
+  [2.9, 0, ANK, 0.22, -1.5, 0],
+];
+// glove hand (his left)
+const P_HAND_L = [
+  [0, -0.62, 3.98, 1.07],
+  [0.14, -0.62, 4.1, 0.75],
+  [0.38, -0.64, 4.42, 0.5],
+  [0.46, -0.6, 4.35, 0.85],
+  [0.6, -0.3, 4.45, 2.6],
+  [0.72, 0.0, 4.4, 4.45],
+  [0.84, 0.35, 4.3, 4.65],
+  [1.0, 0.72, 4.0, 4.65],
+  [1.15, 0.8, 3.55, 4.75],
+  [1.3, 0.6, 3.3, 5.0],
+  [1.45, 0.1, 3.5, 5.8],
+  [1.62, -0.25, 3.55, 6.05],
+  [1.85, 0.05, 3.25, 5.4],
+  [2.15, 0.0, 3.1, 3.7],
+  [2.35, -0.1, 3.15, 2.6],
+  [2.55, -0.4, 3.5, 1.7],
+  [2.75, -0.58, 3.9, 1.15],
+  [2.9, -0.62, 3.98, 1.07],
+];
+// throwing hand (his right); the keys from .93 to 1.3 are relative to the release point
+const P_HAND_R = [
+  [0, -0.6, 3.95, 0.88],
+  [0.14, -0.6, 4.07, 0.58],
+  [0.38, -0.62, 4.4, 0.33],
+  [0.46, -0.58, 4.28, 0.5],
+  [0.54, -0.62, 3.78, 0.75],
+  [0.61, -0.6, 3.72, 0.7],
+  [0.67, -0.55, 4.3, 0.75],
+  [0.72, -0.45, 5.1, 1.0],
+  [0.79, -1.15, 5.15, 1.55],
+  [0.86, -1.7, 4.85, 2.35],
+  [0.93, 0.32, 0.5, -1.55],
+  [1.0, 0, 0, 0],
+  [1.12, 1.25, -0.95, 0.35],
+  [1.3, 2.4, -2.45, -0.55],
+  [1.45, 1.2, -1.6, -0.15],
+  [1.62, -0.95, 3.55, 5.95],
+  [1.85, -1.2, 3.25, 5.3],
+  [2.15, -1.15, 3.1, 3.5],
+  [2.35, -0.95, 3.15, 2.3],
+  [2.55, -0.7, 3.5, 1.35],
+  [2.75, -0.62, 3.88, 0.95],
+  [2.9, -0.6, 3.95, 0.88],
+];
+// elbow pole directions (torso space: +x his left, -z behind him) and knee directions (hip space: +z the way the hips face)
+const P_POLE_R = [
+  [0, -0.5, -1, -0.4], [0.46, -0.5, -1, -0.4], [0.6, -0.4, -0.3, -1], [0.72, -1, -0.25, -0.1], [0.86, -1, -0.4, 0.3],
+  [1.0, -1, -0.4, 0.1], [1.2, -0.6, -0.8, 0.3], [1.62, -0.6, -0.8, -0.3], [2.9, -0.5, -1, -0.4],
+];
+const P_POLE_L = [
+  [0, 0.5, -1, -0.4], [0.46, 0.5, -1, -0.4], [0.6, 0.9, -0.4, 0.2], [0.72, 0.9, 0.2, 0.4], [0.9, 0.8, -0.6, 0.1],
+  [1.2, 0.7, -1, -0.2], [1.62, 0.6, -1, -0.3], [2.9, 0.5, -1, -0.4],
+];
+const P_KNEE_L = [[0, 0.1, 0, 1], [0.38, 0.05, 0.5, 1], [0.72, 0.1, 0.1, 1], [2.9, 0.1, 0, 1]];
+const P_KNEE_R = [[0, -0.1, 0, 1], [0.6, -0.1, 0, 1], [0.84, 0.1, -0.4, 1], [1.3, 0, 0.2, 1], [1.62, -0.1, 0, 1], [2.9, -0.1, 0, 1]];
+
+const _pb = [], _pf = [];
+// u: 0..1 over the windup up to the release; post: seconds after it; release: the hand at release (person space);
+// tell = { slot: -1..1 (arm height), lag: 0..1 (a slower arm) }; dur = the windup's length in seconds
+export function pitcherPose(P, u, post, release, tell = { slot: 0, lag: 0 }, dur = 1.15) {
   resetPose(P);
   const slot = tell.slot || 0;
   const lag = tell.lag || 0;
-  // Arm phase can lag behind the body for a changeup (subtle tell).
-  const ua = clamp(u - lag * 0.06 * Math.sin(Math.PI * clamp((u - 0.5) / 0.5, 0, 1)), 0, 1);
-  const fin = clamp(post / 0.4, 0, 1); // follow-through progress
-  const fe = 1 - Math.pow(1 - fin, 3); // starts fast (the arm is still moving at release) and eases to rest
+  // (after the follow-through - from the fielding stance - the walk back keeps an unhurried pace even after a quick windup)
+  const d = Math.max(0.5, dur), tUp = (PITCH.stance - 1) * d;
+  const p = Math.min(PITCH.set, post <= 0 ? clamp(u, 0, 1) : post <= tUp ? 1 + post / d : PITCH.stance + (post - tUp) / Math.max(d, PITCH.walkDur));
+  // (a changeup's arm trails the body a touch through the delivery and catches up at the release)
+  const pa = p - lag * PITCH.lag * Math.sin(Math.PI * clamp((p - 0.45) / 0.55, 0, 1));
 
-  const s = sampleKeys([
-    [0, 3.1, 0.3, 0.0, 0.05, 0.0],
-    [0.16, 3.14, 0.6, 0.0, -0.05, 0.0],
-    [0.4, 3.3, 1.2, 0.2, -0.12, 0.1],
-    [0.6, 3.02, 0.95, 0.5, 0.0, 0.05],
-    [0.78, 2.72, 0.35, 0.55, 0.3, -0.1],
-    [0.92, 2.52, -0.05, -0.1, 0.5, -0.25],
-    [1.0, 2.46, -0.15, -0.5, 0.62, -0.32],
-  ], u, []);
-  P.hipY = s[0]; P.pelvisYaw = s[1]; P.torsoYaw = s[2]; P.torsoPitch = s[3]; P.pelvisPitch = s[4];
-  // pelvis travels toward the plate as the stride lands
-  const pz = sampleKeys([[0, 0], [0.16, -0.3], [0.4, -0.35], [0.6, 0.3], [0.78, 2.1], [0.92, 3.9], [1.0, 4.5]], u, [])[0];
-  set3(P.pelvis, 0, 0, pz);
-  P.headYaw = -(P.pelvisYaw + P.torsoYaw) * 0.85; // keep looking at the catcher
-  P.headPitch = 0.05;
+  const b = sampleKeys(P_BODY, p, _pb);
+  P.hipY = b[0] + slot * PITCH.slotTall * smoothstep(0.7, 0.95, p) * (1 - smoothstep(1.1, 1.4, p));
+  P.pelvisYaw = b[1]; P.torsoYaw = b[2]; P.torsoPitch = b[3]; P.pelvisPitch = b[4];
+  P.torsoRoll = b[5] * (1 + slot * PITCH.slotRoll);
+  set3(P.pelvis, b[6], 0, b[7]);
+  // eyes on the catcher the whole way: the head turns back against the body and lifts against the trunk's bend
+  P.headYaw = clamp(-(P.pelvisYaw + P.torsoYaw), -1.55, 1.55);
+  P.headPitch = 0.05 - P.torsoPitch * 0.75 - P.pelvisPitch * 0.5;
 
-  setVec(P, 'footL', [
-    [0, 0.42, ANK, 0.3], [0.16, 0.42, ANK, 0.35], [0.4, 0.8, 2.75, 0.75], [0.6, 0.85, 2.35, 1.7], [0.78, 0.6, 0.95, 4.2], [0.92, 0.5, ANK + 0.02, 5.8], [1.0, 0.5, ANK, 5.8],
-  ], u);
-  setVec(P, 'footR', [
-    [0, -0.4, ANK, -0.05], [0.8, -0.4, ANK, -0.05], [0.95, -0.42, ANK + 0.05, 0.05], [1.0, -0.42, ANK + 0.25, 0.1],
-  ], u);
-  P.footRTilt = -0.9 * smoothstep(0.85, 1.0, u);
+  const fl = sampleKeys(P_FOOT_L, p, _pf);
+  set3(P.footL, fl[0], fl[1], fl[2]); P.footLYaw = fl[3]; P.footLTilt = fl[4];
+  const fr = sampleKeys(P_FOOT_R, p, _pf);
+  set3(P.footR, fr[0], fr[1], fr[2]); P.footRYaw = fr[3]; P.footRTilt = fr[4];
 
-  // glove hand: the glove arm stays bent and leads toward the plate (elbow first), then tucks in as he throws
-  setVec(P, 'handL', [
-    [0, 0.12, 4.0, 0.55], [0.4, 0.2, 4.15, 0.8], [0.6, 0.55, 4.05, 1.4], [0.78, 0.7, 3.95, 2.5], [0.9, 0.75, 4.05, 3.5], [1.0, 0.7, 4.25, 4.0],
-  ], u);
-  // throwing hand: the hands break, the arm swings down past the hip, back and up into a cocked "L" (elbow at the shoulder,
-  // forearm up) as the front foot lands, then whips forward over the top through the release point
-  const sh = slot * 0.9;
-  setVec(P, 'handR', [
-    [0, -0.12, 4.0, 0.55],
-    [0.4, -0.2, 4.35, 0.75],
-    [0.55, -0.75, 3.7, 0.15],
-    [0.64, -1.3, 3.55, -0.35],
-    [0.72, -1.55, 3.95, -0.7],
-    [0.8, -1.35, 5.7 + sh * 0.5, -0.85],
-    [0.92, -1.2 - slot * 0.3, 6.15 + sh * 0.5, 1.5 + release[2] * 0.1],
-    [1.0, release[0], release[1], release[2]],
-  ], ua);
-  if (post > 0) {
-    // follow through: the arm keeps going, across the body and down to the glove-side knee
-    const x = lerp(release[0], 0.75, fe), y = lerp(release[1], 2.35, fe), z = lerp(release[2], release[2] - 0.2, fe);
-    set3(P.handR, x, y, z);
-    P.torsoPitch = lerp(0.62, 0.95, fe);
-    P.pelvisPitch = lerp(-0.32, -0.42, fe);
-    P.torsoYaw = lerp(-0.5, -0.75, fe);
-    set3(P.handL, lerp(0.8, 0.5, fe), lerp(4.4, 3.4, fe), lerp(4.2, 4.6, fe));
-    set3(P.footR, -0.42, lerp(ANK + 0.25, ANK + 0.5, Math.sin(fe * Math.PI)), lerp(0.1, 4.3, fe));
-    P.footRTilt = lerp(-0.9, -0.2, fe);
-    P.hipY = lerp(2.46, 2.75, fe);
-    set3(P.pelvis, 0, 0, 4.5 + 0.4 * fe); // the body carries on a little past the release instead of stopping dead
-  }
-  // elbows: the throwing elbow points back as the arm swings down, out to the side (at shoulder height) when it is cocked;
-  // the glove elbow points at the plate
-  const cock = smoothstep(0.66, 0.8, ua) * (1 - smoothstep(0.92, 1, ua));
-  P.poleR = [-1.0, lerp(0.1, -0.35, cock) + slot * 0.4, lerp(-0.8, -0.2, cock)];
-  P.poleL = [0.6, -0.5, lerp(0.3, 0.9, smoothstep(0.5, 0.8, u))];
-  set3(P.kneeL, 0.15, 0.1, 1); set3(P.kneeR, -0.15, 0.1, 1);
+  setVec(P, 'handL', P_HAND_L, p);
+  // the throwing hand: absolute keys, except around the release where they are offsets from the release point (so every arm slot
+  // whips through its own release on the same arc)
+  // (and a higher arm slot cocks the hand a little higher at foot strike: a tell)
+  const keysR = P_HAND_R.map((k) => (k[0] >= 0.93 && k[0] <= 1.45 ? [k[0], release[0] + k[1], release[1] + k[2], release[2] + k[3]]
+    : k[0] === 0.72 ? [k[0], k[1], k[2] + slot * PITCH.slotCock, k[3]] : k));
+  setVec(P, 'handR', keysR, pa);
+
+  setVec(P, 'poleR', P_POLE_R, pa);
+  setVec(P, 'poleL', P_POLE_L, p);
+  setVec(P, 'kneeL', P_KNEE_L, p);
+  setVec(P, 'kneeR', P_KNEE_R, p);
+  P.gloveOpen = 0.35;
   return P;
 }
 
-// Where the ball is while the pitcher still holds it: in the glove/hands until the arm cocks.
-export function pitcherBallInGlove(u) { return u < 0.42; }
+// The ball sits between his hands (in the glove) until the hands break; then it goes with the throwing hand.
+export const PITCHER_BALL_TO_HAND = PITCH.ballToHand;
+// Seconds after the release until he is set on the rubber again, for a windup of `dur` seconds.
+export function pitcherSetAfter(dur = 1.15) {
+  const d = Math.max(0.5, dur);
+  return (PITCH.stance - 1) * d + (PITCH.set - PITCH.stance) * Math.max(d, PITCH.walkDur);
+}
 
 // ---------------------------------------------------------------- catcher
 export function catcherPose(P, time, mittLocal) {
