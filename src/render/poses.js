@@ -182,31 +182,38 @@ function followKey(e, start) {
 // `push` = { contact:[x,y,z] (ball in pose space), tStart, tHit } when he pushes the bat out to meet the ball.
 const BUNT_DIR = (() => { const yaw = 0.16, p = 0.05; return [Math.sin(yaw) * Math.cos(p), Math.sin(p), Math.cos(yaw) * Math.cos(p)]; })();
 const BUNT_SWEET = 1.9; // how far up the bat (feet from the knob) the sweet spot is
+const BUNT_BACK = 1.0; // ft his body sits back (toward the catcher) from the bat, so it is out in front of him
 export function buntPose(P, time, push = null, aim = null) {
   resetPose(P);
   const breathe = Math.sin(time * 1.6);
-  P.hipY = 2.62 + breathe * 0.015;
-  P.pelvisYaw = 1.0; P.torsoYaw = 0.42; P.pelvisPitch = 0.16; P.torsoPitch = 0.34;
-  P.headYaw = 0.05; P.headPitch = 0.12;
-  set3(P.footL, 0.5, ANK, -0.6); set3(P.footR, 0.15, ANK, 0.62);
-  set3(P.kneeL, 1, 0.1, -0.2); set3(P.kneeR, 1, 0.1, 0.3);
+  // Squared around like a real bunter: feet, knees, hips and shoulders all turned to the pitcher together (no twist at the waist),
+  // feet about shoulder width apart, knees bent, back fairly straight, eyes level behind the bat.
+  // His whole body sits `BUNT_BACK` ft back from where the bat meets the ball, so the bat is out in front of him with his arms
+  // reaching to it (not tucked in his lap).
+  P.hipY = 2.6 + breathe * 0.015;
+  P.pelvis[0] = -BUNT_BACK;
+  P.pelvisYaw = 1.3; P.torsoYaw = 0.12; P.pelvisPitch = 0.12; P.torsoPitch = 0.16;
+  P.headYaw = 0.1; P.headPitch = 0.02;
+  set3(P.footL, 0.42 - BUNT_BACK, ANK, -0.5); set3(P.footR, 0.3 - BUNT_BACK, ANK, 0.5);
+  P.footLYaw = 1.15; P.footRYaw = 1.3; // (toes toward the pitcher)
+  set3(P.kneeL, 0.12, 0.05, 1); set3(P.kneeR, -0.12, 0.05, 1); // (knees straight ahead over the toes - knee directions are in the hips' own frame)
   let knob = [0.85, 3.42, 0.3]; // (squared around: the bat level at the top of the strike zone, out over the plate)
   if (aim) knob = [aim[0] - BUNT_DIR[0] * BUNT_SWEET, aim[1] - BUNT_DIR[1] * BUNT_SWEET, aim[2] - BUNT_DIR[2] * BUNT_SWEET];
-  // He goes to the bat with his body rather than reaching with straight arms: a low bat - he bends his knees and sinks (right down
-  // into a crouch for one at his shins) and bends forward a little; a bat out over the plate - he leans out toward it; one out in
-  // front - he shifts toward the pitcher. (Feet stay planted; the rig keeps the bat in his hands whatever happens.)
+  // He goes to the bat with his body rather than reaching with straight arms, his eyes staying up on the pitch: a low bat - mostly
+  // the knees, he sits down into it with his hips back the way you squat (right down into a crouch for one at his shins) and his
+  // chest tips forward only a little; a bat out over the plate - he leans that way from the hips; one out in front - he shifts toward
+  // the pitcher. (Feet stay planted; the rig keeps the bat in his hands whatever happens.)
   const low = clamp(3.42 - knob[1], 0, 2.6);
   const out = clamp(knob[2] - 0.3, -0.5, 1.2);
   const fwd = clamp(knob[0] - 0.85, -0.8, 1.2);
-  // (his back stays fairly upright - the knees and hips do most of it - and his eyes stay up on the pitch)
-  const bend = Math.min(0.32, low * 0.1 + Math.max(0, out) * 0.14);
-  P.hipY -= low * 0.42;
+  const bend = Math.min(0.3, low * 0.09 + Math.max(0, out) * 0.12);
+  P.hipY -= low * 0.44;
+  P.pelvis[0] -= low * 0.12; // (hips back as he sits down)
   P.torsoPitch += bend;
-  P.pelvisPitch += low * 0.04;
+  P.pelvisPitch += low * 0.1;
   P.pelvis[2] += out * 0.3;
   P.pelvis[0] += fwd * 0.2;
-  P.torsoRoll -= fwd * 0.08;
-  P.headPitch -= (bend + low * 0.04) * 0.85;
+  P.headPitch -= (bend + low * 0.1) * 0.85;
   if (push && time >= push.tStart) {
     // the sweet spot (1.9 ft up the bat) goes out to where the ball crosses, then the bat gives a little as it "catches" the ball
     const C = push.contact;

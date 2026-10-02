@@ -537,7 +537,7 @@ export class Actors {
       const yawBox = hand === 'R' ? Math.PI / 2 : -Math.PI / 2;
       if (isWalk) {
         this.batterWalk(E, batterP, stB, dt, boxX, yawBox);
-      } else if (quick && runsOnPlay && playT >= tRun) {
+      } else if (quick && runsOnPlay && playT >= tRun && this.batterGoes(E, stB, batterMove, playT, tRun)) {
         batterRunning = true;
         this.batterRun(E, batterP, stB, plan, batterMove, playT, dt, boxX, yawBox, hand, tRun);
       } else {
@@ -691,6 +691,19 @@ export class Actors {
       }
     }
     if (person.bat) person.bat.visible = P.batVis > 0.5 && !(this.loose.active && this.loose.owner === person);
+    // (remember how he was standing at the plate: when he takes off for first his first strides blend out of exactly this - a swing's
+    // finish or a bunt crouch - so nothing jumps)
+    if (st) st.platePose = copyPose(st.platePose || makePose(), P);
+  }
+
+  // Has the batter really set off for first? (A batter who will be out at first starts a touch later, so he touches the bag just when
+  // the play says: until then he stays in his finish at the plate, bat in hand - he used to drop it and stand up straight first.)
+  batterGoes(E, st, move, playT, tRun) {
+    if (st.goPlay === E.play && st.goes) return true;
+    if (st.goPlay !== E.play) { st.goPlay = E.play; st.goes = false; }
+    const going = !move || move.homer || playT > tRun + 1.2 || runnerState(move, playT, E.cfg, st.goQ || (st.goQ = {})).running;
+    if (going) { st.goes = true; st.goT = playT; }
+    return going;
   }
 
   batterRun(E, person, st, plan, move, playT, dt, boxX, yawBox, hand, tRun) {
@@ -739,11 +752,18 @@ export class Actors {
       runPose(person.pose, st.phase, speed, 0, { accel, side });
     } else standingPose(person.pose, playT);
     // very first strides: still in the follow-through pose
-    const early = smoothstep(tRun, tRun + 0.25, playT);
-    if (early < 1 && d < 3) {
+    // (eases out over the first quarter second or the first few feet, whichever comes first - never cut off part-way)
+    const tGo = st.goPlay === E.play && st.goT !== undefined ? Math.max(tRun, st.goT) : tRun;
+    const early = Math.max(smoothstep(tGo, tGo + 0.25, playT), smoothstep(1, 3.5, d));
+    if (early < 1) {
       const swingPose = makePose();
       const sw = E.swing;
-      if (sw && E.pitch) this.batterFollowPose(E, person, swingPose, sw);
+      if (st.platePose) copyPose(swingPose, st.platePose);
+      else if (sw && E.pitch) this.batterFollowPose(E, person, swingPose, sw);
+      swingPose.batVis = 0;
+      // (his hands start from where they really were a moment ago - on the bat or not - never from somewhere else)
+      if (person.gripHands[0]) swingPose.handL = person.gripHands[0].slice();
+      if (person.gripHands[1]) swingPose.handR = person.gripHands[1].slice();
       mixPose(person.pose, swingPose, person.pose, early);
     }
     person.pose.batVis = 0;

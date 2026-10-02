@@ -22,14 +22,14 @@ DIM.hipStand = DIM.ankle + DIM.shin + DIM.thigh; // hip height with straight leg
 const GRIP = { bottom: 0.17, top: 0.43, point: new THREE.Vector3(0, -0.2, 0.07), reach: 0.08 };
 
 // ---------------------------------------------------------------- pose format
-export const SCALARS = ['hipY', 'pelvisYaw', 'pelvisPitch', 'pelvisRoll', 'torsoPitch', 'torsoYaw', 'torsoRoll', 'headYaw', 'headPitch', 'footLTilt', 'footRTilt', 'batYaw', 'batPitch', 'batVis', 'gloveOpen', 'gripTop'];
+export const SCALARS = ['hipY', 'pelvisYaw', 'pelvisPitch', 'pelvisRoll', 'torsoPitch', 'torsoYaw', 'torsoRoll', 'headYaw', 'headPitch', 'footLTilt', 'footRTilt', 'footLYaw', 'footRYaw', 'batYaw', 'batPitch', 'batVis', 'gloveOpen', 'gripTop'];
 export const VECTORS = ['pelvis', 'footL', 'footR', 'handL', 'handR', 'poleL', 'poleR', 'kneeL', 'kneeR', 'bat'];
 
 export function makePose(o = {}) {
   const p = {
     hipY: DIM.hipStand - 0.12, pelvisYaw: 0, pelvisPitch: 0, pelvisRoll: 0,
     torsoPitch: 0, torsoYaw: 0, torsoRoll: 0, headYaw: 0, headPitch: 0,
-    footLTilt: 0, footRTilt: 0, batYaw: 0, batPitch: 0, batVis: 0, gloveOpen: 0.5, gripTop: GRIP.top,
+    footLTilt: 0, footRTilt: 0, footLYaw: 0, footRYaw: 0, batYaw: 0, batPitch: 0, batVis: 0, gloveOpen: 0.5, gripTop: GRIP.top,
     pelvis: [0, 0, 0],
     footL: [0.34, DIM.ankle, 0], footR: [-0.34, DIM.ankle, 0],
     handL: [0.78, 2.6, 0.12], handR: [-0.78, 2.6, 0.12],
@@ -281,6 +281,7 @@ export class Person {
     this.setShadows(true);
     this._fk = { qU: new THREE.Quaternion(), qL: new THREE.Quaternion() };
     this.batWorldPos = new THREE.Vector3();
+    this.gripHands = []; // where his hands were (figure space) last frame - on the bat or not: a pose that takes over blends out of it
     this.ballHand = new THREE.Vector3();
   }
 
@@ -586,8 +587,10 @@ export class Person {
       leg.hip.updateMatrixWorld(true);
       leg.thigh.updateMatrixWorld(true);
       leg.knee.updateMatrixWorld(true);
+      // (a foot points the way the figure faces, turned by footLYaw / footRYaw - e.g. toward the pitcher when squared to bunt)
       const tilt = leg.side === 1 ? p.footLTilt : p.footRTilt;
-      _qw.setFromEuler(_e.set(tilt, 0, 0));
+      const fyaw = (leg.side === 1 ? p.footLYaw : p.footRYaw) || 0;
+      _qw.setFromEuler(_e.set(tilt, fyaw, 0, 'YXZ'));
       this.root.getWorldQuaternion(_qr);
       _qw.premultiply(_qr);
       leg.knee.getWorldQuaternion(_qk);
@@ -629,6 +632,7 @@ export class Person {
       if (!holding) {
         arm.wrist.quaternion.identity();
         tmp.set(hand[0], hand[1], hand[2]);
+        (this.gripHands[arm.side === 1 ? 0 : 1] ||= [0, 0, 0]).splice(0, 3, tmp.x, tmp.y, tmp.z);
         this.spine.worldToLocal(this.root.localToWorld(tmp));
         solveTwoBone(arm.len1, arm.len2, arm.sh.position, tmp, pole, arm.upper.quaternion, arm.elbow.quaternion);
         continue;
@@ -649,6 +653,7 @@ export class Person {
         _hm.makeBasis(_hx, _hy, _hz);
         _hq.setFromRotationMatrix(_hm);
         tmp.copy(GRIP.point).applyQuaternion(_hq).negate().add(G); // the wrist, so that the fist's grip point is on the bat
+        (this.gripHands[arm.side === 1 ? 0 : 1] ||= [0, 0, 0]).splice(0, 3, tmp.x, tmp.y, tmp.z);
         this.spine.worldToLocal(this.root.localToWorld(tmp));
         solveTwoBone(arm.len1, arm.len2, arm.sh.position, tmp, pole, arm.upper.quaternion, arm.elbow.quaternion);
         arm.elbow.updateWorldMatrix(true, false);
