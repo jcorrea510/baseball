@@ -658,7 +658,10 @@ function planPlayCore(i, cfg) {
   if (bases[0]) { forced.add(1); if (bases[1]) { forced.add(2); if (bases[2]) forced.add(3); } }
 
   const isInfieldPlay = f.type !== 'OF' || Math.hypot(pf.x, pf.z) < 150;
-  const groundBall = pick.ball.y < 2 && (type === 'ground' || sim.bounces > 0 || type === 'line' || type === 'fly');
+  // (a ball that bounced before he got it is a ground ball however high he took it - a chopper taken at the chest is still an out at
+  // first, not a hit)
+  const bouncedFirst = !!sim.firstBounce && sim.firstBounce.t <= tF + 1e-6;
+  const groundBall = bouncedFirst || (pick.ball.y < 2 && (type === 'ground' || sim.bounces > 0 || type === 'line' || type === 'fly'));
 
   // --- Try to record an out on an infield play ---
   const bunt = !!contact.bunt;
