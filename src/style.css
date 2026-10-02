@@ -2,6 +2,8 @@
    A sports-broadcast design system: deep navy plates, hard gold accents, slanted buttons and tiles, condensed italic headings.
    Colours, type, spacing and motion are tokens below; every button, tile, plate and table is built from them. */
 :root {
+  --bug-scale-phone: .7; /* the score box on a phone held sideways (1 = full size) */
+  --bug-scale-portrait: .82; /* ...and held upright */
   color-scheme: dark;
   /* colour */
   --bg0: #060a14;
@@ -691,6 +693,16 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
   .hubgrid { grid-template-columns: 1.6fr 1fr; gap: 8px; } .hubnav { flex-direction: column; gap: 6px; } .navtile { padding: 6px 12px; gap: 10px; } .navtile .ico { width: 34px; height: 34px; } .navtile h4 { font-size: 18px; }
   .picker { grid-template-columns: 1fr 1fr; gap: 8px; } .teamrow { padding: 5px 10px 5px 6px; } .teamrow .nm b { font-size: 18px; } .crest { --s: 34px; } .crest.xl { --s: 56px; } .crest.sm { --s: 24px; } .divtabs button { padding: 6px 2px; }
   .opts { padding: 6px 12px; } .opts .grp { flex-direction: row; align-items: center; }
+}
+/* phones held sideways: the score box is shrunk to about two-thirds and the batting order gives way to the small batter tag - the
+   bottom-left corner stays out of the way of the field */
+@media (max-height: 520px) {
+  .bugwrap { scale: var(--bug-scale-phone); transform-origin: 0 100%; }
+  .lineup { display: none !important; }
+  .hud[data-mode="quick"] .batter-tag { display: block; }
+}
+@media (max-width: 760px) and (orientation: portrait) {
+  .bugwrap { scale: var(--bug-scale-portrait); transform-origin: 50% 100%; }
 }
 @media (max-height: 360px) {
   .lineup { display: none !important; }
