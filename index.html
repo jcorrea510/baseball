@@ -122,7 +122,7 @@
             bar(1);
             var box = $('boot-error'); if (box) box.hidden = true;
             var boot = $('boot');
-            if (boot) { boot.style.opacity = '0'; setTimeout(function () { if (boot.parentNode) boot.parentNode.removeChild(boot); }, 600); }
+            if (boot) { boot.style.opacity = '0'; boot.style.pointerEvents = 'none'; setTimeout(function () { if (boot.parentNode) boot.parentNode.removeChild(boot); }, 600); }
           },
           fail: function (kind, err) {
             if (state.indexOf('failed') === 0 && failKind !== 'timeout') return;
