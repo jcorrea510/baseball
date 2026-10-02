@@ -167,3 +167,26 @@ describe('ball types', () => {
     expect(battedBallType(65)).toBe('pop');
   });
 });
+
+describe('ground-rule double', () => {
+  it('a fair ball that bounces in the field and then goes over the wall is a ground-rule double, not a home run', async () => {
+    const { createDefense, planPlay } = await import('../src/game/fielding.js');
+    const { CONFIG } = await import('../src/config.js');
+    let found = null;
+    for (let sp = -44; sp <= 44 && !found; sp += 4) for (let la = -5; la <= 40 && !found; la += 1) for (let ev = 70; ev <= 120 && !found; ev += 2) {
+      const c = { exitVelocity: ev, launchAngle: la, sprayAngle: sp, backspin: 900 + 55 * Math.max(la, 0), hook: 0 };
+      const s = simulateBattedBall({ ...c, start: { x: 0, y: 2.6, z: -1 } });
+      if (s.groundRule && planPlay({ sim: s, contact: c, bases: [null, null, null], outs: 0, defense: createDefense() }, CONFIG).groundRule) found = { s, c };
+    }
+    expect(found).toBeTruthy(); // (one nobody catches before it bounces)
+    expect(found.s.homerun).toBeNull();
+    expect(found.s.firstBounce.t).toBeLessThan(found.s.groundRule.t);
+    const plan = planPlay({ sim: found.s, contact: found.c, bases: ['a', null, 'c'], outs: 0, defense: createDefense() }, CONFIG);
+    expect(plan.result).toBe('double');
+    expect(plan.groundRule).toBe(true);
+    expect(plan.homer).toBe(false);
+    expect(plan.batterDest).toBe(2);
+    expect(plan.moves.find((m) => m.from === 1).to).toBe(3); // (two bases: first to third, not home)
+    expect(plan.moves.find((m) => m.from === 3).to).toBe(4);
+  });
+});

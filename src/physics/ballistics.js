@@ -48,6 +48,7 @@ export function simulateBattedBall(p, cfg = CONFIG, opts = {}) {
   let bounces = 0;
   let wallHit = null;
   let homerun = null;
+  let groundRule = null; // a fair ball that bounced in the field and then went over the wall: a ground-rule double, not a home run
   let standsLanding = null;
   let cleared = false;
   let apex = { t: 0, y };
@@ -107,7 +108,7 @@ export function simulateBattedBall(p, cfg = CONFIG, opts = {}) {
         if (!cleared && rho >= dW - r * 0.5) {
           if (y > fenceHeightAt(spray)) {
             cleared = true;
-            homerun = { t, x, y, z };
+            if (firstBounce) groundRule = { t, x, y, z }; else homerun = { t, x, y, z };
           } else {
             // Bounce off the padded wall.
             const nx = x / rho, nz = z / rho; // outward normal
@@ -208,6 +209,7 @@ export function simulateBattedBall(p, cfg = CONFIG, opts = {}) {
     bounces,
     wallHit,
     homerun,
+    groundRule,
     standsLanding,
     netHit,
     seatHit,

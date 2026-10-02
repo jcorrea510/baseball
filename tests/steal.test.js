@@ -127,7 +127,7 @@ describe('going with the pitch and the ball is hit', () => {
       const a = play(...c, { bases, running });
       const b = play(...c, { bases });
       problems.push(...auditPlan(a.plan, a.defense));
-      if (!a.plan.fair || a.plan.homer) continue;
+      if (!a.plan.fair || a.plan.homer || a.plan.groundRule) continue; // (a ground-rule double awards two bases to everybody)
       const mA = a.plan.moves.find((m) => m.from === 1), mB = b.plan.moves.find((m) => m.from === 1);
       if (mA && mB && !mA.out && !mB.out && !mA.back && mA.to === mB.to && mA.to > 1) {
         n++;

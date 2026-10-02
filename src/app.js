@@ -631,6 +631,11 @@ export class App {
         audio.dirtThud(0.6);
         if (c && c.plan.result !== 'foul' && !c.homer && (c.big || c.distance > 200)) this.showDistanceCallout(c, false);
         break;
+      case 'groundRule':
+        // it bounced over the wall: two bases for everybody
+        ui.banner('GROUND-RULE DOUBLE', '', 'good');
+        audio.crowdSwell(0.6, 2);
+        break;
       case 'wall':
         this.fx.dustPuff(ev.x, ev.z, 0.6);
         audio.wallThud();

@@ -566,6 +566,40 @@ function planPlayCore(i, cfg) {
     return plan;
   }
 
+  // ---------------- ground-rule double: it bounced in the field and went over the wall ----------------
+  if (sim.groundRule && fair && !sim.homerun) {
+    plan.groundRule = true;
+    plan.result = 'double';
+    plan.batterDest = 2;
+    plan.ballHitEnd = sim.standsLanding ? sim.standsLanding.t : sim.duration;
+    const end = sim.groundRule;
+    let best = null;
+    for (const pos of ['LF', 'CF', 'RF']) { const f = defense[pos]; const d = dist(f.x, f.z, end.x, end.z); if (!best || d < best.d) best = { f, d }; }
+    const [wx, wz] = clampToField(end.x, end.z, F.wallMargin + 2.2);
+    addMove(plan, best.f, wx, wz, Math.max(best.f.react + 0.4, Math.min(end.t, best.f.react + Math.hypot(best.f.x - wx, best.f.z - wz) / best.f.speed)), { watch: true, role: 'watch', minEffort: 0.6 }, cfg);
+    plan.fielder = best.f.pos;
+    // everybody is awarded two bases (from where he was when the ball was hit)
+    let tEnd = end.t;
+    for (let b = 3; b >= 1; b--) {
+      if (!bases[b - 1]) continue;
+      const to = Math.min(4, b + 2);
+      const m = { from: b, to, out: false };
+      if (rs(b) !== undefined) m.tStart = rs(b); // (a runner going with the pitch is already on his way)
+      plan.moves.push(m);
+      tEnd = Math.max(tEnd, arrivalAt(cfg, b, to, m.tStart));
+    }
+    plan.moves.push({ from: 0, to: 2, out: false });
+    tEnd = Math.max(tEnd, arrivalAt(cfg, 0, 2, R.batterStart));
+    plan.endTime = tEnd + 0.8;
+    plan.events.push({ t: end.t, type: 'groundRule', x: end.x, z: end.z });
+    if (!i.simple) {
+      const recs = makeRecords(bases, new Set(), () => [{ kind: 'run', from: 0, to: 0, t0: 0 }], [{ kind: 'run', from: 0, to: 1, t0: 0 }]);
+      plan.send = { from: R.sendFrom, by: end.t, res: end.t + 1, pre: viewOf(recs, cfg), post: null };
+    }
+    plan.notes.push('ground-rule double');
+    return plan;
+  }
+
   // ---------------- fair ball on the ground / bouncing / off the wall ----------------
   const pick = findGroundPickup(sim, defense, cfg);
   const f = pick.f;
