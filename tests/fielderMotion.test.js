@@ -251,7 +251,8 @@ describe('intercept prediction', () => {
       if (plan.homer || t === undefined || !plan.fielder) continue;
       const target = plan.catchPos || plan.pickupPos;
       const p = samplePath(plan.paths[plan.fielder], t);
-      const reach = F.glove + (plan.fielderMoves.some((m) => m.dive) ? F.diveExtra : 0) + 0.35;
+      const own = plan.fielderMoves.find((m) => m.pos === plan.fielder);
+      const reach = (plan.caught ? F.glove : F.groundGlove) + (own && own.dive ? (plan.caught ? F.diveExtra : F.groundDive) : 0) + 0.35;
       expect(Math.hypot(p.x - target.x, p.z - target.z)).toBeLessThanOrEqual(reach);
       checked++;
     }

@@ -414,6 +414,9 @@ export const CONFIG = {
     reaction: { IF: 0.24, OF: 0.42, P: 0.36, C: 0.36 }, // seconds before a fielder reads the ball (outfielders read a ball off the bat a little slower: well-hit balls drop in more often)
     glove: 2.4, // ft: how far a fielder can reach without diving
     diveExtra: 3.0, // extra ft when diving (dive only on low balls)
+    groundGlove: 2.9, // ft: an infielder's reach for a ground ball without diving (he stretches and backhands it)...
+    groundDive: 3.6, // ...and the extra reach of a dive for one
+    attemptMiss: 7, // ft: a ground ball that gets through this close to an infielder still sees him lunge or dive for it
     reachHeight: 8.8, // highest catchable point (ft): a leaping catch
     standReach: 6.2, // ft: how high his glove reaches with both feet on the ground (higher than this he has to jump)
     catchHeight: 5.2, // ft: a fielder who is there in time waits for the ball to come down to about this (chest / head height) before he takes it;
@@ -461,6 +464,7 @@ export const CONFIG = {
       carrySpeed: 24, // ft/s: a fielder taking the ball to the bag himself sprints there...
       carryAccel: 0.24, // ...getting up to speed quickly (s), turning for the bag the moment he has the ball
       maxCarry: 45, // ft: farther from the bag than this he throws to whoever is covering instead of running it over
+      firstMaxCarry: 95, // ft: a first baseman runs it over himself from up to this far away when that is quicker than the pitcher covering
       selfBonus: 0.25, // s: how much a close fielder prefers taking the bag himself over a throw (it is the natural play)
       firstSelfDistance: 42, // ft: a first baseman who fields it this close to first base takes the bag himself (no flip to the pitcher)
       firstSelfBonus: 0.9, // s: and strongly prefers that to a throw - the pitcher only covers when the first baseman is pulled far off the bag
@@ -469,11 +473,12 @@ export const CONFIG = {
     chaseShare: 0.72, // how much of the way to the ball the OTHER outfielder runs on a ball hit to the outfield (he runs at it too)
     thinForce: 0.1, // s: a force play that beats the runner by less than this is 'thin'...
     thinForceGain: 0.25, // s: ...and the fielder takes the batter at first instead when that out is this much safer
-    tagTime: 0.4, // extra time for the catcher to receive a throw and apply the tag at home
-    fastBallPenalty: 0.27, // extra reaction (s) fielders need on the hardest-hit grounders
+    tagTime: 0.15, // extra time for the catcher to receive a throw and apply the tag at home (he blocks the plate: a throw that beats the runner gets him)
+    fastBallPenalty: 0.2, // extra reaction (s) fielders need on the hardest-hit grounders
     closePlay: 0.45, // a runner who beats the throw by less than this many seconds gets a 'Safe!' call
     outMargin: 0.02, // a throw must beat the runner by this many seconds
-    runnerMargin: 0.1, // a runner must beat the throw by this to take an extra base
+    tagUpMargin: 0.1, // s: the man on third tags up and goes home by himself on a fly when he beats the throw by this much
+    runnerMargin: 0.35, // s: a runner takes an extra base by himself only when he beats the throw by this much (no bang-bang plays he did not ask for)
     // Errors (rare): a grounder bobbled, a fly ball dropped. Chance per chance, x difficulty.<level>.errorScale; hard chances (a smash,
     // a dive, a leap) are `hardFactor` times as likely. The ball pops loose `looseDist` ft and he needs `bobbleTime` / `dropTime` to
     // pick it up again - the batter and runners take whatever that delay gives them.
@@ -513,7 +518,7 @@ export const CONFIG = {
     sendAfter: 0.45,
     sendLead: 0.1,
     sendReact: 0.12,
-    sendTag: 0.15, // s for the fielder to catch the throw and put the tag on a runner you sent (he is out if that beats him)
+    sendTag: 0.08, // s for the fielder to catch the throw and put the tag on a runner you sent (a throw that beats him gets him)
     tagLead: 0.1, // s: the tag goes on him this long before he would have touched the bag (he slides into the glove)
     outLinger: 2.3, // s the play goes on after a runner is tagged out, so you see the tag and see him walk off
     walkOffDelay: 1.3, // s after the tag before he gets up and walks to the dugout
@@ -532,9 +537,9 @@ export const CONFIG = {
     tagDepth: 320,
     tagBack: 0.12,
     downReact: 0.15,
-    tagReact: 0.05, // s after the catch a runner tagging up leaves the bag (he times it)...
+    tagReact: 0.02, // s after the catch a runner tagging up leaves the bag (he times it)...
     turnKeep: 0.9, // radians: told to go somewhere nearly the way he is already running, he carries on; anything more and he pulls up and turns
-    tagRoll: 12, // ...with a rocking start: he is already moving at this many ft/s as he leaves
+    tagRoll: 19, // ...with a rocking start: he is already moving at this many ft/s as he leaves
     tagWindow: 1.2, // s after a catch you can still send a runner to tag up
     leadSecond: 18, // ft: the lead off second base (nobody holds him on there, so he takes a much bigger one)
     // Rounding a base he keeps running through: he drifts out from the baseline over `turnLen` ft, goes round an arc of radius

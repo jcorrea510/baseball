@@ -140,8 +140,8 @@ function findGroundPickup(sim, defense, cfg) {
   // The harder a ball is hit, the less time fielders have to react and the shorter their dive reach.
   const fast = Math.max(0, Math.min(1, (sim.params.exitVelocity - 68) / 34));
   const react = F.fastBallPenalty * fast;
-  const glove = F.glove * (1 - 0.12 * fast);
-  const diveX = F.diveExtra * (1 - 0.85 * fast);
+  const glove = F.groundGlove * (1 - 0.12 * fast);
+  const diveX = F.groundDive * (1 - 0.75 * fast);
   const candidate = (t) => {
     const b = sampleBall(sim, t);
     if (b.y > F.groundHeight) return null;
@@ -189,6 +189,25 @@ function findGroundPickup(sim, defense, cfg) {
   }
   const t = Math.max(fallback ?? tEnd, best.arrive);
   return { t, ...best, ball: { ...b } };
+}
+
+// A ground ball that gets through the infield: the infielder who came closest goes for it anyway - a lunge, or a dive if it was
+// close - so a ball that skips past him looks like a hit, not like a man watching an easy out go by. (Picture only.)
+function infieldAttempt(plan, sim, defense, cfg) {
+  const F = cfg.fielding;
+  let best = null;
+  for (const pos of INFIELDERS) {
+    const q = defense[pos];
+    for (let t = Math.max(0.2, sim.contactTime); t < 2.6; t += 0.03) {
+      const b = sampleBall(sim, t);
+      if (b.y > F.groundHeight) continue;
+      const need = dist(q.x, q.z, b.x, b.z) - F.groundGlove;
+      const can = covered(q.speed, Math.max(0, t - q.react - F.fastBallPenalty * 0.5), F.accel);
+      if (!best || need - can < best.miss) best = { q, t, b, miss: need - can, can };
+    }
+  }
+  if (!best || best.miss > F.attemptMiss) return;
+  addMove(plan, best.q, best.b.x, best.b.z, best.t, { role: 'attempt', dive: best.miss > 0.5 && best.b.y < 2.5, avail: Math.max(0.5, best.can), minEffort: 1 }, cfg);
 }
 
 // ---------------------------------------------------------------------------
@@ -383,7 +402,7 @@ function coverOptions(o, plan, defense, cfg) {
     // a first baseman who has the ball near his bag runs over and steps on it (flipping to the pitcher is for balls he cannot run down)
     const first = thrower.pos === '1B' && base === 1;
     const closeEnough = d <= (first ? F.cover.firstSelfDistance : F.cover.selfDistance);
-    if (d <= F.cover.maxCarry) out.push({ recv: thrower, self: true, cut: !!cut, tagged: tag > 0, tOut, t1: tOut, t0: start, tCover: tOut, coverStart: start, speed: carry, score: tOut - (closeEnough ? (first ? F.cover.firstSelfBonus : F.cover.selfBonus) : 0) });
+    if (d <= (first ? F.cover.firstMaxCarry : F.cover.maxCarry)) out.push({ recv: thrower, self: true, cut: !!cut, tagged: tag > 0, tOut, t1: tOut, t0: start, tCover: tOut, coverStart: start, speed: carry, score: tOut - (closeEnough ? (first ? F.cover.firstSelfBonus : F.cover.selfBonus) : 0) });
   }
   const runnerT = o.runnerT ?? Infinity;
   return out.filter((c) => c.tOut + F.outMargin <= runnerT).sort((a, b) => a.score - b.score);
@@ -539,6 +558,7 @@ function planPlayCore(i, cfg) {
   // the wall - and the target is kept in front of the wall, so he plays the carom, never the wall itself.)
   addMove(plan, f, pf.x, pf.z, tF, { dive: pick.dive, avail: pick.avail, start: pick.start, role: 'field' }, cfg);
   plan.ctx = { kind: 'ground', x: pf.x, z: pf.z, t: tF };
+  if (f.type === 'OF' && fair) infieldAttempt(plan, sim, defense, cfg);
   plan.downT = Math.min(sim.firstBounce ? sim.firstBounce.t : Infinity, sim.wallHit ? sim.wallHit.t : Infinity, tF); // (the ball is down)
   if (AIR[type]) plan.airRes = plan.downT; // (until then the runners do what they do on any ball in the air)
   plan.events.push({ t: tF, type: 'field', pos: f.pos, dive: !!plan.fielderMoves[0].dive });
@@ -888,9 +908,9 @@ function caughtRunners(plan, i, f, air, type, bases, outs, defense, cfg) {
     };
     // (a runner you told not to tag up stays; one you told to tag up goes whatever happens - below)
     const r3 = runners.find((r) => r.from === 3 && !r.wasSent && r.tag === undefined);
-    if (r3 && depthLand > 170) auto(r3, 4, F.runnerMargin);
+    if (r3 && depthLand > 170) auto(r3, 4, F.tagUpMargin);
     const r2 = runners.find((r) => r.from === 2 && !r.wasSent && r.tag === undefined);
-    if (r2 && depthLand > R.tagDepth && !(runners.some((r) => r.from === 3 && r.to === 3))) auto(r2, 3, F.runnerMargin + 0.25);
+    if (r2 && depthLand > R.tagDepth && !(runners.some((r) => r.from === 3 && r.to === 3))) auto(r2, 3, F.tagUpMargin + 0.25);
     void home;
   }
   // runners you told to tag up: off they go as it is caught (once they are back on the bag), the lead runner first
