@@ -168,22 +168,22 @@ export class AudioEngine {
     this.lastCrack = t;
     const q = Math.max(0, Math.min(1, quality));
     const punch = Math.max(0.35, Math.min(1.3, (ev - 40) / 60));
-    // sharp wooden snap
-    this.noise(t, 0.05 + 0.03 * q, { type: 'bandpass', freq: 2200 + 2600 * q, q: 0.9, gain: 1.0 * punch, attack: 0.001, sendReverb: 0.5 });
-    this.noise(t, 0.09, { type: 'highpass', freq: 3800 + 3000 * q, q: 0.7, gain: 0.5 * q * punch, attack: 0.001 });
-    // "tock" body
-    this.tone(t, 0.16 + 0.1 * q, { type: 'sine', freq: 210 + 60 * q, freqEnd: 70, gain: 0.85 * punch, attack: 0.002 });
-    // bat ring
-    this.tone(t, 0.12, { type: 'triangle', freq: 1500 + 900 * q, freqEnd: 900, gain: 0.35 * q + 0.08, attack: 0.001, sendReverb: 0.3 });
-    this.noise(t, 0.22, { type: 'bandpass', freq: 620, q: 14, gain: 0.25 * punch, attack: 0.001 });
+    // the crack: a hard, very short click (the ball meeting the wood), then the bright snap of the barrel - high-pitched and
+    // short, not a boom (the body tone is kept small and quick)
+    this.noise(t, 0.012, { type: 'highpass', freq: 4200 + 1800 * q, q: 0.7, gain: 1.15 * punch, attack: 0.0005, sendReverb: 0.35 });
+    this.noise(t, 0.045 + 0.025 * q, { type: 'bandpass', freq: 2600 + 1400 * q, q: 1.3, gain: 1.05 * punch, attack: 0.0008, sendReverb: 0.6 });
+    this.tone(t, 0.05 + 0.03 * q, { type: 'triangle', freq: 1150 + 450 * q, freqEnd: 820, gain: (0.32 + 0.3 * q) * punch, attack: 0.0008, sendReverb: 0.45 });
+    this.tone(t, 0.035, { type: 'square', freq: 2300 + 700 * q, freqEnd: 1600, gain: 0.07 + 0.08 * q, attack: 0.0005 });
+    // a little wood behind it
+    this.tone(t, 0.07, { type: 'sine', freq: 420 + 80 * q, freqEnd: 240, gain: 0.3 * punch, attack: 0.001 });
     if (q > 0.8) {
-      // perfect contact: extra low boom and a bright ping
-      this.tone(t, 0.42, { type: 'sine', freq: 82, freqEnd: 46, gain: 0.7, attack: 0.003, sendReverb: 0.4 });
-      this.tone(t + 0.004, 0.2, { type: 'sine', freq: 3300, freqEnd: 2400, gain: 0.16, attack: 0.001, sendReverb: 0.5 });
+      // flush: a louder, cleaner crack that rings out round the stadium
+      this.noise(t + 0.002, 0.11, { type: 'bandpass', freq: 3400, q: 2.2, gain: 0.45 * punch, attack: 0.001, sendReverb: 0.9 });
+      this.tone(t + 0.003, 0.14, { type: 'sine', freq: 3000, freqEnd: 2300, gain: 0.12, attack: 0.001, sendReverb: 0.6 });
     }
     if (q < 0.35) {
-      // weak: dull thud / tink
-      this.noise(t, 0.12, { type: 'lowpass', freq: 500, q: 0.7, gain: 0.5, attack: 0.002 });
+      // weak: off the end or the handle - a duller knock
+      this.noise(t, 0.09, { type: 'bandpass', freq: 900, q: 1.2, gain: 0.45, attack: 0.002 });
     }
   }
   // Late/early "foul tip" tick
@@ -288,14 +288,14 @@ export class AudioEngine {
   }
 
   // level 0..1: how big the reaction is.
-  crowdSwell(level = 0.5, seconds = 2.4) {
+  crowdSwell(level = 0.5, seconds = 2.4, delay = 0) {
     if (!this.ok || !this.ambience) return;
-    const c = this.ctx, t = c.currentTime, a = this.ambience;
+    const c = this.ctx, now = c.currentTime, t = now + delay, a = this.ambience; // (`delay`: the crowd needs a moment to see where it is going)
     const peak = 0.09 + level * 0.32;
-    a.g.gain.cancelScheduledValues(t);
+    a.g.gain.cancelScheduledValues(now);
+    a.g2.gain.cancelScheduledValues(now);
     a.g.gain.setTargetAtTime(peak, t, 0.18);
     a.g.gain.setTargetAtTime(0.085, t + seconds * 0.5, seconds * 0.35);
-    a.g2.gain.cancelScheduledValues(t);
     a.g2.gain.setTargetAtTime(level * 0.28, t, 0.25);
     a.g2.gain.setTargetAtTime(0.0, t + seconds * 0.55, seconds * 0.3);
     a.bp.frequency.cancelScheduledValues(t);

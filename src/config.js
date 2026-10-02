@@ -615,6 +615,7 @@ export const CONFIG = {
   //  Sound
   // --------------------------------------------------------------------------
   audio: {
+    crowdReact: 0.35, // s after the crack of the bat before the crowd reacts to a big hit (they need a moment to see where it is going)
     // The mix: how loud each channel is at 100% on its slider (Settings has master, effects, umpire and crowd sliders).
     mix: {
       sfx: 1.0, // bat, glove, throws, thuds

@@ -590,8 +590,8 @@ export class App {
     else if (c.plan.result === 'foul') { audio.tick(); }
     if (c.homer) { this.slowMo = { t: 0, dur: F.slowMoDuration, delay: this.hitStop + 0.02 }; }
     if (e.mode === 'practice') ui.callout([{ v: Math.round(c.exitVelocity), u: 'mph', l: 'Exit velo' }, { v: Math.round(c.launchAngle), u: '°', l: 'Launch' }], 2400);
-    // The follow-through swoosh already played; a big hit swells the crowd a little right away
-    if (c.big) this.audio.crowdSwell(0.35, 2);
+    // The follow-through swoosh already played; a big hit swells the crowd - a beat after the crack, once they see it fly
+    if (c.big) this.audio.crowdSwell(0.35, 2, CONFIG.audio.crowdReact);
     this.lastContact = c;
   }
 
