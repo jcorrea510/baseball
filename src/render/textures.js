@@ -206,11 +206,40 @@ export function infieldTexture(dirtHex = '#a9714a') {
 
 // Outfield wall texture: padded green panels, distance numbers, fictional sponsor boards.
 // markers: [{ s: arc-length position in ft, text: '390' }]
-export function wallTexture(lengthFt, heightFt, markers = [], color = '#0f3d24') {
+export function wallTexture(lengthFt, heightFt, markers = [], color = '#0f3d24', style = null) {
   const w = 4096, h = 256;
   const { canvas, ctx } = makeCanvas(w, h);
   const sx = w / lengthFt, sy = h / heightFt;
   ctx.fillStyle = color; ctx.fillRect(0, 0, w, h);
+  if (style === 'ivy' || style === 'brick') {
+    // Wrigley's ivy over brick (no signs on it), or a plain brick wall
+    for (let y = 0; y < h; y += 8) for (let x = (y / 8) % 2 ? -10 : 0; x < w; x += 20) {
+      const v = Math.random() * 0.2;
+      ctx.fillStyle = `rgb(${Math.round(120 - v * 150)},${Math.round(58 - v * 60)},${Math.round(42 - v * 45)})`;
+      ctx.fillRect(x + 1, y + 1, 18, 6);
+    }
+    if (style === 'ivy') {
+      for (let i = 0; i < 26000; i++) {
+        const x = Math.random() * w, y = Math.random() * h * 1.05 - 6, r = 3 + Math.random() * 6, v = Math.random();
+        ctx.fillStyle = `rgb(${Math.round(22 + v * 40)},${Math.round(70 + v * 70)},${Math.round(22 + v * 30)})`;
+        ctx.beginPath(); ctx.ellipse(x, y, r, r * 0.7, Math.random() * Math.PI, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    for (const m of markers) {
+      ctx.save();
+      ctx.translate(m.s * sx, 0.42 * h);
+      ctx.scale(sx / sy, 1);
+      ctx.fillStyle = style === 'ivy' ? '#f4f4f0' : '#f2e6c4';
+      ctx.font = `900 ${Math.round(3.2 * sy)}px "Arial Black", Impact, system-ui, sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(m.text, 0, 0);
+      ctx.restore();
+    }
+    const g = ctx.createLinearGradient(0, h * 0.8, 0, h);
+    g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,0.4)');
+    ctx.fillStyle = g; ctx.fillRect(0, h * 0.8, w, h * 0.2);
+    return toTexture(canvas, { anisotropy: 8 });
+  }
   // padded panels (a touch lighter and darker than the wall colour)
   const shade = (k) => { const n = parseInt(color.slice(1), 16); const f = (v) => Math.max(0, Math.min(255, Math.round(v * k))).toString(16).padStart(2, '0'); return '#' + f((n >> 16) & 255) + f((n >> 8) & 255) + f(n & 255); };
   const panelA = shade(1.14), panelB = shade(0.92);

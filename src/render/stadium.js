@@ -7,6 +7,7 @@ import { buildPerimeter, ribbonGeometry, groundStripGeometry } from './perimeter
 import { grassTexture, dirtTexture, infieldTexture, wallTexture, seatTexture, softDotTexture, makeCanvas, toTexture } from './textures.js';
 import { createScoreboard } from './scoreboard.js';
 import { createCrowd } from './crowd.js';
+import { buildParkLook, MOW } from './parkLook.js';
 
 const F = CONFIG.field;
 
@@ -18,12 +19,19 @@ float aaStripe(float x, float width) {
   float aa = fwidth(x) * 2.0 + 1e-4;
   return smoothstep(0.5 - aa, 0.5 + aa, tri);
 }
+uniform float uMow;
 float grassPattern(vec3 p) {
+  // the outfield's mowing pattern (the park's own: stripes, a checkerboard, diamonds, waves from home, or plain turf)
   float band = aaStripe(p.x / 26.0, 0.5);
   vec2 r = vec2(p.x + p.z, p.x - p.z) * 0.70710678 / 15.0;
   float chk = abs(aaStripe(r.x * 0.5, 0.5) - aaStripe(r.y * 0.5, 0.5));
+  float of = band;
+  if (uMow > 0.5 && uMow < 1.5) of = abs(aaStripe(p.x / 30.0, 0.5) - aaStripe(p.z / 30.0, 0.5));
+  else if (uMow > 1.5 && uMow < 2.5) { vec2 q = vec2(p.x + p.z, p.x - p.z) * 0.70710678 / 34.0; of = abs(aaStripe(q.x, 0.5) - aaStripe(q.y, 0.5)); }
+  else if (uMow > 2.5 && uMow < 3.5) of = aaStripe(length(p.xz) / 24.0, 0.5);
+  else if (uMow > 3.5) of = 0.5 + 0.3 * (aaStripe(p.z / 15.0, 0.5) - 0.5);
   float infield = 1.0 - smoothstep(88.0, 98.0, length(vec2(p.x, p.z + 60.5)));
-  float pat = mix(band, chk, infield);
+  float pat = mix(of, uMow > 3.5 ? of : chk, infield);
   float blot = sin(p.x * 0.031 + 1.3) * sin(p.z * 0.027) * 0.035;
   return 1.0 + (pat - 0.5) * 0.30 + blot;
 }`;
@@ -33,15 +41,18 @@ export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {
   root.name = 'stadium';
   const perimeter = buildPerimeter();
   const ofPts = perimeter.filter((p) => p.kind === 'of');
-  const updaters = [];
+  const park = currentPark();
+  const look = (CONFIG.parks.looks || {})[park.id] || {};
 
   // ---------------------------------------------------------------- ground
-  const grassMat = new THREE.MeshStandardMaterial({ map: grassTexture(512), roughness: 0.96, metalness: 0 });
+  const grassMat = new THREE.MeshStandardMaterial({ map: grassTexture(512), roughness: 0.96, metalness: 0, color: new THREE.Color(look.grass || '#ffffff') });
+  if (look.grass) grassMat.color.multiplyScalar(1 / Math.max(grassMat.color.r, grassMat.color.g, grassMat.color.b)); // (a tint, not a darkening)
   grassMat.map.repeat.set(2600 / 7, 2600 / 7);
   grassMat.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;')
       .replace('#include <project_vertex>', '#include <project_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    shader.uniforms.uMow = { value: MOW[look.mow] ?? 0 };
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\n' + STRIPE_GLSL)
       .replace('#include <map_fragment>', '#include <map_fragment>\ndiffuseColor.rgb *= grassPattern(vWPos);');
@@ -53,7 +64,7 @@ export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {
   root.add(ground);
 
   // Infield dirt (painted, soft edged)
-  const { texture: infieldTex, bounds } = infieldTexture('#a86f47');
+  const { texture: infieldTex, bounds } = infieldTexture(look.dirt || '#a86f47');
   const infield = new THREE.Mesh(
     new THREE.PlaneGeometry(bounds.x1 - bounds.x0, bounds.z1 - bounds.z0),
     new THREE.MeshStandardMaterial({ map: infieldTex, transparent: true, roughness: 1, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })
@@ -79,7 +90,7 @@ export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {
   root.add(infield);
 
   // Warning track + foul-territory dirt along the wall
-  const trackTex = dirtTexture('#96603f', 512, 9);
+  const trackTex = dirtTexture(look.dirt ? '#' + new THREE.Color(look.dirt).multiplyScalar(0.88).getHexString() : '#96603f', 512, 9);
   const trackMat = new THREE.MeshStandardMaterial({ map: trackTex, roughness: 1, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
   const track = new THREE.Mesh(
     groundStripGeometry(perimeter, { inner: 0.3, outer: (p) => (p.kind === 'of' ? F.warningTrack : 11), y: 0.02, uPerFt: 1 / 12 }),
@@ -209,10 +220,9 @@ export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {
   });
   // (the padded wall with its signs is as high as the lowest stretch of wall; where the park's wall is taller - a Green Monster -
   // it goes on up in the park's wall colour)
-  const park = currentPark();
   const wallColor = park.wall || '#0f3d24';
   const baseH = Math.min(...ofPts.map((p) => p.h0));
-  const wTex = wallTexture(ofLen, baseH, markers, wallColor);
+  const wTex = wallTexture(ofLen, baseH, markers, wallColor, look.wallStyle);
   const wallOfPts = ofPts.map((p) => ({ ...p, s: p.s - ofPts[0].s }));
   const wall = new THREE.Mesh(
     ribbonGeometry(wallOfPts, { y0: 0, y1: baseH, uPerFt: 1 / ofLen, vScale: 1 }),
@@ -243,6 +253,7 @@ export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {
 
   // ---------------------------------------------------------------- stands
   const S = F.stands;
+  let seatHex = () => '#3367a6';
   const rd = 2.5;
   const rows = Math.floor(S.depth / rd);
   const rr = rd * S.slope;
@@ -262,14 +273,17 @@ export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {
     const idx = [];
     const c = new THREE.Color();
     // seats: blue at Sandlot Park; in a club's park they take a shade of the club's colour
+    // (the park's own seat colour; else a shade of the club's colour; blue at Sandlot Park. A list: bands from the bottom up.)
     const club = MLB_TEAMS.find((t) => t.id === park.id);
-    const tint = (k) => (club ? '#' + new THREE.Color('#5a6270').lerp(new THREE.Color(club.color), 0.62).multiplyScalar(k).getHexString() : null);
-    const seatColor = club ? { of: tint(0.95), foul: tint(1.05), back: tint(0.85) } : { of: '#2f5f9f', foul: '#3a6fb0', back: '#284a7c' };
+    const base = look.seats ? (Array.isArray(look.seats) ? look.seats : [look.seats]) : [club ? '#' + new THREE.Color('#5a6270').lerp(new THREE.Color(club.color), 0.62).getHexString() : '#3367a6'];
+    const kindShade = { of: 0.95, foul: 1.05, back: 0.88 };
+    const purpleRow = (look.features || []).includes('purpleRow') ? Math.floor(rows * 0.62) : -1;
+    seatHex = (t) => base[Math.min(base.length - 1, Math.floor(Math.max(0, t) * base.length))];
     for (let i = 0; i < n; i++) {
       const p = perimeter[i];
-      c.set(seatColor[p.kind]);
       for (let k = 0; k < K; k++) {
         const q = prof[k];
+        c.set(q.row === purpleRow ? '#5b2c83' : seatHex(q.row / rows)).multiplyScalar(kindShade[p.kind]);
         const j = i * K + k;
         pos[j * 3] = p.x + p.nx * q.d;
         pos[j * 3 + 1] = p.h0 + q.h;
@@ -294,7 +308,7 @@ export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {
     root.add(stands);
 
     // back facade + roof lip
-    const facadeMat = new THREE.MeshStandardMaterial({ color: 0x272e3a, roughness: 0.9, side: THREE.DoubleSide });
+    const facadeMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(look.facade || '#272e3a'), roughness: 0.9, side: THREE.DoubleSide });
     const facade = new THREE.Mesh(ribbonGeometry(perimeter, { offset: rows * rd + 0.3, y0: (p) => p.h0 + rows * rr, y1: (p) => p.h0 + rows * rr + 9, uPerFt: 0.05 }), facadeMat);
     root.add(facade);
     const roofMat = new THREE.MeshStandardMaterial({ color: 0x1b212b, roughness: 0.9, side: THREE.DoubleSide });
@@ -489,6 +503,9 @@ export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {
     }
   }
 
+  // ---------------------------------------------------------------- the park's own look: decks, roof, backdrop, landmarks
+  const parkLook = buildParkLook(root, { perimeter, ofPts, standsDepth: rows * rd, standsRise: rows * rr, look, parkId: park.id, isMobile, seatHex });
+
   // ---------------------------------------------------------------- crowd
   const crowd = createCrowd(perimeter, { count: crowdCount });
   root.add(crowd.mesh);
@@ -506,6 +523,7 @@ export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {
       for (const m of glowMats) m.opacity = lamps * 0.75;
       crowd.update(dt, time, env ? env.crowdBrightness : 1, env ? env.glass : 0);
       scoreboard.update(dt);
+      parkLook.update(dt, time, env);
       scoreboard.setBrightness(env && env.lamps > 0.5 ? 1 : 0.9);
     },
   };

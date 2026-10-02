@@ -82,6 +82,46 @@ export const CONFIG = {
       sd: { name: 'Petco Park', fence: [334, 357, 396, 382, 322], walls: [8, 8, 8, 8, 8], wall: '#12283f' },
       sf: { name: 'Oracle Park', fence: [339, 364, 399, 415, 309], walls: [8, 8, 8, 20, 25], wall: '#18291f', air: 1.08 },
     },
+    // How each park LOOKS (only the picture - the field above is what plays). Every key is optional:
+    //   seats: seat colour (or a list from the bottom rows up: Dodger Stadium's pastel levels); facade: the colour of the back of
+    //   the stands; decks: extra upper decks round the infield (0-2); frieze: a white frieze along the roof (Yankee Stadium);
+    //   roof: 'dome' (closed) or 'open' (a retractable roof stacked open beyond the outfield); backdrop: what you see beyond the
+    //   outfield ('skyline', 'mountains', 'snowpeaks', 'desert', 'hills', 'trees', 'water' - a list for several); wallStyle:
+    //   'ivy' or 'brick' (else padded in the wall colour); mow: the grass pattern ('stripes', 'checker', 'diamond', 'waves',
+    //   'turf'); grass / dirt: tints; features: the park's landmarks (built in render/parkLook.js).
+    looks: {
+      sandlot: { backdrop: ['trees'], mow: 'stripes' },
+      bal: { seats: '#1f5a36', facade: '#6e3a2a', backdrop: ['skyline'], features: ['warehouse'], mow: 'stripes' },
+      bos: { seats: '#26553a', facade: '#2a3a30', backdrop: ['skyline'], features: ['citgo'], mow: 'checker', decks: 0 },
+      nyy: { seats: '#1c3770', facade: '#c9ccd0', decks: 2, frieze: true, backdrop: ['skyline'], mow: 'stripes' },
+      tb: { seats: '#1d3d70', roof: 'dome', features: ['catwalks'], mow: 'turf', grass: '#3f8f4a' },
+      tor: { seats: '#1f4b8f', roof: 'open', backdrop: ['skyline'], features: ['cntower'], mow: 'turf', grass: '#3c8a4c' },
+      cws: { seats: '#2b2e35', facade: '#17191d', decks: 1, backdrop: ['skyline'], mow: 'diamond' },
+      cle: { seats: '#1f3a5f', decks: 1, backdrop: ['skyline'], mow: 'stripes' },
+      det: { seats: '#1f4b39', backdrop: ['skyline'], features: ['fountain'], mow: 'checker' },
+      kc: { seats: '#1d4c8c', backdrop: ['hills'], features: ['fountains', 'crown'], mow: 'diamond' },
+      min: { seats: '#22314c', facade: '#b5a888', backdrop: ['skyline'], mow: 'stripes' },
+      hou: { seats: '#1b2d50', roof: 'dome', features: ['train'], mow: 'stripes' },
+      laa: { seats: '#7c1f2c', backdrop: ['mountains'], features: ['rocks', 'bigA'], mow: 'checker' },
+      ath: { seats: '#2a5a3c', decks: 0, backdrop: ['trees', 'hills'], features: ['berm'], mow: 'stripes' },
+      sea: { seats: '#1e405f', roof: 'open', backdrop: ['skyline', 'water'], mow: 'waves' },
+      tex: { seats: '#1d3b6e', roof: 'dome', mow: 'stripes' },
+      atl: { seats: '#1d2f56', decks: 1, backdrop: ['skyline', 'trees'], mow: 'diamond' },
+      mia: { seats: '#14708f', roof: 'dome', features: ['palms'], mow: 'stripes', grass: '#4f9a4f' },
+      nym: { seats: '#1f4a3a', facade: '#6c3427', decks: 1, backdrop: ['skyline'], features: ['apple'], mow: 'checker' },
+      phi: { seats: '#1f3a6e', backdrop: ['skyline'], features: ['bell'], mow: 'stripes' },
+      wsh: { seats: '#1f305c', backdrop: ['skyline'], features: ['capitol'], mow: 'waves' },
+      chc: { seats: '#1f5234', facade: '#264530', wallStyle: 'ivy', decks: 0, features: ['rooftops'], mow: 'stripes' },
+      cin: { seats: '#a3222b', backdrop: ['hills', 'water'], features: ['smokestacks'], mow: 'checker' },
+      mil: { seats: '#1d3a67', roof: 'dome', mow: 'diamond' },
+      pit: { seats: '#1d2e4b', facade: '#5b3a2a', backdrop: ['skyline', 'water'], features: ['bridge'], mow: 'checker' },
+      stl: { seats: '#a3272c', facade: '#6b3527', decks: 1, backdrop: ['skyline'], features: ['arch'], mow: 'diamond' },
+      ari: { seats: '#1f5250', roof: 'open', backdrop: ['desert'], features: ['pool'], mow: 'stripes' },
+      col: { seats: '#255a3b', decks: 1, backdrop: ['snowpeaks'], features: ['pines', 'purpleRow'], mow: 'stripes' },
+      lad: { seats: ['#f2d36b', '#e8a04f', '#7fc6d6', '#3f7fc4'], decks: 2, backdrop: ['hills'], features: ['palms', 'pavilions'], mow: 'checker' },
+      sd: { seats: '#1d3653', backdrop: ['skyline'], features: ['westernMetal', 'palms'], mow: 'stripes', dirt: '#b98a5c' },
+      sf: { seats: '#1f4a38', facade: '#6e3a2a', backdrop: ['water'], features: ['cove', 'bottle'], mow: 'checker' },
+    },
   },
 
   // --------------------------------------------------------------------------
