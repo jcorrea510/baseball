@@ -73,7 +73,10 @@ function launch() {
 async function open(browser, url, { noWebGL = false } = {}) {
   const page = await browser.newPage({ viewport: { width: 1000, height: 560 } });
   const problems = [];
-  page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') problems.push(`${m.type()}: ${m.text()}`); });
+  // (a graphics driver's own performance notice - "GL Driver Message (OpenGL, Performance, ...): GPU stall due to ReadPixels", logged
+  // by Chrome on a Mac with a real graphics chip - is not a problem with the game; every other warning or error is)
+  const driverNote = (t) => /GL Driver Message \([^)]*\bPerformance\b/.test(t);
+  page.on('console', (m) => { if ((m.type() === 'error' || m.type() === 'warning') && !driverNote(m.text())) problems.push(`${m.type()}: ${m.text()}`); });
   page.on('pageerror', (e) => problems.push(`uncaught: ${e.message}`));
   page.on('response', (r) => { if (r.status() >= 400) problems.push(`HTTP ${r.status()}: ${r.url()}`); });
   if (noWebGL) {
