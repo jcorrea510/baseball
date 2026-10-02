@@ -9,7 +9,7 @@ import { simulateBattedBall, projectDistance } from '../physics/ballistics.js';
 import { resolveSwingTimes, describeError } from './timing.js';
 import { computeSwing, computeBunt, derbyBatting, contactWindow, contactPoint, scaleWindow } from './contact.js';
 import { choosePitch, pitchWindowScale } from './pitcherAI.js';
-import { createDefense, alignDefense, planPlay, sendOptions, runnerOptions, planSteal, fielderBackTime } from './fielding.js';
+import { createDefense, alignDefense, planPlay, sendOptions, runnerOptions, planSteal, planWildPitch, fielderBackTime } from './fielding.js';
 import * as rules from './rules.js';
 import { simulateHalf } from './aiHalf.js';
 import { makeLineup, makePitcher, PLAYER_TEAM } from './teams.js';
@@ -410,9 +410,46 @@ export class Engine {
     }
     if (!pitch.caught && this.time >= pitch.tCatch) {
       pitch.caught = true;
-      this.emit('catch', { pitch, swung: !!s });
+      pitch.wild = this.rollWildPitch(); // (one in the dirt may get past him)
+      if (!pitch.wild) this.emit('catch', { pitch, swung: !!s });
       this.resolvePitchNoContact();
     }
+  }
+
+  // A pitch in the dirt (or way wide) with runners on now and then gets past the catcher: a wild pitch (the plan, or null). Only on a
+  // pitch that cannot end the at-bat, and not while runners are stealing (that play has its own throw).
+  rollWildPitch() {
+    const W = this.cfg.wildPitch, pitch = this.pitch, g = this.diamond;
+    if (!g || this.steal || !g.bases.some(Boolean) || this.mode === 'derby') return null;
+    if (!(pitch.target.y < W.lowY || Math.abs(pitch.target.x) > W.wideX)) return null;
+    if (this.game) {
+      const swung = !!this.swing;
+      if (swung || pitch.isStrike ? g.strikes >= 2 : g.balls >= 3) return null; // (strike three or ball four: the at-bat is over)
+    }
+    const p = W.chance[this.difficulty] ?? 0.1;
+    const roll = this.rng.next();
+    if (roll >= p) return null;
+    return planWildPitch({ bases: g.bases, defense: this.defense, roll: roll / p, speeds: this.runnerSpeeds() }, this.cfg);
+  }
+  startWildPitchPlay(res) {
+    const pitch = this.pitch, plan = pitch.wild;
+    this.play = {
+      t0: pitch.tCatch, sim: NO_FLIGHT, plan, contact: { exitVelocity: 0, launchAngle: 0, sprayAngle: 0, grade: 'wildPitch', wildPitch: true }, pitch,
+      distance: 0, projected: { distance: 0, hangTime: 0 }, start: null, wild: { res },
+      events: buildEventList(NO_FLIGHT, plan), nextEvent: 0, prevT: 0, landedReported: false,
+    };
+    this.setPhase('play');
+    this.emit('stealPlay', { plan, bases: [] });
+  }
+  finishWildPitch(p) {
+    const g = this.diamond, res = p.wild.res;
+    const moves = p.plan.moves.filter((m) => m.to > m.from).map((m) => ({ from: m.from, to: m.to }));
+    const r = rules.applyAdvance(g, moves);
+    if (this.pgame) { this.stats.runs += r.runs; this.emit('practice', this.practiceState()); }
+    this.emitCount();
+    this.emit('result', { kind: 'steal', result: 'wildPitch', text: rules.RESULT_TEXT.wildPitch, outs: g.outs, halfOver: false, runs: r.runs, walkOff: r.walkOff, plan: p.plan });
+    this.finishPitch(this.cfg.pace.playEndPause + (r.runs ? 0.35 : 0), !!g.over && !this.pgame, res.paEnded, res.paEnded ? res.result : 'wildPitch');
+    if (g.over && !this.pgame) this.pendingNext = 'half';
   }
 
   // ------------------------------------------------------------------ pitch results without contact
@@ -427,6 +464,7 @@ export class Engine {
       const call = swung ? 'swingingStrike' : pitch.isStrike ? 'calledStrike' : 'ball';
       this.emit('pitchCall', { ...info, call });
       this.emit('result', { kind: 'pitch', call, text: swung ? 'SWING & MISS' : (pitch.isStrike ? 'STRIKE' : 'BALL'), ...info });
+      if (pitch.wild) return this.startWildPitchPlay({ paEnded: false, halfOver: false, result: call });
       if (this.steal) return this.startStealPlay({ paEnded: false, halfOver: false, result: call });
       this.finishPitch(this.cfg.pace.callDisplay);
       return;
@@ -466,6 +504,7 @@ export class Engine {
       this.finishPitch(this.cfg.pace.callDisplay + 0.45, res.halfOver, true, res.result);
     } else {
       this.emit('result', { kind: 'pitch', call, text: rules.RESULT_TEXT[res.result], ...info });
+      if (pitch.wild) return this.startWildPitchPlay(res);
       if (stealPlay) return this.startStealPlay(res);
       this.finishPitch(this.cfg.pace.callDisplay);
     }
@@ -685,6 +724,11 @@ export class Engine {
     const p = this.play;
     const plan = p.plan;
     const c = p.contact;
+    if (p.wild) {
+      const back = Math.max(fielderBackTime(plan, 'P', this.defense, this.cfg, this.time - p.t0), fielderBackTime(plan, 'C', this.defense, this.cfg, this.time - p.t0));
+      this.fieldersSetAt = back > 0 ? p.t0 + back + this.cfg.pace.pitcherSet : 0;
+      return this.finishWildPitch(p);
+    }
     if (p.steal) {
       const back = Math.max(fielderBackTime(plan, 'P', this.defense, this.cfg, this.time - p.t0), fielderBackTime(plan, 'C', this.defense, this.cfg, this.time - p.t0));
       this.fieldersSetAt = back > 0 ? p.t0 + back + this.cfg.pace.pitcherSet : 0;

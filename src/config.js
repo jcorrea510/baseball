@@ -416,6 +416,12 @@ export const CONFIG = {
     },
   },
 
+  // Wild pitches: a pitch in the dirt (crossing lower than `lowY` ft) or way wide (`wideX` ft off the middle) with runners on now and then
+  // gets past the catcher (`chance` by level - better catchers on the harder levels). It rolls to about `rollTo` ft behind the plate in
+  // `rollTime` s; runners see it get by and go `react` s after it reaches the catcher; the man on third goes only if he beats the
+  // throw home by `homeMargin` s.
+  wildPitch: { lowY: 0.75, wideX: 2.1, chance: { rookie: 0.14, pro: 0.1, allstar: 0.08 }, rollTo: 48, rollTime: 1.25, react: 0.25, homeMargin: 0.2 },
+
   // the computer's simulated half-innings: the share of its free passes that are a hit batsman rather than a walk
   ai: { hbpShare: 0.1 },
 

@@ -636,6 +636,10 @@ export class App {
         ui.banner('INFIELD FLY', 'Batter is out', 'bad');
         this.umpireCall('out', 0);
         break;
+      case 'wildPitch':
+        ui.banner('WILD PITCH', '', 'good');
+        audio.crowdSwell(0.35, 1.4);
+        break;
       case 'groundRule':
         // it bounced over the wall: two bases for everybody
         ui.banner('GROUND-RULE DOUBLE', '', 'good');
@@ -797,6 +801,13 @@ export class App {
       return;
     }
     if (r.kind !== 'pitch') this.refreshLineup();
+    if (r.kind === 'steal' && r.result === 'wildPitch') {
+      ui.banner('WILD PITCH', r.walkOff ? 'WALK-OFF!' : r.runs ? `${r.runs} run${r.runs > 1 ? 's' : ''} score${r.runs > 1 ? '' : 's'}` : 'Runners move up', 'good');
+      audio.crowdSwell(r.runs ? 0.6 : 0.4, 2);
+      if (r.runs) audio.applause(1.2, 0.5);
+      if (e.game) this.updateScoreboard();
+      return;
+    }
     if (r.kind === 'steal') {
       const safe = r.result !== 'caughtStealing';
       const where = { 2: 'Second', 3: 'Third' }[r.base] || '';

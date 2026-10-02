@@ -210,6 +210,23 @@ export function applySteal(g, moves) {
   return { outs, halfOver: halfIsOver(g) };
 }
 
+/**
+ * Runners move up with no ball in play and no out (a wild pitch): moves = [{ from, to }] (to 4 = scored). Returns the runs.
+ */
+export function applyAdvance(g, moves) {
+  const newBases = [null, null, null];
+  let runs = 0;
+  for (const m of [...moves].sort((a, b) => b.from - a.from)) {
+    const runner = g.bases[m.from - 1];
+    if (!runner) continue;
+    if (m.to >= 4) runs++; else placeRunner(newBases, m.to, runner);
+  }
+  for (let b = 3; b >= 1; b--) { const runner = g.bases[b - 1]; if (runner && !moves.some((m) => m.from === b)) placeRunner(newBases, b, runner); }
+  g.bases = newBases;
+  addRuns(g, runs);
+  return { runs, walkOff: g.walkOff };
+}
+
 function placeRunner(bases, base, runner) {
   // Safety net: two runners can never share a base. The trailing runner is pushed back.
   let b = base;
@@ -276,6 +293,6 @@ export const RESULT_TEXT = {
   single: 'SINGLE', double: 'DOUBLE', triple: 'TRIPLE', homer: 'HOME RUN', insideParkHomer: 'INSIDE-THE-PARK HR',
   groundout: 'GROUNDOUT', flyout: 'FLYOUT', lineout: 'LINEOUT', popout: 'POP OUT', foulOut: 'FOUL OUT', sacFly: 'SAC FLY', sacBunt: 'SAC BUNT',
   doublePlay: 'DOUBLE PLAY', error: 'ERROR', fieldersChoice: "FIELDER'S CHOICE", walk: 'WALK', hitByPitch: 'HIT BY PITCH', strikeoutSwinging: 'STRIKEOUT', strikeoutLooking: 'STRIKEOUT',
-  stolenBase: 'STOLEN BASE', doubleSteal: 'DOUBLE STEAL', caughtStealing: 'CAUGHT STEALING',
+  stolenBase: 'STOLEN BASE', doubleSteal: 'DOUBLE STEAL', caughtStealing: 'CAUGHT STEALING', wildPitch: 'WILD PITCH',
   foul: 'FOUL', ball: 'BALL', calledStrike: 'STRIKE', swingingStrike: 'STRIKE',
 };

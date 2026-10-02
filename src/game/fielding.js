@@ -1146,6 +1146,61 @@ function planStealCore(i, cfg) {
 }
 
 // ---------------------------------------------------------------------------
+// A wild pitch: it got past the catcher (t = 0 when it reaches him). It rolls back toward the backstop, he chases it down, the
+// pitcher covers the plate, and every runner who can takes the next base. i: { bases, defense, roll (0..1, the seeded roll that
+// picked this pitch), speeds }. Null when nobody can move up (then it is just a ball he retrieves).
+export function planWildPitch(i, cfg = CONFIG) {
+  SPD = i.speeds || null;
+  try { return planWildPitchCore(i, cfg); } finally { SPD = null; }
+}
+function planWildPitchCore(i, cfg) {
+  const W = cfg.wildPitch, F = cfg.fielding;
+  const defense = i.defense, C = defense.C, Pp = defense.P;
+  const plan = {
+    fair: true, type: 'wildPitch', wildPitch: true,
+    result: 'wildPitch', batterDest: 0, moves: [], outsMade: 0,
+    fielderMoves: [], paths: {}, throws: [], carries: [], looses: [], events: [],
+    ballHitEnd: 0, pickupT: 0, endTime: 0, homer: false, ctx: { kind: 'wildPitch' }, fielder: 'C', notes: [], ballLandDistance: 0,
+  };
+  const roll = i.roll ?? 0.5;
+  const side = roll < 0.5 ? -1 : 1;
+  const bx = side * (6 + 40 * Math.abs(roll - 0.5)), bz = W.rollTo;
+  const tPick = chaseLoose(plan, C, { t0: 0, ax: 0, ay: 0.5, az: cfg.pitch.catchZ + 0.5, bx, bz }, W.rollTime, cfg);
+  const tReady = tPick + F.transfer.C;
+  const throwHome = tReady + throwTime(dist(bx, bz, BASE_XZ[4][0], BASE_XZ[4][1]), C, cfg) + F.tagTime;
+  // the runners, lead man first: each takes the next base if it is free (or freed by the man ahead) - home only if he beats the throw
+  const to = {};
+  for (const b of [3, 2, 1]) {
+    if (!i.bases[b - 1]) continue;
+    const free = b === 3 || !i.bases[b] || to[b + 1] > b + 1;
+    const go = free && (b < 3 || arrivalAt(cfg, b, 4, W.react) + W.homeMargin < throwHome);
+    to[b] = go ? b + 1 : b;
+  }
+  if (!Object.entries(to).some(([b, t]) => t > +b)) return null;
+  let end = tReady;
+  for (const b of [3, 2, 1]) {
+    if (to[b] === undefined) continue;
+    const m = { from: b, to: to[b], out: false };
+    if (to[b] > b) { m.tStart = W.react; end = Math.max(end, finishAt(cfg, b, to[b], W.react)); }
+    plan.moves.push(m);
+  }
+  // the pitcher covers the plate; with a runner coming home the catcher throws him the ball (late)
+  addMove(plan, Pp, 0.8, 2.5, Math.max(Pp.react + 0.4, tReady), { role: 'cover', minEffort: 0.9 }, cfg);
+  if (to[3] === 4) {
+    const t1 = tReady + throwTime(dist(bx, bz, 0.8, 2.5), C, cfg);
+    plan.carries.push({ pos: 'C', t0: tPick, t1: tReady });
+    plan.throws.push({ from: 'C', to: 'P', t0: tReady, t1, ax: bx, az: bz, bx: 0.8, bz: 2.5, toBase: 4 });
+    plan.carries.push({ pos: 'P', t0: t1, t1: t1 + 99 });
+    end = Math.max(end, t1);
+  } else plan.carries.push({ pos: 'C', t0: tPick, t1: tPick + 99 });
+  plan.endTime = end + 0.7;
+  plan.events.push({ t: 0.05, type: 'wildPitch' });
+  speedsOnMoves(plan);
+  settleThrows(plan);
+  return plan;
+}
+
+// ---------------------------------------------------------------------------
 // Errors. `i.errorRoll` (0..1, from the engine's seeded random numbers) decides; no roll = no errors (tests, the Derby, practice).
 function errorHappens(i, p) {
   return i.errorRoll !== undefined && !i.simple && i.errorRoll < p * (i.errorScale ?? 1);

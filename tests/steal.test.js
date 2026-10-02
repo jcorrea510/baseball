@@ -9,6 +9,7 @@ import { auditPlan } from '../src/game/playAudit.js';
 import { runnerState, retreatArrival, leadSpot, runnerArrival, moveArrival } from '../src/game/runnerMotion.js';
 import { BASE_XZ } from '../src/physics/field.js';
 import { createRng } from '../src/util/rng.js';
+const untilPhase = (e, phase, max = 20) => { for (let t = 0; t < max && e.phase !== phase; t += 1 / 120) e.update(1 / 120); return e.phase === phase; };
 
 const contactOf = (ev, la, spray) => ({ exitVelocity: ev, launchAngle: la, sprayAngle: spray, backspin: 900, hook: 0 });
 const play = (ev, la, spray, o = {}) => {
@@ -191,5 +192,40 @@ describe('a runner going back', () => {
     expect(Math.hypot(fwd.x - bk.x, fwd.z - bk.z)).toBeLessThan(1e-6);
     const [lx, lz] = leadSpot(1);
     expect(Math.hypot(lx - BASE_XZ[1][0], lz - BASE_XZ[1][1])).toBeGreaterThan(5);
+  });
+});
+
+describe('wild pitches', () => {
+  it('a pitch in the dirt that gets past the catcher: the runners move up a base, the man on third scores if he beats the throw home', async () => {
+    const { planWildPitch, createDefense: cd } = await import('../src/game/fielding.js');
+    const rules = await import('../src/game/rules.js');
+    const p = planWildPitch({ bases: ['a', null, 'c'], defense: cd(), roll: 0.3 }, CONFIG);
+    expect(p).toBeTruthy();
+    expect(p.moves.find((m) => m.from === 1).to).toBe(2);
+    const m3 = p.moves.find((m) => m.from === 3);
+    expect([3, 4]).toContain(m3.to);
+    expect(p.outsMade).toBe(0);
+    const g = rules.createGame();
+    g.bases = ['a', null, 'c'];
+    const r = rules.applyAdvance(g, p.moves.filter((m) => m.to > m.from));
+    expect(g.bases[1]).toBe('a');
+    expect(r.runs).toBe(m3.to === 4 ? 1 : 0);
+    expect(g.score.top).toBe(r.runs);
+  });
+  it('in a game: now and then a pitch in the dirt with runners on is a wild pitch (never one that ends the at-bat)', () => {
+    const e = new Engine({ mode: 'quick', playerSide: 'top', seed: 12 });
+    e.pitchOverride = () => ({ type: 'curveball', speedMph: 76, target: { x: 0.2, y: 0.3 }, intendedStrike: false, tell: { slot: 0, lag: 0 } });
+    e.cfg = { ...e.cfg, wildPitch: { ...e.cfg.wildPitch, chance: { rookie: 1, pro: 1, allstar: 1 } } };
+    e.start();
+    expect(untilPhase(e, 'ready')).toBe(true);
+    e.game.bases[1] = e.lineup[5];
+    let wp = null;
+    e.on('result', (r) => { if (r.result === 'wildPitch') wp = r; });
+    expect(untilPhase(e, 'play', 30)).toBe(true);
+    expect(e.play.plan.wildPitch).toBe(true);
+    expect(untilPhase(e, 'result', 30)).toBe(true);
+    expect(wp).toBeTruthy();
+    expect(e.game.bases[2]).toBe(e.lineup[5]); // (second to third)
+    expect(e.game.balls).toBe(1);
   });
 });
