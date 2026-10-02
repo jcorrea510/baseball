@@ -549,7 +549,8 @@ export const CONFIG = {
     fastBallPenalty: 0.2, // extra reaction (s) fielders need on the hardest-hit grounders
     closePlay: 0.45, // a runner who beats the throw by less than this many seconds gets a 'Safe!' call
     outMargin: 0.02, // a throw must beat the runner by this many seconds
-    tagUpMargin: 0.1, // s: the man on third tags up and goes home by himself on a fly when he beats the throw by this much
+    tagUpMargin: 0.3, // s: the man on third tags up and goes home by himself on a fly when he beats the throw by this much
+    tagUpDepth: 200, // ft: a liner caught this deep is one a runner can tag up on too (not only a fly ball)
     runnerMargin: 0.35, // s: a runner takes an extra base by himself only when he beats the throw by this much (no bang-bang plays he did not ask for)
     // Errors (rare): a grounder bobbled, a fly ball dropped. Chance per chance, x difficulty.<level>.errorScale; hard chances (a smash,
     // a dive, a leap) are `hardFactor` times as likely. The ball pops loose `looseDist` ft and he needs `bobbleTime` / `dropTime` to

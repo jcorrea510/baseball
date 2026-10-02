@@ -980,7 +980,8 @@ function caughtRunners(plan, i, f, air, type, bases, outs, defense, cfg) {
   }
   // tag-ups the runner makes by himself (a sure thing only): third on a fly deep enough, second on a deep one with third open
   const fair = plan.fair;
-  if (fair && kind === 'fly') {
+  // (a ball caught out in the outfield - a fly or a liner - is one he can tag up on)
+  if (fair && (kind === 'fly' || Math.hypot(air.ball.x, air.ball.z) > F.tagUpDepth)) {
     const home = BASE_XZ[4];
     const tR = tC + F.transfer[f.type];
     const throwTo = (base) => tR + throwTime(dist(air.ball.x, air.ball.z, BASE_XZ[base][0], BASE_XZ[base][1]), f, cfg) + (base === 4 ? F.tagTime : 0);
