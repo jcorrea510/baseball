@@ -164,6 +164,7 @@ export class App {
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.11, 0.2, 24), new THREE.MeshBasicMaterial({ color: 0x3ddc7c, transparent: true, opacity: 0.95, depthWrite: false }));
     ring.position.z = CONFIG.pitch.contactZ + 0.05;
     ring.visible = false;
+    ring.renderOrder = 7; // (over the strike-zone box)
     this.S.scene.add(ring);
     this.pitchMarker = ring;
     this.markerT = 0;

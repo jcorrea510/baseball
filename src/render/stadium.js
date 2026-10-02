@@ -67,7 +67,7 @@ export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {
   const { texture: infieldTex, bounds } = infieldTexture(look.dirt || '#a86f47');
   const infield = new THREE.Mesh(
     new THREE.PlaneGeometry(bounds.x1 - bounds.x0, bounds.z1 - bounds.z0),
-    new THREE.MeshStandardMaterial({ map: infieldTex, transparent: true, roughness: 1, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })
+    new THREE.MeshStandardMaterial({ map: infieldTex, transparent: true, roughness: 1, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8 }) // (pulled well in front of the grass: close to the camera, at a low angle, a small offset lost to the grass and the dirt round home plate vanished)
   );
   {
     const detail = dirtTexture('#c8c8c8', 256, 17);
@@ -86,7 +86,7 @@ export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {
   infield.rotation.x = -Math.PI / 2;
   infield.position.set((bounds.x0 + bounds.x1) / 2, 0.012, (bounds.z0 + bounds.z1) / 2);
   infield.receiveShadow = true;
-  infield.renderOrder = 1;
+  infield.renderOrder = -1; // (first of the see-through things: the dirt never paints over the pitch marker, rings, shadows or dust)
   root.add(infield);
 
   // Warning track + foul-territory dirt along the wall
@@ -100,7 +100,7 @@ export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {
   root.add(track);
 
   // ---------------------------------------------------------------- field markings
-  const chalk = new THREE.MeshStandardMaterial({ color: 0xf4f4ee, roughness: 1, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+  const chalk = new THREE.MeshStandardMaterial({ color: 0xf4f4ee, roughness: 1, polygonOffset: true, polygonOffsetFactor: -8, polygonOffsetUnits: -16 }); // (in front of the dirt)
   // All chalk lines are collected and baked into ONE mesh (one draw call).
   const chalkSpecs = [];
   const line = (x0, z0, x1, z1, width, y = 0.032) => { chalkSpecs.push({ x0, z0, x1, z1, width, y }); };
