@@ -628,6 +628,22 @@ describe('foul tips', () => {
     expect(last.result).toBe('strikeoutSwinging');
     expect(last.detail).toBe('Foul tip');
   });
+  it('a ball that flies back over the catcher (or into the dirt) is a foul ball, not a foul tip - never strike three', () => {
+    for (const launch of [26, -15]) {
+      const e = new Engine({ mode: 'quick', playerSide: 'top', seed: 8 });
+      e.pitchOverride = strikePitch;
+      e.contactOverride = () => ({ ...tip(), launchAngle: launch });
+      e.start();
+      e.game.strikes = 2;
+      let last = null;
+      e.on('result', (r) => { last = r; });
+      swingAt(e);
+      expect(untilPhase(e, 'result')).toBe(true);
+      expect(last.foulTip).toBe(false);
+      expect(last.call).toBe('foul');
+      expect(e.game.strikes).toBe(2);
+    }
+  });
   it('sending a runner during a foul tip keeps it a foul tip', () => {
     const e = new Engine({ mode: 'quick', playerSide: 'top', seed: 8 });
     e.pitchOverride = strikePitch;

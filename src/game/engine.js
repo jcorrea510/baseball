@@ -622,9 +622,12 @@ export class Engine {
     if (plan.result === 'foul' && !c.bunt && Math.abs(c.sprayAngle) >= FT.spray && c.launchAngle >= FT.launch[0] && c.launchAngle <= FT.launch[1]) {
       let k = 0;
       while (k < sim.count - 1 && sim.z[k] < this.cfg.pitch.catchZ) k++;
-      const tTip = sim.t[k];
-      plan.foulTip = { t: tTip };
-      plan.ballHitEnd = tTip; plan.endTime = tTip + 0.5;
+      // (only if it really reaches his mitt: not over his head, into the dirt or past him)
+      if (Math.abs(sim.x[k]) <= FT.mittX && sim.y[k] >= FT.mittY[0] && sim.y[k] <= FT.mittY[1] && sim.z[k] >= this.cfg.pitch.catchZ) {
+        const tTip = sim.t[k];
+        plan.foulTip = { t: tTip };
+        plan.ballHitEnd = tTip; plan.endTime = tTip + 0.5;
+      }
     }
     const proj = projectDistance(params, this.cfg);
     const fb = sim.firstBounce;
@@ -748,7 +751,7 @@ export class Engine {
 
     if (this.mode === 'practice') {
       const foul = plan.result === 'foul' || plan.result === 'foulOut';
-      const text = foul ? 'FOUL BALL' : plan.homer ? 'HOME RUN' : practiceLabel(plan, c);
+      const text = plan.result === 'foulOut' ? 'FOUL OUT' : foul ? 'FOUL BALL' : plan.homer ? 'HOME RUN' : practiceLabel(plan, c);
       let runs = 0;
       if (!foul) {
         // the runners move just as in a game; the outs are forgotten straight away
