@@ -179,7 +179,13 @@ export function simulateBattedBall(p, cfg = CONFIG, opts = {}) {
         airborne = false;
         const vin = -vy;
         if (vin > 6) {
-          vy = ph.groundRestitution * vin;
+          // a ball coming down hard keeps less of its bounce (a baseball is less springy the harder it lands), and the warning
+          // track's dirt is softer than the grass
+          const hard = Math.min(1, Math.max(0, (vin - ph.bounceSoftFrom) / (ph.bounceSoftTo - ph.bounceSoftFrom)));
+          let rest = ph.groundRestitution * (1 - (1 - ph.bounceHardKeep) * hard);
+          const sp = sprayOf(x, z);
+          if (z < 0 && Math.abs(sp) <= 45 && Math.hypot(x, z) > fenceDistance(sp) - CONFIG.field.warningTrack) rest *= ph.trackRestitution;
+          vy = rest * vin;
           vx *= ph.groundFriction;
           vz *= ph.groundFriction;
           bounces++;

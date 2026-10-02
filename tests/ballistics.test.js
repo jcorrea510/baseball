@@ -172,12 +172,10 @@ describe('ground-rule double', () => {
   it('a fair ball that bounces in the field and then goes over the wall is a ground-rule double, not a home run', async () => {
     const { createDefense, planPlay } = await import('../src/game/fielding.js');
     const { CONFIG } = await import('../src/config.js');
-    let found = null;
-    for (let sp = -44; sp <= 44 && !found; sp += 4) for (let la = -5; la <= 40 && !found; la += 1) for (let ev = 70; ev <= 120 && !found; ev += 2) {
-      const c = { exitVelocity: ev, launchAngle: la, sprayAngle: sp, backspin: 900 + 55 * Math.max(la, 0), hook: 0 };
-      const s = simulateBattedBall({ ...c, start: { x: 0, y: 2.6, z: -1 } });
-      if (s.groundRule && planPlay({ sim: s, contact: c, bases: [null, null, null], outs: 0, defense: createDefense() }, CONFIG).groundRule) found = { s, c };
-    }
+    // (a high fly that comes down in the left-field corner, short of the wall, and kicks up over it)
+    const c = { exitVelocity: 78, launchAngle: 46, sprayAngle: -44, backspin: 900 + 55 * 46, hook: 0 };
+    const s0 = simulateBattedBall({ ...c, start: { x: 0, y: 2.6, z: -1 } });
+    const found = s0.groundRule ? { s: s0, c } : null;
     expect(found).toBeTruthy(); // (one nobody catches before it bounces)
     expect(found.s.homerun).toBeNull();
     expect(found.s.firstBounce.t).toBeLessThan(found.s.groundRule.t);

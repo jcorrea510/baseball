@@ -130,9 +130,11 @@ export const CONFIG = {
   physics: {
     gravity: 32.174, // ft/s^2
     ballRadius: 0.1208, // ft (1.45 in)
-    dragK: 0.0018, // air drag (higher = ball dies in the air sooner)
+    dragK: 0.0017, // air drag (higher = ball dies in the air sooner)
     magnusK: 2.55e-5, // lift from backspin (higher = ball carries farther)
     groundRestitution: 0.42, // how bouncy the grass is
+    bounceSoftFrom: 30, bounceSoftTo: 75, bounceHardKeep: 0.89, // ...a ball landing faster than bounceSoftFrom ft/s keeps less, down to bounceHardKeep x at bounceSoftTo
+    trackRestitution: 0.93, // the warning track's dirt keeps this share of the grass's bounce
     groundFriction: 0.8, // fraction of sideways speed kept each bounce
     rollDecel: 13, // ft/s^2 slowing of a rolling ball
     stopSpeed: 0.8, // ft/s: below this a rolling ball is "stopped"
@@ -629,7 +631,7 @@ export const CONFIG = {
     derby: {
       outs: 10,
       pitchSpeed: { rookie: 58, pro: 66, allstar: 74 }, // batting-practice fastballs
-      evBonus: 10, // extra exit velocity (mph) on a squared-up ball: batting-practice balls jump off the bat
+      evBonus: 9, // extra exit velocity (mph) on a squared-up ball: batting-practice balls jump off the bat
       batBonus: 3, // mph of extra bat speed in the Derby on every level (instead of the level's own)
       windowGrow: 1.75, // the bat's contact window is this much bigger (the pitches are meatballs)
       locationSigma: 0.24,
