@@ -220,6 +220,31 @@ function addMove(plan, f, toX, toZ, tArrive, opts = {}, cfg = CONFIG) {
   // nobody ever runs to a spot in or beyond the wall: the target is pulled back inside (his glove still reaches the ball)
   [toX, toZ] = clampToField(toX, toZ, F.wallMargin);
   const runs = (plan.paths[f.pos] = plan.paths[f.pos] || []);
+  // A play planned again after you gave a runner an order: up to the moment the fielders could see it (PREV.tCut) everybody does
+  // exactly what he was doing; a job that is new or different only starts then, from wherever he has got to. (A run to the same
+  // spot he was already running to before then is kept exactly as it was.)
+  let reuse = null;
+  if (PREV && !runs.prefixed) {
+    const ok = (PREV.paths[f.pos] || [])[runs.length];
+    if (ok && ok.req && !ok.prefixCut && ok.tStart < PREV.tCut && Math.abs(ok.req[0] - toX) < 0.01 && Math.abs(ok.req[1] - toZ) < 0.01) reuse = { ...ok, segs: ok.segs.map((g) => ({ ...g })) };
+  }
+  if (PREV && !runs.prefixed && !reuse) {
+    const old = PREV.paths[f.pos] || [];
+    const k = runs.length;
+    const start0 = Math.max(opts.start ?? f.react, k ? runs[k - 1].tStop : 0);
+    const o = old[k];
+    const same = o && o.req && !o.prefixCut && Math.abs(o.req[0] - toX) < 0.01 && Math.abs(o.req[1] - toZ) < 0.01 && Math.abs(o.req[2] - tArrive) < 0.01 && Math.abs(o.req[3] - (opts.start ?? -1)) < 0.01;
+    if (!same && o && o.tStart < PREV.tCut) {
+      for (let j = k; j < old.length && old[j].tStart < PREV.tCut; j++) {
+        const r = { ...old[j], segs: old[j].segs.map((g) => ({ ...g })) };
+        if (r.tStop > PREV.tCut && !r.dive) { cutRun(r, PREV.tCut); r.prefixCut = true; }
+        runs.push(r);
+      }
+      runs.prefixed = true;
+      opts = { ...opts, start: Math.max(opts.start ?? 0, PREV.tCut), cut: false };
+      tArrive = Math.max(tArrive, PREV.tCut + 0.3);
+    } else if (!same && start0 < PREV.tCut) { opts = { ...opts, start: PREV.tCut }; tArrive = Math.max(tArrive, PREV.tCut + 0.3); } // (a job he did not have before)
+  }
   const prev = runs[runs.length - 1];
   // `cut`: he heads off from wherever the last run has got him at `start` (the last run is cut short there) instead of
   // first coming to a full stop - a fielder who has the ball turns for the bag at once
@@ -228,7 +253,7 @@ function addMove(plan, f, toX, toZ, tArrive, opts = {}, cfg = CONFIG) {
   const vmax = opts.vmax ?? f.speed * effort(f, toX, toZ);
   let tStart = opts.start ?? f.react;
   if (prev) tStart = Math.max(tStart, prev.tStop);
-  tStart = Math.min(tStart, Math.max(0, tArrive - 0.05));
+  tStart = Math.min(tStart, Math.max(prev ? prev.tStop : 0, tArrive - 0.05)); // (never before his last run is over)
   let x1 = toX, z1 = toZ;
   if (opts.avail !== undefined) {
     // stop short by however far he cannot reach (never more than his glove + dive reach)
@@ -246,13 +271,14 @@ function addMove(plan, f, toX, toZ, tArrive, opts = {}, cfg = CONFIG) {
     return Number.isFinite(w) ? Math.max(w, atLeast) : undefined;
   };
   [x1, z1] = clampToField(x1, z1, F.wallMargin);
-  let run = opts.dive
+  let run = reuse || (opts.dive
     ? planDiveRun({ x0, z0, px: toX, pz: toZ, tStart, tCatch: tArrive, vmax, accel: vmax / F.accel, brake: F.brake, dive: F.dive, limitS: wallLimit(x0, z0, toX, toZ, dist(x0, z0, toX, toZ) - F.dive.armReach + 0.5) })
-    : null;
+    : null);
   // (`stop`: he pulls up ON the spot - a man covering a bag who has to wait there for the runner - instead of running through it)
   let limitS = wallLimit(x0, z0, x1, z1, dist(x0, z0, x1, z1) + 0.4);
   if (opts.stop) limitS = Math.min(limitS ?? Infinity, dist(x0, z0, x1, z1) + 0.25);
   if (!run) run = planRun({ x0, z0, x1, z1, tStart, tArrive: Math.max(tArrive, tStart + 0.05), vmax, accel: vmax / (opts.accelTime ?? F.accel), brake: F.brake, minEffort: opts.minEffort ?? F.minRunEffort, heading: Math.atan2(toX - x0, toZ - z0), limitS, wallBrake: F.wallBrake });
+  if (!reuse) run.req = [toX, toZ, tArrive, opts.start ?? -1]; // (what was asked for: see the re-plan check above)
   runs.push(run);
   const move = {
     pos: f.pos,
@@ -296,8 +322,22 @@ function coverArrival(plan, q, base, tStart, cfg) {
   const F = cfg.fielding;
   const runs = plan.paths[q.pos];
   const last = runs && runs[runs.length - 1];
-  const x0 = last ? last.xStop : q.x, z0 = last ? last.zStop : q.z;
-  const t0 = last ? Math.max(tStart, last.tStop) : tStart;
+  let x0 = last ? last.xStop : q.x, z0 = last ? last.zStop : q.z;
+  let t0 = last ? Math.max(tStart, last.tStop) : tStart;
+  // (a play planned again: see addMove - a run he was already making to this bag is kept as it was; anything else only starts once the
+  // fielders saw your order, from wherever his earlier runs had taken him by then)
+  if (PREV && !(runs && runs.prefixed)) {
+    const old = PREV.paths[q.pos] || [];
+    const k = runs ? runs.length : 0;
+    const o = old[k];
+    if (o && o.req && !o.prefixCut && o.tStart < PREV.tCut && dist(o.req[0], o.req[1], BASE_XZ[base][0], BASE_XZ[base][1]) < 2.5) {
+      return { t: Math.max(tStart, o.tReach ?? o.tStop), speed: o.vmax || q.speed, start: o.tStart };
+    }
+    if ((o && o.tStart < PREV.tCut) || t0 < PREV.tCut) {
+      if (old.length) { const p = samplePath(old, Math.max(PREV.tCut, last ? last.tStop : 0)); x0 = p.x; z0 = p.z; }
+      t0 = Math.max(t0, PREV.tCut);
+    }
+  }
   const speed = Math.max(q.speed, F.cover.minSpeed);
   return { t: t0 + timeToCover(speed, dist(x0, z0, BASE_XZ[base][0], BASE_XZ[base][1]), F.accel), speed, start: t0 };
 }
@@ -381,6 +421,7 @@ function planPlayCore(i, cfg) {
 
   const firstBounce = sim.firstBounce;
   plan.ballLandDistance = firstBounce ? Math.hypot(firstBounce.x, firstBounce.z) : 0;
+  plan.landDepth = landDepth(sim);
 
   // ---------------- home run ----------------
   if (sim.homerun && fair) {
@@ -573,6 +614,8 @@ const sp = (b) => (SPD && SPD[b]) || 1;
 let READ = 0;
 // Your runner orders (you tapped a base): `i.orders` = [{ base, t }] in the order given, t = seconds after contact.
 let ORD = null;
+// The play as it was planned before your latest order: { paths, tCut } (see addMove). Only set while planPlay runs.
+let PREV = null;
 const readDelay = (cfg, from) => (from >= 1 && READ > 0 && rs(from) === undefined ? cfg.runner.startDelay + READ : undefined);
 const arrivalAt = (cfg, from, to, tStart, kind = 'run') => runnerArrival(cfg, from, to, tStart ?? readDelay(cfg, from), kind, sp(from));
 const finishAt = (cfg, from, to, tStart, kind = 'run') => runnerFinish(cfg, from, to, tStart ?? readDelay(cfg, from), kind, sp(from));
@@ -610,18 +653,23 @@ function runningStarts(plan, cfg) {
 // he is going to end up on as things stand, `legs` = how he moves (runnerMotion.js), `sentTo` = the base you sent him to.
 // ---------------------------------------------------------------------------
 const AIR = { fly: 'fly', pop: 'fly', line: 'line' };
+// How deep a ball in the air comes down (the same number whether or not it is caught, so the runners' first moves are the same).
+const landDepth = (sim) => { const p = sim.firstBounce || sim.wallHit || sim.homerun || sim.standsLanding; return p ? Math.hypot(p.x, p.z) : 0; };
 const recMove = (r) => ({ from: r.from, to: r.to, legs: r.legs, spd: r.spd, tStart: r.legs.length ? r.legs[0].t0 : undefined });
 const recArrive = (cfg, r, base) => (r.legs.length ? moveArrival(cfg, recMove(r), base) : undefined);
 const cloneRec = (r) => ({ ...r, legs: r.legs.map((L) => ({ ...L })) });
 
 // What runner `b` does on a ball in the air before anybody knows whether it is caught (the same either way). `deep`: it comes down
 // deep in the outfield (runners on second tag up, like the man on third).
-function airLegs(b, kind, outs, deep, cfg) {
+function airLegs(b, kind, outs, depth, cfg) {
   const R = cfg.runner;
   if (outs >= 2) return [{ kind: 'run', from: b, to: Math.min(4, b + 1), t0: R.startDelay }]; // (two outs: he runs on contact)
-  if (kind === 'line') return b === 3 ? [{ kind: 'run', from: b, to: b, t0: 0 }] : [{ kind: 'half', from: b, to: b, frac: R.halfwayLine, t0: R.startDelay + R.read.line }]; // (a liner: a step or two)
-  if (b === 3 || (b === 2 && deep)) return backLegs([{ kind: 'run', from: b, to: b, t0: 0 }], b, b, R.startDelay + R.tagBack, cfg, sp(b)); // back to the bag to tag up
-  return [{ kind: 'half', from: b, to: b, frac: R.halfway, t0: R.startDelay }]; // part of the way, and wait
+  if (b === 3 || (b === 2 && depth > R.tagDepth)) return backLegs([{ kind: 'run', from: b, to: b, t0: 0 }], b, b, R.startDelay + R.tagBack, cfg, sp(b)); // back to the bag to tag up
+  if (kind === 'line') return [{ kind: 'half', from: b, to: b, frac: R.halfwayLine, t0: R.startDelay + R.read.line }]; // (a liner: a step or two)
+  // he goes off the bag only as far as he can surely get back from: a step on a pop-up, about halfway on a deep fly
+  const [d0, d1] = R.halfwayDepth;
+  const frac = R.stayStep + (R.halfway - R.stayStep) * Math.max(0, Math.min(1, (depth - d0) / (d1 - d0)));
+  return [{ kind: 'half', from: b, to: b, frac: +frac.toFixed(3), t0: R.startDelay }];
 }
 
 // The runner records for a play: every runner on base who is not already going with the pitch, plus the batter (`batter` = his legs,
@@ -640,21 +688,27 @@ const live = (r, t) => !(r.lockAt !== undefined && t >= r.lockAt) && !r.out;
 // Can runner `r` (sent to r.sentTo) still be called back at time t? (not if he is forced there, not if a runner behind is on his way
 // to the base he would go back to, not once he is there)
 function canBack(recs, r, t, cfg) {
-  if (!r.sentTo || r.out) return false;
-  const back = r.sentTo - 1;
-  if (r.forced && back < r.from + 1) return false;
-  if (recs.some((q) => q !== r && q.from < r.from && live(q, t) && q.to >= back)) return false;
-  const arr = recArrive(cfg, r, r.sentTo);
-  return arr === undefined || arr > t + cfg.runner.sendReact;
+  if (r.out || !live(r, t)) return false;
+  const back = r.to - 1;
+  if (back < (r.forced ? r.from + 1 : r.from) || back < 1 && r.from === 0) return false; // (not below the bag he started from - or must reach)
+  return !recs.some((q) => q !== r && q.from < r.from && live(q, t) && q.to >= back); // (nobody passes anybody)
 }
 
 function applyOrder(recs, o, cfg) {
   const R = cfg.runner;
   const tAct = o.t + R.sendReact;
+  if (o.tag !== undefined) {
+    // tag up (back to the bag now, and off when it is caught) - or not
+    const r = recs.find((q) => q.from >= 1 && q.from === o.from && live(q, o.t));
+    if (!r) return;
+    r.tag = !!o.tag; r.lastOrderAt = o.t;
+    if (r.tag) { r.sent = false; r.sentTo = null; if (!r.forced) r.to = r.from; backLegs(r.legs, r.from, r.from, tAct, cfg, r.spd); }
+    return;
+  }
   if (o.back) {
-    const r = recs.find((q) => q.sentTo === o.base && live(q, o.t) && (o.from === undefined || q.from === o.from));
+    const r = recs.find((q) => q.to === o.base && live(q, o.t) && (o.from === undefined || q.from === o.from));
     if (!r || !canBack(recs, r, o.t, cfg)) return;
-    r.sentTo = null; r.recalled = true; r.to = o.base - 1;
+    r.sentTo = null; r.recalled = true; r.to = o.base - 1; r.lastOrderAt = o.t;
     backLegs(r.legs, r.from, o.base - 1, tAct, cfg, r.spd);
     return;
   }
@@ -664,17 +718,42 @@ function applyOrder(recs, o, cfg) {
   const ahead = o.base < 4 ? recs.find((q) => q !== r && q.to === o.base && live(q, o.t)) : null; // (any number of runners can score)
   if (ahead) applyOrder(recs, { base: o.base + 1, t: o.t }, cfg);
   if (ahead && ahead.to === o.base) return; // (he could not be moved on - nobody passes anybody)
-  r.sent = true; r.sentTo = o.base; r.recalled = false; r.to = o.base;
+  r.sent = true; r.sentTo = o.base; r.recalled = false; r.to = o.base; r.tag = false; r.lastOrderAt = o.t;
+  if (r.firstSentAt === undefined) r.firstSentAt = o.t;
   extendLegs(r.legs, r.from, o.base, tAct, cfg, r.spd);
 }
 
 // What the diamond shows (see sendOptions): per runner, the base he is going to, the base you sent him to and when he gets there.
-function viewOf(recs, cfg) {
+function viewOf(recs, cfg, tagOk = false) {
   return recs.map((r) => ({
     from: r.from, goal: r.to, sentTo: r.sentTo, tSent: r.sentTo ? recArrive(cfg, r, r.sentTo) ?? Infinity : 0,
-    out: !!r.out, outAt: r.outAt, lockAt: r.lockAt, backOk: !!r.sentTo && !(r.forced && r.sentTo - 1 < r.from + 1),
+    out: !!r.out, outAt: r.outAt, lockAt: r.lockAt, backOk: canBack(recs, r, -1, cfg), tag: r.tag, tagOk: tagOk && r.from >= 1 && !r.out,
     behind: recs.filter((q) => q !== r && q.from < r.from).map((q) => q.from),
   }));
+}
+
+/**
+ * Every runner you can give an order to right now (t = seconds after contact), lead runner first: { from, goal (the base he is going
+ * to end up on as things stand), sent (you sent him there), send (the base a Go takes him to, or null), back (the base a Back takes him
+ * to, or null), tag (true / false / undefined = he decides by himself), canTag }.
+ */
+export function runnerOptions(plan, t, cfg = CONFIG) {
+  const S = plan && plan.send;
+  if (!S || !(t >= S.from && t <= S.by)) return [];
+  const view = S.res !== undefined && t < S.res && S.pre ? S.pre : S.post;
+  if (!view) return [];
+  const gone = (q) => (q.lockAt !== undefined && t >= q.lockAt) || (q.out && q.outAt !== undefined && t >= q.outAt);
+  const out = [];
+  for (const v of [...view].sort((a, b) => b.from - a.from)) {
+    if (gone(v)) continue;
+    out.push({
+      from: v.from, goal: v.goal, sent: !!v.sentTo, out: !!v.out,
+      send: !v.out && v.goal < 4 ? v.goal + 1 : null,
+      back: !v.out && v.backOk ? v.goal - 1 : null,
+      tag: v.tag, canTag: !!v.tagOk && t < (S.res ?? Infinity),
+    });
+  }
+  return out;
 }
 
 /**
@@ -746,7 +825,8 @@ function followUpThrow(plan, recs, holder, at, tHave, outs, defense, cfg, skip =
     if (near) continue; // (he is standing on that bag already: the runner went back to it before he got there - nothing to throw)
     const tReady = tHave + F.relayTransfer;
     const tag = base === 1 && r.from === 0 && !r.recalled ? 0 : R.sendTag;
-    const way = coverOptions({ base, thrower: holder, tReady, from: at, runnerT: arrive, tag }, plan, defense, cfg).filter((w) => !w.self)[0];
+    const coverStart = r.lastOrderAt > 0 ? Math.max(F.cover.start, r.lastOrderAt + R.sendReact + F.reaction.IF) : undefined; // (they go when they see him go)
+    const way = coverOptions({ base, thrower: holder, tReady, from: at, runnerT: arrive, tag, coverStart }, plan, defense, cfg).filter((w) => !w.self)[0];
     if (!way) continue;
     for (const c of plan.carries) if (c.pos === holder.pos && c.t0 <= tReady + 1e-6 && c.t1 > tReady) c.t1 = way.t0;
     planOut(plan, way, base, holder, at, tReady, cfg, 'cover', true);
@@ -763,18 +843,17 @@ function followUpThrow(plan, recs, holder, at, tHave, outs, defense, cfg, skip =
 function caughtRunners(plan, i, f, air, type, bases, outs, defense, cfg) {
   const R = cfg.runner, F = cfg.fielding;
   const tC = air.t;
-  const fb = i.sim.firstBounce || i.sim.wallHit || air.ball;
-  const depthLand = Math.hypot(fb.x, fb.z);
+  const depthLand = landDepth(i.sim) || Math.hypot(air.ball.x, air.ball.z);
   const kind = AIR[type] || 'line';
   const forced = new Set();
   if (bases[0]) { forced.add(1); if (bases[1]) { forced.add(2); if (bases[2]) forced.add(3); } }
-  const recs = makeRecords(bases, forced, (b) => airLegs(b, kind, outs, depthLand > R.tagDepth, cfg), [{ kind: 'run', from: 0, to: 1, t0: R.batterStart }]);
+  const recs = makeRecords(bases, forced, (b) => airLegs(b, kind, outs, depthLand, cfg), [{ kind: 'run', from: 0, to: 1, t0: R.batterStart }]);
   recs[recs.length - 1].lockAt = tC; // (the batter is out at the catch: he is here only so the diamond looks the same as on a hit)
   const orders = (ORD || []).filter((o) => o.t >= R.sendFrom - 1e-6).sort((a, b) => a.t - b.t);
   const by = tC + R.tagWindow;
   plan.send = { from: R.sendFrom, by, res: tC };
   for (const o of orders) if (o.t < tC) applyOrder(recs, o, cfg);
-  plan.send.pre = viewOf(recs, cfg);
+  plan.send.pre = viewOf(recs, cfg, outs < 2);
   const runners = recs.filter((r) => r.from > 0);
   if (outs + 1 >= 3) {
     // the third out: the inning is over - runners who were going ease up
@@ -793,7 +872,7 @@ function caughtRunners(plan, i, f, air, type, bases, outs, defense, cfg) {
     r.sent = false; r.sentTo = null; r.recalled = false; r.to = r.from; r.forced = false;
     if (off) backLegs(r.legs, r.from, r.from, tC + R.downReact, cfg, r.spd);
     const Lz = r.legs[r.legs.length - 1];
-    if (Lz && Lz.kind === 'reverse' && Lz.toBase !== r.from) r.to = Lz.toBase; // (called back to a bag ahead of him just before the catch: he stays there)
+    if (Lz && Lz.kind === 'path' && Lz.toBase !== r.from) r.to = Lz.toBase; // (called back to a bag ahead of him just before the catch: he stays there)
   }
   // tag-ups the runner makes by himself (a sure thing only): third on a fly deep enough, second on a deep one with third open
   const fair = plan.fair;
@@ -803,17 +882,32 @@ function caughtRunners(plan, i, f, air, type, bases, outs, defense, cfg) {
     const throwTo = (base) => tR + throwTime(dist(air.ball.x, air.ball.z, BASE_XZ[base][0], BASE_XZ[base][1]), f, cfg) + (base === 4 ? F.tagTime : 0);
     const auto = (r, base, margin) => {
       const hyp = cloneRec(r);
-      extendLegs(hyp.legs, r.from, base, tC + R.tagReact, cfg, r.spd);
+      extendLegs(hyp.legs, r.from, base, Math.max(tC + R.tagReact, (recArrive(cfg, r, r.from) ?? 0) + 0.05), cfg, r.spd);
       if (recArrive(cfg, hyp, base) < throwTo(base) - margin) { r.legs = hyp.legs; r.to = base; r.tagUp = true; r.sentTo = base; return true; }
       return false;
     };
-    const r3 = runners.find((r) => r.from === 3 && !r.wasSent);
+    // (a runner you told not to tag up stays; one you told to tag up goes whatever happens - below)
+    const r3 = runners.find((r) => r.from === 3 && !r.wasSent && r.tag === undefined);
     if (r3 && depthLand > 170) auto(r3, 4, F.runnerMargin);
-    const r2 = runners.find((r) => r.from === 2 && !r.wasSent);
+    const r2 = runners.find((r) => r.from === 2 && !r.wasSent && r.tag === undefined);
     if (r2 && depthLand > R.tagDepth && !(runners.some((r) => r.from === 3 && r.to === 3))) auto(r2, 3, F.runnerMargin + 0.25);
     void home;
   }
-  for (const o of orders) if (o.t >= tC && o.t <= by) applyOrder(recs, o, cfg);
+  // runners you told to tag up: off they go as it is caught (once they are back on the bag), the lead runner first
+  for (const r of [...runners].sort((a, b) => b.from - a.from)) {
+    if (r.tag !== true || r.out || r.to > r.from) continue;
+    if (r.from < 3 && runners.some((q) => q.from === r.from + 1 && q.to === r.from + 1)) continue; // (the bag ahead is taken)
+    const tGo = Math.max(tC + R.tagReact, (recArrive(cfg, r, r.from) ?? 0) + 0.05);
+    extendLegs(r.legs, r.from, r.from + 1, tGo, cfg, r.spd);
+    r.to = r.from + 1; r.tagUp = true; r.sentTo = r.from + 1; r.lastOrderAt = tC;
+  }
+  for (const o of orders) {
+    if (!(o.t >= tC && o.t <= by)) continue;
+    // (a runner sent on after the catch has to touch his bag first: if he is still getting back, he goes once he is there)
+    const r = recs.find((q) => q.from === o.from && q.from > 0);
+    const home = r && !o.back && o.tag === undefined && r.to === r.from ? recArrive(cfg, r, r.from) : undefined;
+    applyOrder(recs, home !== undefined && home + 0.05 > o.t + R.sendReact ? { ...o, t: home + 0.05 - R.sendReact } : o, cfg);
+  }
   for (const r of runners) if (r.sent) r.tagUp = true;
   // the defense: one throw - behind a runner you sent before the catch (doubled off), else at a runner tagging up
   const at = { x: air.ball.x, z: air.ball.z };
@@ -1011,17 +1105,37 @@ export function planPlay(i, cfg = CONFIG) {
   RUN = i.running || null;
   SPD = i.speeds || null;
   ORD = i.orders && i.orders.length ? i.orders : null;
+  PREV = i.prev && i.prev.paths ? { paths: i.prev.paths, tCut: i.prev.t + cfg.fielding.replanReact } : null;
   READ = 0;
   try {
     const plan = planPlayCore(i, cfg);
     if (RUN) runningStarts(plan, cfg);
+    if (PREV) keepOldRuns(plan);
     speedsOnMoves(plan);
     if (!i.simple) endInningStop(plan, i.outs || 0, cfg);
     addSupport(plan, i, cfg);
     settleThrows(plan);
     addCalls(plan, cfg);
     return plan;
-  } finally { RUN = null; SPD = null; ORD = null; READ = 0; }
+  } finally { RUN = null; SPD = null; ORD = null; PREV = null; READ = 0; }
+}
+// A play planned again: a fielder who has no job in it any more still did what he was doing until the fielders saw the order.
+function keepOldRuns(plan) {
+  for (const pos in PREV.paths) {
+    const runs = plan.paths[pos] || [];
+    if (runs.prefixed) continue;
+    // (not a man the new plan needs where he already is - say, waiting on his bag for a throw)
+    if (runs.length && plan.throws.some((th) => th.to === pos || th.from === pos)) continue;
+    // (the runs he still has are the same as before: any further ones he had started by then he still makes, up to the cut)
+    for (let k = runs.length; k < PREV.paths[pos].length; k++) {
+      const o = PREV.paths[pos][k];
+      if (o.tStart >= PREV.tCut) break;
+      const r = { ...o, segs: o.segs.map((g) => ({ ...g })) };
+      if (r.tStop > PREV.tCut && !r.dive) { cutRun(r, PREV.tCut); r.prefixCut = true; }
+      runs.push(r);
+    }
+    if (runs.length) plan.paths[pos] = runs;
+  }
 }
 // (the renderer draws each runner at his own speed)
 function speedsOnMoves(plan) {
@@ -1115,7 +1229,8 @@ function addSupport(plan, i, cfg) {
   const near = (p) => dist(defense[p].x, defense[p].z, c.x, c.z);
   const idle = (list) => list.filter((p) => !busy.has(p));
   const inside = (x, z, margin) => clampToField(x, z, margin);
-  const go = (pos, x, z, tArrive, role, limit = Infinity) => {
+  const knowAt = (c && c.knowAt) || {};
+  const go = (pos, x, z, tArrive, role, limit = Infinity, start = undefined) => {
     const f = defense[pos];
     busy.add(pos);
     let tx = x, tz = z;
@@ -1128,7 +1243,7 @@ function addSupport(plan, i, cfg) {
     limit = Math.min(limit, Math.max(3, reach));
     if (d > limit) { tx = f.x + ((x - f.x) / d) * limit; tz = f.z + ((z - f.z) / d) * limit; }
     if (dist(f.x, f.z, tx, tz) < 1.5) return;
-    addMove(plan, f, tx, tz, tArrive, { role, vmax: f.speed * F.supportSpeed, minEffort: 0.75 }, cfg);
+    addMove(plan, f, tx, tz, Math.max(tArrive, (start ?? 0) + 0.3), { role, vmax: f.speed * F.supportSpeed, minEffort: 0.75, start }, cfg);
   };
   const tBall = Math.max(c.t, 1.2);
 
@@ -1150,7 +1265,7 @@ function addSupport(plan, i, cfg) {
   // ---- bases and battery on a hit that turns into a throw
   if (!i.simple && c.leadDest !== undefined) {
     const lead = c.leadDest;
-    const cover = (pos, base, t) => { const [x, z] = standAt(base); go(pos, x, z, t, 'cover'); };
+    const cover = (pos, base, t) => { const [x, z] = standAt(base); go(pos, x, z, t, 'cover', Infinity, knowAt[base] > 0 ? knowAt[base] + defense[pos].react : undefined); };
     if (!busy.has('1B')) cover('1B', 1, 2.0);
     if (lead >= 2 || bases[0]) {
       const mid = idle(['SS', '2B']).sort((a, b) => dist(defense[a].x, defense[a].z, BASE_XZ[2][0], BASE_XZ[2][1]) - dist(defense[b].x, defense[b].z, BASE_XZ[2][0], BASE_XZ[2][1]))[0];
@@ -1384,7 +1499,7 @@ function finishHit(plan, ctx) {
   const t0Of = (b) => (b === 0 ? R.batterStart : rs(b) ?? R.startDelay);
   const order = [3, 2, 1].filter((b) => bases[b - 1]);
   const stay = (b) => [{ kind: 'run', from: b, to: b, t0: t0Of(b) }];
-  const recs = makeRecords(bases, forced, (b) => (air ? airLegs(b, air, outs, plan.ballLandDistance > R.tagDepth, cfg) : stay(b)), [{ kind: outfield ? 'round' : 'run', from: 0, to: 1, t0: R.batterStart }]);
+  const recs = makeRecords(bases, forced, (b) => (air ? airLegs(b, air, outs, plan.landDepth, cfg) : stay(b)), [{ kind: outfield ? 'round' : 'run', from: 0, to: 1, t0: R.batterStart }]);
   // (runners going with the pitch: on their way to the next base from the start)
   for (const b of order) if (rs(b) !== undefined) recs.push({ from: b, to: b + 1, legs: [{ kind: 'run', from: b, to: Math.min(4, b + 1), t0: rs(b) }], spd: sp(b), sent: false, sentTo: null, recalled: false, forced: forced.has(b), running: true });
   recs.sort((p, q) => q.from - p.from);
@@ -1406,13 +1521,27 @@ function finishHit(plan, ctx) {
     }
   };
   // 1. orders while the ball is in the air
-  if (air) { ordersUntil(plan.airRes - 1e-9); plan.send.pre = viewOf(recs, cfg); }
+  if (air) { ordersUntil(plan.airRes - 1e-9); plan.send.pre = viewOf(recs, cfg, outs < 2); }
   // 2. the ball is down (at once on a grounder): each runner takes the next base if he is forced or it is safe, lead runner first
   if (air && plan.airRes > decide) takeSnap();
   {
     let ceiling = 5; // lowest occupied destination base ahead (exclusive); 5 = none
+    // (a runner you sent or held back keeps your order; the rest take the next base when safe, and more when it is safe by a mile)
+    const legsTo = (r, to) => {
+      if (r.running) return [{ kind: 'run', from: r.from, to, t0: rs(r.from) }];
+      if (air || r.from === 0) { const L = r.from === 0 ? [{ kind: 'run', from: 0, to: 1, t0: R.batterStart }] : r.legs.map((q) => ({ ...q })); return to > (r.from === 0 ? 1 : r.from) ? extendLegs(L, r.from, to, r.from === 0 ? R.batterStart : Math.max(tRes, t0Of(r.from)), cfg, r.spd) : L; }
+      return [{ kind: 'run', from: r.from, to, t0: t0Of(r.from) }];
+    };
+    const extra = (r, target, ceil) => {
+      for (let nb = target + 1; nb <= 4 && (nb === 4 || nb < ceil); nb++) {
+        const hyp = { ...r, legs: legsTo(r, nb) };
+        if (recArrive(cfg, hyp, nb) + R.autoMargin < D[nb]) target = nb; else break;
+      }
+      return target;
+    };
     for (const r of recs) {
       if (r.from === 0) continue;
+      if (r.recalled) { if (r.to < 4) ceiling = Math.min(ceiling, r.to); continue; }
       let target = r.from;
       if (r.sent) target = r.to;
       else if (r.forced) target = r.from + 1;
@@ -1424,19 +1553,27 @@ function finishHit(plan, ctx) {
       }
       if (!r.sent && target < 4 && target >= ceiling) target = Math.max(r.from, ceiling - 1);
       if (target <= r.from && r.forced) target = r.from + 1;
+      if (!r.sent && target > r.from && !r.running) { const t2 = extra(r, target, ceiling); if (t2 > target) r.auto = true; target = t2; }
       if (!r.sent) {
         if (r.running) {
           if (target > r.from) r.legs = [{ kind: 'run', from: r.from, to: target, t0: rs(r.from) }];
           else backLegs(r.legs, r.from, r.from, Math.max(rs(r.from) + 0.2, plan.downT ?? tF), cfg, r.spd);
         } else if (target > r.from) {
-          if (air) extendLegs(r.legs, r.from, target, tRes, cfg, r.spd);
+          if (air) extendLegs(r.legs, r.from, target, Math.max(tRes, t0Of(r.from)), cfg, r.spd);
           else r.legs = [{ kind: outfield && target < 4 ? 'round' : 'run', from: r.from, to: target, t0: t0Of(r.from) }];
         } else if (air && r.legs.some((L) => L.kind === 'half' || (L.kind === 'run' && L.to > L.from))) backLegs(r.legs, r.from, r.from, tRes, cfg, r.spd);
         r.to = target;
       }
+      r.autoTo = r.to;
       if (r.to < 4) ceiling = Math.min(ceiling, r.to);
     }
-    if (!batter.sent && batter.to >= ceiling) batter.to = Math.max(1, ceiling - 1);
+    if (!batter.sent && !batter.recalled) {
+      let bt = batter.to >= ceiling ? Math.max(1, ceiling - 1) : batter.to;
+      if (bt === 1 && ceiling > 2) { bt = extra(batter, 1, ceiling); if (bt > 1) batter.auto = true; } // (a ball in the corner: he takes second by himself, if it is plainly safe)
+      if (bt > 1) { batter.legs = legsTo(batter, bt); if (outfield && bt < 4 && batter.legs.length === 1) batter.legs = [{ kind: 'round', from: 0, to: bt, t0: R.batterStart }]; }
+      batter.to = bt;
+    }
+    batter.autoTo = batter.to;
   }
   // 3. orders after it is down
   ordersUntil(sendBy + 1);
@@ -1459,6 +1596,14 @@ function finishHit(plan, ctx) {
     }
   }
   plan.send.post = viewOf(recs, cfg);
+  // when could the defense first know a runner was heading for each base? (a base he only goes to because you sent him: when he went)
+  const knowAt = {};
+  for (let b = 2; b <= 4; b++) {
+    let k = Infinity;
+    for (const r of recs) if (!r.out && r.to >= b && r.from < b) k = Math.min(k, (r.autoTo ?? r.from) >= b ? 0 : (r.firstSentAt ?? 0) + R.sendReact);
+    knowAt[b] = Number.isFinite(k) ? k : 0;
+  }
+  plan.ctx.knowAt = knowAt;
   let bd = batter.to;
   const dests = {};
   for (const r of recs) if (r.from > 0) dests[r.from] = r.to;
@@ -1482,6 +1627,9 @@ function finishHit(plan, ctx) {
     if (tBall + R.sendTag + F.outMargin <= arrive) { tgtBase = r.to; break; }
   }
   plan.ctx.tgtBase = tgtBase;
+  // (a throw that only goes there because you sent a runner: the men who take it only set off once he has gone)
+  const kStart = knowAt[tgtBase] > 0 ? Math.max(F.cover.start, knowAt[tgtBase] + F.reaction.IF) : undefined;
+  const tgt0 = Math.min(4, Math.max(...recs.map((r) => r.autoTo ?? r.from)));
   const relayNeeded = f.type === 'OF' && dist(pf.x, pf.z, BASE_XZ[tgtBase][0], BASE_XZ[tgtBase][1]) > F.relayDistance;
   const rp = { x: BASE_XZ[tgtBase][0], z: BASE_XZ[tgtBase][1] };
   const holdThrow = (thrower, tReadyT, way) => { // he holds the ball until the throw can reach the bag together with the man covering it
@@ -1489,23 +1637,40 @@ function finishHit(plan, ctx) {
     if (carry) carry.t1 = Math.max(carry.t1, way.t0);
   };
   if (relayNeeded) {
-    // cut-off man: nearest infielder standing 55% of the way back from the base
-    const cx = rp.x + (pf.x - rp.x) * 0.5, cz = rp.z + (pf.z - rp.z) * 0.5;
-    const recvGuess = coverer(tgtBase, f, defense);
-    let cut = null;
-    for (const pos of ['SS', '2B', '3B', '1B']) {
-      if (pos === recvGuess.pos) continue;
-      const q = defense[pos];
-      const d = dist(q.x, q.z, cx, cz);
-      if (!cut || d < cut.d) cut = { q, d };
-    }
-    const c = cut.q;
+    // cut-off man: nearest infielder standing 55% of the way back from the base (the same man who first went out for the throw where it
+    // was going before you sent the runner, if there was one)
+    const cutFor = (base) => {
+      const bx = BASE_XZ[base][0], bz = BASE_XZ[base][1];
+      const x = bx + (pf.x - bx) * 0.5, z = bz + (pf.z - bz) * 0.5;
+      const guess = coverer(base, f, defense);
+      let best = null;
+      for (const pos of ['SS', '2B', '3B', '1B']) {
+        if (pos === guess.pos) continue;
+        const q = defense[pos];
+        const d = dist(q.x, q.z, x, z);
+        if (!best || d < best.d) best = { q, d };
+      }
+      return { c: best.q, x, z, guess };
+    };
+    const now = cutFor(tgtBase);
+    const before = kStart !== undefined && tgt0 !== tgtBase && dist(pf.x, pf.z, BASE_XZ[tgt0][0], BASE_XZ[tgt0][1]) > F.relayDistance ? cutFor(tgt0) : null;
+    const cx = now.x, cz = now.z;
+    const c = before && before.c.pos !== now.guess.pos ? before.c : now.c;
     const t1 = tReady + dist(pf.x, pf.z, cx, cz) / F.throwSpeed.OF;
     const t2 = t1 + F.relayTransfer;
-    const way = coverOptions({ base: tgtBase, thrower: c, tReady: t2, from: { x: cx, z: cz } }, plan, defense, cfg).filter((o) => o.recv.pos !== c.pos)[0];
+    const way = coverOptions({ base: tgtBase, thrower: c, tReady: t2, from: { x: cx, z: cz }, coverStart: kStart }, plan, defense, cfg).filter((o) => o.recv.pos !== c.pos)[0];
     const recv = way.recv;
     const t3 = way.t1;
-    addMove(plan, c, cx, cz, Math.max(c.react + 0.3, t1 - 0.4), { role: 'relay', minEffort: 0.8 }, cfg);
+    if (before) {
+      // he first went out to take the throw for where it was going before you sent the runner, then turns for the new spot
+      if (before.c.pos !== c.pos) {
+        if (before.c.pos !== recv.pos) addMove(plan, before.c, before.x, before.z, Math.max(before.c.react + 0.3, t1 - 0.4), { role: 'relay', minEffort: 0.8 }, cfg);
+        addMove(plan, c, cx, cz, Math.max(kStart + 0.1, t1 - 0.4), { role: 'relay', minEffort: 0.8, start: kStart }, cfg);
+      } else {
+        addMove(plan, c, before.x, before.z, Math.max(c.react + 0.3, t1 - 0.4), { role: 'relay', minEffort: 0.8 }, cfg);
+        addMove(plan, c, cx, cz, Math.max(kStart + 0.1, t1 - 0.4), { role: 'relay', minEffort: 0.8, start: kStart, cut: true }, cfg);
+      }
+    } else addMove(plan, c, cx, cz, Math.max(c.react + 0.3, t1 - 0.4), { role: 'relay', minEffort: 0.8 }, cfg);
     addMove(plan, recv, rp.x, rp.z, Math.max(way.coverStart + 0.05, t3), { role: 'cover', start: way.coverStart, vmax: way.speed, minEffort: 0.8, stop: true }, cfg);
     plan.throws.push({ from: f.pos, to: c.pos, t0: tReady, t1, ax: pf.x, az: pf.z, bx: cx, bz: cz, toBase: 0 });
     plan.throws.push({ from: c.pos, to: recv.pos, t0: way.t0, t1: t3, ax: cx, az: cz, bx: rp.x, bz: rp.z, toBase: tgtBase });
@@ -1514,7 +1679,7 @@ function finishHit(plan, ctx) {
     plan.events.push({ t: t3, type: 'throwEnd', pos: recv.pos, base: tgtBase });
     plan.ballEnd = t3;
   } else {
-    const way = coverOptions({ base: tgtBase, thrower: f, tReady, from: { x: pf.x, z: pf.z }, tHave: tF, dive: !!(plan.fielderMoves[0] && plan.fielderMoves[0].dive) }, plan, defense, cfg)[0];
+    const way = coverOptions({ base: tgtBase, thrower: f, tReady, from: { x: pf.x, z: pf.z }, tHave: tF, dive: !!(plan.fielderMoves[0] && plan.fielderMoves[0].dive), coverStart: kStart }, plan, defense, cfg)[0];
     const recv = way.recv;
     addMove(plan, recv, rp.x, rp.z, Math.max(way.coverStart + 0.05, way.tOut), { role: 'cover', start: way.coverStart, vmax: way.speed, minEffort: 0.8, stop: !way.self }, cfg);
     if (way.self) {

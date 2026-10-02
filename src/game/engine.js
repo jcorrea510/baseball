@@ -9,7 +9,7 @@ import { simulateBattedBall, projectDistance } from '../physics/ballistics.js';
 import { resolveSwingTimes, describeError } from './timing.js';
 import { computeSwing, computeBunt, derbyBatting, contactWindow, contactPoint, scaleWindow } from './contact.js';
 import { choosePitch, pitchWindowScale } from './pitcherAI.js';
-import { createDefense, planPlay, sendOptions, planSteal, fielderBackTime } from './fielding.js';
+import { createDefense, planPlay, sendOptions, runnerOptions, planSteal, fielderBackTime } from './fielding.js';
 import * as rules from './rules.js';
 import { simulateHalf } from './aiHalf.js';
 import { makeLineup, makePitcher, PLAYER_TEAM } from './teams.js';
@@ -595,14 +595,38 @@ export class Engine {
     return sendOptions(this.play.plan, this.time - this.play.t0, this.cfg);
   }
 
+  // Every runner you can give an order to right now: [{ from, goal, send, back, tag, canTag }] (see fielding.runnerOptions).
+  runnerTargets() {
+    if (!this.sendOpen) return [];
+    return runnerOptions(this.play.plan, this.time - this.play.t0, this.cfg);
+  }
+
+  // An order for one runner (from = the base he started on, 0 = the batter): 'send' (one base further), 'back' (one base back),
+  // 'tag' (toggle: tag up on a ball in the air). True when taken.
+  runnerOrder(from, kind) {
+    const opt = this.runnerTargets().find((q) => q.from === from);
+    if (!opt) return false;
+    const t = this.time - this.play.t0;
+    if (kind === 'send' && opt.send) return this.applyRunnerOrder({ base: opt.send, t, from });
+    if (kind === 'back' && opt.back !== null && opt.back !== undefined) return this.applyRunnerOrder({ base: opt.goal, t, from, back: true });
+    if (kind === 'tag' && opt.canTag) return this.applyRunnerOrder({ base: from, t, from, tag: opt.tag !== true });
+    return false;
+  }
+
   // Tap base `base`: send the runner heading for the base before it on to it - or call back the runner you sent there. True when taken.
   sendRunner(base) {
     const opt = this.sendTargets().find((q) => q.base === base);
     if (!opt) return false;
+    return this.applyRunnerOrder({ base, t: this.time - this.play.t0, from: opt.from, back: opt.kind === 'back' || undefined });
+  }
+
+  applyRunnerOrder(o) {
     const p = this.play;
-    const t = this.time - p.t0;
-    p.planIn.orders.push({ base, t, from: opt.from, back: opt.kind === 'back' || undefined });
-    const plan = planPlay(p.planIn, this.cfg);
+    const t = o.t;
+    const base = o.base;
+    const opt = { kind: o.tag !== undefined ? 'tag' : o.back ? 'back' : 'send' };
+    p.planIn.orders.push(o);
+    const plan = planPlay({ ...p.planIn, prev: { paths: p.plan.paths, t } }, this.cfg);
     p.plan = plan;
     p.events = buildEventList(p.sim, plan);
     p.nextEvent = p.events.findIndex((e) => e.t > t + 1e-9);

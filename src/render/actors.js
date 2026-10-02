@@ -4,7 +4,7 @@ import { CONFIG } from '../config.js';
 import { Person, makeBat, restyleBat, disposeBat, mixPose, makePose, copyPose } from './rig.js';
 import { batterPose, buntPose, pitcherPose, catcherPose, fielderReady, runPose, runReachPose, runCadence, runnerLeadPose, slidePose, slideGetUp, throwPose, catchPose, divePose, celebratePose, standingPose, umpirePose, THROW_RELEASE_U } from './poses.js';
 import { UNIFORMS } from '../game/teams.js';
-import { BASE_XZ, MOUND_XZ, clampToField } from '../physics/field.js';
+import { BASE_XZ, MOUND_XZ, clampToField, dugoutSpot } from '../physics/field.js';
 import { sampleBall } from '../physics/ballistics.js';
 import { POSITIONS, fielderFreeTime } from '../game/fielding.js';
 import { runnerState, runnerProfile, leadSpot } from '../game/runnerMotion.js';
@@ -59,6 +59,7 @@ export class Actors {
   configure({ engine, playerUniformKey = 'classic', batStyle = 'ash' }) {
     const key = [engine.opponent.id, engine.playerTeam.id, engine.pitcher.hand, engine.seed, playerUniformKey, batStyle, engine.lineup.map((b) => b.hand + b.id + (b.skin || '')).join(',')].join('|');
     this.batStyle = batStyle;
+    this.walkers = []; this.walkPlan = null; this.playRunnerP = {};
     if (key === this.cfgKey) return;
     this.cfgKey = key;
     // take the old figures off the field and free their graphics memory (every game builds new teams)
@@ -564,6 +565,23 @@ export class Actors {
       }
     }
 
+    // --- a runner tagged out on the play keeps walking off to the dugout after the play is over
+    if (inPlay) {
+      this.playRunnerP[0] = batterP;
+      if (game) for (let b = 1; b <= 3; b++) if (game.bases[b - 1]) this.playRunnerP[b] = this.getPlayer(game.bases[b - 1], E);
+      this.walkPlan = plan;
+    } else if (this.walkPlan) {
+      const W = this.walkers || (this.walkers = []);
+      for (const m of this.walkPlan.moves) {
+        if (!(m.out && m.walkOff)) continue;
+        const p = this.playRunnerP[m.from];
+        const st = p && this.state.get(p);
+        if (st && st.init) W.push({ p, x: st.x, z: st.z, yaw: st.yaw, phase: st.phase || 0, t: 0 });
+      }
+      this.walkPlan = null; this.playRunnerP = {};
+    }
+    this.updateWalkers(E, dt, time);
+
     // --- players who reached base on this play stay visible after it (result phase) as runners
     if (game && !inPlay && phase !== 'aiSummary') {
       // (covered by game.bases above: applyPlay places the batter on base)
@@ -575,6 +593,30 @@ export class Actors {
       c.apply();
     }
     void batterRunning;
+  }
+
+  updateWalkers(E, dt, time) {
+    if (!this.walkers || !this.walkers.length) return;
+    if (!this.door) { const g = dugoutSpot(-1); this.door = [(g.front0[0] + g.front1[0]) / 2, (g.front0[1] + g.front1[1]) / 2]; }
+    const v = E.cfg.runner.walkOffSpeed;
+    this.walkers = this.walkers.filter((w) => {
+      if (w.p.active) return false; // (he is needed again - at the plate, say)
+      w.t += dt;
+      const dx = this.door[0] - w.x, dz = this.door[1] - w.z, d = Math.hypot(dx, dz);
+      if (d < 1 || w.t > 12) return false;
+      const step = Math.min(d, v * dt);
+      w.x += (dx / d) * step; w.z += (dz / d) * step;
+      w.yaw = lerpAngle(w.yaw, Math.atan2(dx, dz), Math.min(1, dt * 6));
+      w.p.active = true;
+      w.p.place(w.x, 0, w.z, w.yaw);
+      w.p.root.updateMatrixWorld(true);
+      w.phase += runCadence(v) * TAU * dt;
+      runPose(w.p.pose, w.phase, v, 0, { accel: 0, side: 0 });
+      w.p.pose.batVis = 0;
+      if (w.p.bat) w.p.bat.visible = false;
+      w.p.apply();
+      return true;
+    });
   }
 
   batterAtPlate(E, person, time, swing, pitch, phase) {

@@ -398,6 +398,7 @@ export const CONFIG = {
   //  Fielding and baserunning (used to decide hit / out / extra bases)
   // --------------------------------------------------------------------------
   fielding: {
+    replanReact: 0.25, // s: when you give a runner an order, the fielders carry on as before for this long, then change their plans
     replanBlend: 0.22, // s: when you send a runner and the play is planned again, a fielder whose job changed eases onto his new run over about this long
     // Where each defender stands. Outfielders are given as [spray degrees, feet from home].
     positions: {
@@ -517,19 +518,22 @@ export const CONFIG = {
     outLinger: 2.3, // s the play goes on after a runner is tagged out, so you see the tag and see him walk off
     walkOffDelay: 1.3, // s after the tag before he gets up and walks to the dugout
     walkOffSpeed: 6, // ft/s
-    autoMargin: 1.4, // s: when the window closes, a runner who would make the next base by this much goes on by himself
+    autoMargin: 0.7, // s: a runner who would make one more base by this much takes it by himself (as the ball comes down, and again when the window closes)
     // On a ball to the outfield a runner rounds his base, pulls up `roundPast` ft beyond it (braking at `roundBrake` ft/s^2) and waits.
     roundPast: 14,
     roundBrake: 30,
     // On a ball in the air (fewer than two outs) a runner on first - or second, unless it is deep - goes `halfway` (a share of the
     // way to the next base) and waits; the man on third, and on second on a ball coming down past `tagDepth` ft, goes back to his bag
     // to tag up (`tagBack` s after contact). Once it is down or caught they react in `downReact` s.
-    halfway: 0.5,
+    halfway: 0.45,
+    halfwayDepth: [150, 330], // ft: on a fly coming down this shallow he only takes a step (`stayStep`), this deep he goes `halfway`
+    stayStep: 0.1,
     halfwayLine: 0.22, // (on a line drive only a few steps - after a moment's freeze, `read.line`)
     tagDepth: 320,
     tagBack: 0.12,
     downReact: 0.15,
     tagReact: 0.05, // s after the catch a runner tagging up leaves the bag (he times it)...
+    turnKeep: 0.9, // radians: told to go somewhere nearly the way he is already running, he carries on; anything more and he pulls up and turns
     tagRoll: 12, // ...with a rocking start: he is already moving at this many ft/s as he leaves
     tagWindow: 1.2, // s after a catch you can still send a runner to tag up
     leadSecond: 18, // ft: the lead off second base (nobody holds him on there, so he takes a much bigger one)

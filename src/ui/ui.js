@@ -83,6 +83,9 @@ function focusSelector(el) {
 const PITCH_LABEL = { fastball: 'Fastball', changeup: 'Changeup', curveball: 'Curveball', slider: 'Slider', heater: 'Heater', mixed: 'Mixed' };
 const avgText = (hits, ab) => (ab > 0 ? (hits / ab).toFixed(3).replace(/^0/, '') : '.000');
 const ordinal = (n) => n + (n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th');
+// each runner's colour on the runner panel and the diamond (batter, first, second, third)
+const RUNNER_COLORS = ['#ffffff', '#45d4ff', '#ff9a3c', '#a6ff4d'];
+
 // a team's strength as 1-5 stars
 const stars = (rating, bare = false) => {
   const n = Math.max(1, Math.min(5, Math.round(((rating ?? 50) - 22) / 8)));
@@ -155,14 +158,17 @@ export class UI {
       <div class="batterup"><div class="bcard"><div class="who"></div><div class="line"></div></div><div class="bextra"></div><button class="btn" data-a="batterReady">${icon('play')}Ready</button></div>
       <div class="meter"><div class="bar"><div class="tick"></div><div class="mark"></div></div><div class="lab"><span>EARLY</span><span>LATE</span></div><div class="txt"></div></div>
       <button class="swingbtn" data-swing aria-label="Swing">${icon('bat')}<span>Swing</span></button>
-      <div class="basepad" aria-label="Send runners">
-        <div class="bphead">Send</div>
+      <div class="basepad" aria-label="Runners">
+        <div class="rrows"></div>
+        <div class="bphead">Runners</div>
+        <div class="bpdia">
         <svg class="bpfield" viewBox="0 0 160 160" aria-hidden="true"><path class="lines" d="M80 140 L140 80 L80 20 L20 80 Z"/></svg>
         <button class="bpbase" data-base="1" disabled tabindex="-1"><span></span></button>
         <button class="bpbase" data-base="2" title="Second (2)"><span>2nd</span></button>
         <button class="bpbase" data-base="3" title="Third (3)"><span>3rd</span></button>
         <button class="bpbase home" data-base="4" title="Home (4)"><span>Home</span></button>
         <svg class="bpfield bpover" viewBox="0 0 160 160" aria-hidden="true"><g class="dots"></g></svg>
+        </div>
       </div>
       <div class="acts"><button class="stealbtn" data-a="steal" aria-pressed="false" title="Steal (S)">${icon('go')}<span>Steal</span></button><button class="buntbtn" data-a="bunt" aria-pressed="false" title="Bunt (B)">${icon('bat')}<span>Bunt</span></button></div>
       <div class="practice panel collapsed">
@@ -184,8 +190,10 @@ export class UI {
     };
     // the base diamond (sending runners): a base is taken the moment it is touched
     this.q.basepad.addEventListener('pointerdown', (e) => {
-      const b = e.target.closest('.bpbase.can, .bpbase.back');
       e.preventDefault(); e.stopPropagation();
+      const r = e.target.closest('[data-ro]');
+      if (r && !r.disabled) { r.classList.add('hit'); setTimeout(() => r.classList.remove('hit'), 220); this.act('runner', { from: +r.closest('.rrow').dataset.from, kind: r.dataset.ro }); return; }
+      const b = e.target.closest('.bpbase.can, .bpbase.back');
       if (b) { b.classList.add('hit'); setTimeout(() => b.classList.remove('hit'), 260); this.act('send', +b.dataset.base); }
     });
     hud.addEventListener('click', (e) => {
@@ -937,15 +945,32 @@ export class UI {
         sp.textContent = q && q.kind === 'back' ? 'Back' : sp.dataset.label;
       }
     }
+    // one row per runner, in his own colour: where he started, where he is going, and his buttons
+    const rows = o.runners || [];
+    const rkey = rows.map((r) => `${r.from}:${r.goal}:${r.send}:${r.back}:${r.canTag ? (r.tag === true ? 'T' : r.tag === false ? 'N' : 'A') : '-'}:${r.out ? 1 : 0}`).join('|');
+    if (rkey !== this.rowKey) {
+      this.rowKey = rkey;
+      const nm = (b) => ['Home', '1st', '2nd', '3rd', 'Home'][b] || '';
+      el.querySelector('.rrows').innerHTML = rows.map((r) => `<div class="rrow" data-from="${r.from}" style="--rc:${RUNNER_COLORS[r.from]}">
+        <span class="rbadge">${r.from === 0 ? 'Bat' : nm(r.from)}</span><span class="rdest">${r.out ? 'Out' : (r.goal === r.from && r.from > 0 ? 'Stays' : (r.goal >= 4 ? 'Scores' : '→ ' + nm(r.goal)))}</span>
+        <button data-ro="back" ${r.back === null ? 'disabled' : ''} aria-label="Back">${icon('chevLeft')}<b>${r.back === null ? '' : nm(r.back)}</b></button>
+        <button data-ro="send" ${r.send === null ? 'disabled' : ''} aria-label="Go">${r.send === null ? '' : `<b>${nm(r.send)}</b>`}${icon('chevRight')}</button>
+        ${r.canTag ? `<button data-ro="tag" class="tag ${r.tag === true ? 'on' : r.tag === false ? 'off' : ''}" aria-label="Tag up">Tag</button>` : ''}
+      </div>`).join('');
+    }
     const g = el.querySelector('.dots');
-    while (g.children.length < o.dots.length) g.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'circle'));
-    for (let i = 0; i < g.children.length; i++) {
-      const c = g.children[i], d = o.dots[i];
-      if (!d) { c.setAttribute('r', 0); continue; }
+    while (g.children.length < o.dots.length * 2) { g.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'circle')); g.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'text')); }
+    for (let i = 0; i < g.children.length; i += 2) {
+      const c = g.children[i], tx = g.children[i + 1], d = o.dots[i / 2];
+      if (!d) { c.setAttribute('r', 0); tx.textContent = ''; continue; }
       // field feet -> the diamond's picture: home (80,140), first (140,80), second (80,20), third (20,80)
       const k = 60 / 63.64;
-      c.setAttribute('cx', (80 + d.x * k).toFixed(1)); c.setAttribute('cy', (140 + d.z * k).toFixed(1)); c.setAttribute('r', 7);
+      const cx = (80 + d.x * k).toFixed(1), cy = (140 + d.z * k).toFixed(1);
+      c.setAttribute('cx', cx); c.setAttribute('cy', cy); c.setAttribute('r', 8);
       c.setAttribute('class', d.sent ? 'bpdot sent' : 'bpdot');
+      c.style.fill = RUNNER_COLORS[d.from] || '#fff';
+      tx.setAttribute('x', cx); tx.setAttribute('y', (+cy + 3.6).toFixed(1)); tx.setAttribute('class', 'bplab');
+      tx.textContent = d.from === 0 ? 'B' : String(d.from);
     }
   }
   hint(text, ms = 2600) {

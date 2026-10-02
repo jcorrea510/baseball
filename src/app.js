@@ -260,6 +260,7 @@ export class App {
       case 'bunt': if (this.engine) this.engine.setBunt(!this.engine.buntStance); break;
       case 'steal': if (this.engine) this.engine.setSteal(!this.engine.stealArmed); break;
       case 'send': this.sendRunner(d); break;
+      case 'runner': if (this.engine && !this.paused && !this.bot && this.engine.runnerOrder(d.from, d.kind)) this.audio.uiClick(); break;
       case 'swing': this.swingInput(d); break;
       case 'practice': if (this.engine) { Object.assign(this.engine.practice, d); } break;
       default: break;
@@ -899,6 +900,13 @@ export class App {
         case 'ArrowDown': if (!inGame) break; e.preventDefault(); this.aimKeys.down = true; this.aimMode = 'keys'; break;
         case 'Equal': case 'NumpadAdd': if (inGame && this.engine.mode === 'practice') this.practiceSpeed(+2); break;
         case 'Minus': case 'NumpadSubtract': if (inGame && this.engine.mode === 'practice') this.practiceSpeed(-2); break;
+        case 'KeyT': // tag up (every runner who can) - press again to cancel
+          if (this.screen === 'game' && !this.ui.current && this.engine && this.engine.sendOpen) {
+            let any = false;
+            for (const r of this.engine.runnerTargets()) if (r.canTag && this.engine.runnerOrder(r.from, 'tag')) any = true;
+            if (any) this.audio.uiClick();
+          }
+          break;
         case 'Digit1': case 'Digit2': case 'Digit3': case 'Digit4': case 'Digit5': case 'Digit6': case 'KeyH':
           // while a hit is being played: 2 / 3 / 4 (or H) send a runner to that base
           if (inGame && this.engine.sendOpen) { const b = e.code === 'KeyH' ? 4 : +e.code.slice(5); if (b >= 2 && b <= 4) this.sendRunner(b); break; }
@@ -1075,14 +1083,14 @@ export class App {
       if (m.back && m.from === 0) continue;
       if (m.out && m.outAt !== undefined && t > m.outAt) continue; // (tagged out: off the diamond)
       const q = runnerState(m, t, e.cfg, this.padQ || (this.padQ = {}));
-      dots.push({ x: q.x, z: q.z, sent: !!m.sent && t < (m.outAt ?? Infinity) });
+      dots.push({ x: q.x, z: q.z, sent: !!m.sent && t < (m.outAt ?? Infinity), from: m.from });
     }
     // (the batter on a ball caught in the air has no move: he is still a dot on his way to first until the catch)
     if (!p.plan.moves.some((m) => m.from === 0) && !p.plan.homer && t < (p.plan.catchT ?? 0)) {
       const q = runnerProfile(0, 1, 'run', e.cfg).at(Math.max(0, t - e.cfg.runner.batterStart), this.padQ || (this.padQ = {}));
-      dots.push({ x: q.x, z: q.z, sent: false });
+      dots.push({ x: q.x, z: q.z, sent: false, from: 0 });
     }
-    this.ui.setBasePad({ targets: e.sendTargets(), dots });
+    this.ui.setBasePad({ targets: e.sendTargets(), dots, runners: e.runnerTargets() });
   }
 
   swingInput(ev) {

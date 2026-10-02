@@ -304,3 +304,54 @@ describe('changing your mind', () => {
     void scored;
   });
 });
+
+describe('changing your mind, again and again', () => {
+  it('every tap: fielders carry on exactly where they were, runners turn round for real, and every out stays legal', async () => {
+    const { runnerOptions } = await import('../src/game/fielding.js');
+    const { samplePath } = await import('../src/game/fielderMotion.js');
+    const rng = createRng(41);
+    const problems = [];
+    let chains = 0, turns = 0;
+    for (let k = 0; k < 2500 && chains < 250; k++) {
+      const c = C(rng.range(70, 105), rng.range(-5, 35), rng.range(-40, 40));
+      const sim = simulateBattedBall({ ...c, start: { x: 0, y: 2.6, z: -1 } });
+      const bases = [rng.chance(0.5) ? 1 : null, rng.chance(0.5) ? 2 : null, rng.chance(0.3) ? 3 : null];
+      const defense = createDefense();
+      const i = { sim, contact: c, bases, outs: Math.floor(rng.next() * 2), defense, orders: [] };
+      let cur = planPlay(i, CONFIG);
+      if (!cur.send) continue;
+      chains++;
+      let t = cur.send.from;
+      for (let q = 0; q < 4; q++) {
+        t += rng.range(0.2, 0.9);
+        const opts = runnerOptions(cur, t);
+        const o = opts[Math.floor(rng.next() * opts.length)];
+        if (!o) break;
+        const kind = o.back !== null && rng.chance(0.5) ? 'back' : o.send ? 'send' : o.canTag ? 'tag' : null;
+        if (!kind) break;
+        const order = kind === 'send' ? { base: o.send, t, from: o.from } : kind === 'back' ? { base: o.goal, t, from: o.from, back: true } : { base: o.from, t, from: o.from, tag: o.tag !== true };
+        if (kind === 'back') turns++;
+        i.orders = [...i.orders, order];
+        const next = planPlay({ ...i, prev: { paths: cur.paths, t } }, CONFIG);
+        for (const pos in defense) {
+          const a = cur.paths[pos], b = next.paths[pos];
+          const pa = a && a.length ? samplePath(a, t + 0.05) : defense[pos], pb = b && b.length ? samplePath(b, t + 0.05) : defense[pos];
+          if (Math.hypot(pa.x - pb.x, pa.z - pb.z) > 0.05) problems.push(`${pos} jumps at a tap`);
+        }
+        problems.push(...auditPlan(next, defense));
+        for (const m of next.moves) {
+          let prev = null;
+          for (let tt = 0; tt < Math.min(next.endTime, (m.outAt ?? 99) + 1); tt += 1 / 30) {
+            const s = runnerState(m, tt, CONFIG, {});
+            if (prev && Math.hypot(s.x - prev[0], s.z - prev[1]) > CONFIG.runner.speed * 1.3 / 30 + 0.05) { problems.push(`runner from ${m.from} jumps`); break; }
+            prev = [s.x, s.z];
+          }
+        }
+        cur = next;
+      }
+    }
+    expect([...new Set(problems)].slice(0, 10)).toEqual([]);
+    expect(chains).toBeGreaterThan(150);
+    expect(turns).toBeGreaterThan(50);
+  }, 120000);
+});

@@ -122,6 +122,11 @@ export function buildRoute(from, to, { through = false, fromBag = false } = {}, 
     }
     prev = cur;
   }
+  return finishRoute(pts, baseAt, to);
+}
+
+// Arc lengths, headings and curvature for a list of sampled points (`baseAt`: sample index where each base is touched).
+function finishRoute(pts, baseAt, to) {
   const n = pts.length;
   const x = new Float64Array(n), z = new Float64Array(n), s = new Float64Array(n);
   for (let i = 0; i < n; i++) {
@@ -350,7 +355,7 @@ function sliceRoute(r, s0, s1) {
  *   { kind: 'round', from, to, t0, fromBag }  he rounds base `to` and pulls up just past it
  *   { kind: 'resume', from, to, s0, t0, fromBag }  on from where he pulled up (s0 ft along the route from `from`) to base `to`
  *   { kind: 'half', from, to: from, frac, t0 }  part of the way toward the next base on a ball in the air, and wait there
- *   { kind: 'reverse', tb, toBase, t0 }  he turns back at `tb` on the leg before and runs back to the bag of base `toBase`
+ *   { kind: 'brake', ... } / { kind: 'path', ... }  he changed direction (see redirectLegs)
  * Returns them with `last` set on the final one (t0 = seconds after contact when that leg starts).
  */
 export function moveLegs(move, cfg = CONFIG) {
@@ -360,10 +365,10 @@ export function moveLegs(move, cfg = CONFIG) {
   if (move.legs && move.legs.length) {
     const legs = move.legs.map((L) => ({ ...L, last: false }));
     legs[0].t0 = t0; // (the renderer may re-time the batter's start: the first leg follows the move)
-    for (let i = 1; i < legs.length; i++) if (legs[i].kind === 'reverse') { legs[i - 1].cut = legs[i].tb; legs[i].of = { ...legs[i - 1], last: false }; } // (he turns back on the leg before)
+    for (let i = 1; i < legs.length; i++) legs[i - 1].cut = legs[i].t0; // (a base he would only have reached after he changed course does not count)
     const L = legs[legs.length - 1];
     L.last = true;
-    if (move.out && move.to === 0 && L.kind !== 'reverse') L.to = move.outBase;
+    if (move.out && move.to === 0 && L.kind !== 'path' && L.kind !== 'brake') L.to = move.outBase;
     return legs;
   }
   const to = Math.max(toBase, move.from);
@@ -371,84 +376,104 @@ export function moveLegs(move, cfg = CONFIG) {
   return [{ kind: 'run', from: move.from, to, t0, fromBag: false, last: true }];
 }
 
-/** The speed profile of one leg (see moveLegs). (A 'reverse' leg has none of its own: this is the leg he turned back on.) */
+/** The speed profile of one leg (see moveLegs). */
 export function legProfile(L, move, cfg = CONFIG) {
   const spd = move.spd || 1;
-  if (L.kind === 'reverse') return legProfile({ ...L.of, last: false }, move, cfg);
   if (L.kind === 'round') return roundProfile(L.from, L.to, cfg, spd, L.fromBag);
   if (L.kind === 'half') return halfProfile(L.from, L.frac, cfg, spd);
+  if (L.kind === 'path') return pathProfile(L, cfg, spd);
   if (L.kind === 'resume') return resumeProfile(L.from, L.to, L.s0, cfg, spd, L.fromBag, L.v0 || 0);
   return runnerProfile(L.from, L.to, L.last ? moveKind(move) : 'run', cfg, spd, L.fromBag, L.v0 || 0);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Turning back: a runner on his way (leg `of`) is told at `tb` (seconds after contact) to get back to base `toBase` behind him - you
-// called him back, or the ball was caught. He brakes, turns and runs back along the way he came to the bag (the bag itself, even when
-// he started from his lead-off spot), and reaches it at full tilt (he dives back in). L = { kind: 'reverse', of, tb, toBase }.
+// Changing direction. A runner told to go somewhere he is not already heading - back to a bag behind him, or on again after he had
+// turned back - pulls up (a 'brake' leg: straight on along the way he faces, slowing at `brake` x 0.8) and then runs from where he
+// stopped along the base paths, through any bags in between, to the bag he was sent to (a 'path' leg). He always faces the way he
+// runs, so he never slides sideways, and he can be turned round any number of times.
+//   { kind: 'brake', t0, x, z, heading, v0, B }
+//   { kind: 'path', t0, pts: [[x, z]...], keys: [base | null ...], v0, toBase }   (pts[0] = where he starts)
 // ---------------------------------------------------------------------------------------------------------------
-// Where along a route is a base's bag? (negative: behind where the route starts - a lead-off spot is in front of its bag)
-function bagS(route, base) {
-  if (route.sBase[base] !== undefined) return route.sBase[base];
-  const [bx, bz] = BASE_XZ[base];
-  let best = Infinity, bi = 0;
-  for (let i = 0; i < route.n; i++) { const d = Math.hypot(route.x[i] - bx, route.z[i] - bz); if (d < best) { best = d; bi = i; } }
-  return bi === 0 && best > 0.3 ? -best : route.s[bi];
-}
-const revCache = new Map();
-function reversePlan(L, move, cfg) {
-  const key = `${L.tb}|${L.toBase}|${move.spd || 1}|${L.of.kind}|${L.of.from}|${L.of.to}|${L.of.t0}|${L.of.s0 || 0}|${L.of.fromBag}|${L.of.of ? 'r' : ''}`;
-  const hit = revCache.get(key);
-  if (hit && hit.cfg === cfg) return hit;
-  if (revCache.size > 400) revCache.clear();
-  const R = cfg.runner;
-  const p = legProfile({ ...L.of, last: false }, move, cfg);
-  const q = p.at(Math.max(0, L.tb - L.of.t0), {});
-  const V = R.speed * (move.spd || 1);
-  const B = R.brake * 0.8;
-  const v1 = q.speed, s1 = q.s;
-  const tb = v1 / B, s2 = s1 + (v1 * v1) / (2 * B);
-  const route = p.route;
-  const sT = route ? bagS(route, L.toBase) : -Math.hypot(q.x - BASE_XZ[L.toBase][0], q.z - BASE_XZ[L.toBase][1]);
-  const dir = s2 >= sT ? -1 : 1; // (back the way he came - or, if he can pull up short of the bag, on to it)
-  const dist = Math.abs(s2 - sT);
-  let lo = 0, hi = dist / V + 4 * R.accelTime + 1;
-  for (let k = 0; k < 40; k++) { const mid = (lo + hi) / 2; if (covered(V, mid, R.accelTime) < dist) lo = mid; else hi = mid; }
-  // a point `s` ft along the route (behind its start: on the straight line back to the bag)
-  const start = route ? [route.x[0], route.z[0]] : [q.x, q.z];
-  const bag = BASE_XZ[L.toBase];
-  const along = (s, out) => {
-    if (route && s >= 0) return p.at(p.tAtS(Math.min(s, p.sEnd)), out);
-    const k = Math.min(1, -s / Math.max(1e-6, Math.hypot(bag[0] - start[0], bag[1] - start[1])));
-    out.x = start[0] + (bag[0] - start[0]) * k; out.z = start[1] + (bag[1] - start[1]) * k;
-    return out;
-  };
-  // (from a standstill at his lead-off spot there is no route: he simply faces the bag)
-  const heading0 = route ? q.heading : Math.atan2(start[0] - bag[0], start[1] - bag[1]);
-  const rp = { cfg, dir, p, s1, v1, B, tTurn: L.tb + tb, s2, sT, dist, tRun: hi, tHome: L.tb + tb + hi, V, heading0, along };
-  revCache.set(key, rp);
-  return rp;
-}
-function reverseState(L, move, t, cfg, out) {
-  const rp = reversePlan(L, move, cfg);
-  const R = cfg.runner;
-  out.kind = 'back'; out.profile = rp.p; out.total = rp.dist; out.tStart = L.of.t0;
-  if (t <= L.tb) { rp.p.at(t - L.of.t0, out); out.running = out.speed > 0.05; out.waiting = false; out.done = false; return out; }
-  if (t < rp.tTurn) {
-    const u = t - L.tb;
-    rp.along(rp.s1 + rp.v1 * u - 0.5 * rp.B * u * u, out);
-    out.heading = rp.heading0; out.speed = Math.max(0, rp.v1 - rp.B * u); out.accel = -rp.B;
-    out.sLeft = rp.dist; out.side = 0; out.turn = 0; out.waiting = false; out.running = true; out.done = false;
-    return out;
+const bagXZ = (k) => BASE_XZ[k === 0 ? 4 : k];
+/** Where along the base paths is (x, z)? 0 = home, 90 = first, 180 = second, 270 = third, 360 = home again. */
+export function pathParam(x, z) {
+  let best = Infinity, sp = 0;
+  for (let k = 0; k < 4; k++) {
+    const [ax, az] = bagXZ(k), [bx, bz] = bagXZ(k + 1);
+    const ex = bx - ax, ez = bz - az, L2 = ex * ex + ez * ez;
+    const u = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / L2));
+    const d = Math.hypot(x - ax - ex * u, z - az - ez * u);
+    if (d < best - 1e-9) { best = d; sp = (k + u) * 90; }
   }
-  const tau = t - rp.tTurn;
-  const d = Math.min(rp.dist, covered(rp.V, tau, R.accelTime));
-  rp.along(rp.s2 + rp.dir * d, out);
-  const done = tau >= rp.tRun;
-  out.heading = rp.heading0 + (rp.dir < 0 ? Math.PI : 0);
-  out.speed = done ? 0 : rp.V * (1 - Math.exp(-tau / R.accelTime));
-  out.accel = done ? 0 : (rp.V - out.speed) / R.accelTime;
-  out.sLeft = rp.dist - d; out.side = 0; out.turn = 0; out.waiting = false; out.running = !done; out.done = done;
+  return sp;
+}
+// The bags between base-path position s and base `to` (in the order he passes them), the last one being `to` itself.
+function bagsBetween(sp, to) {
+  const sT = to * 90, out = [];
+  if (sT > sp + 0.5) { for (let k = Math.floor(sp / 90 + 1e-6) + 1; k <= to; k++) if (k * 90 > sp + 0.5) out.push(k); }
+  else if (sT < sp - 0.5) { for (let k = Math.ceil(sp / 90 - 1e-6) - 1; k >= to; k--) if (k * 90 < sp - 0.5) out.push(k); }
+  else out.push(to);
   return out;
+}
+const pathCache = new Map();
+function pathProfile(L, cfg, spd) {
+  const R = cfg.runner;
+  const key = `${L.pts.map((p) => p[0].toFixed(2) + ',' + p[1].toFixed(2)).join(';')}|${(L.v0 || 0).toFixed(2)}|${spd}|${R.speed}|${R.accelTime}|${R.brake}|${R.latAccel}`;
+  let p = pathCache.get(key);
+  if (!p) {
+    if (pathCache.size > 600) pathCache.clear();
+    const pts = [L.pts[0].slice()];
+    const baseAt = {};
+    for (let i = 1; i < L.pts.length; i++) {
+      const a = pts[pts.length - 1], q = L.pts[i];
+      const len = Math.hypot(q[0] - a[0], q[1] - a[1]);
+      const m = Math.max(1, Math.ceil(len / STEP));
+      for (let k = 1; k <= m; k++) pts.push([a[0] + ((q[0] - a[0]) * k) / m, a[1] + ((q[1] - a[1]) * k) / m]);
+      if (L.keys[i] != null) baseAt[L.keys[i]] = pts.length - 1;
+    }
+    if (pts.length < 2) pts.push([pts[0][0] + 1e-3, pts[0][1]]);
+    const route = finishRoute(pts, baseAt, L.toBase);
+    p = buildProfile(route, { vmax: R.speed * spd, v0: L.v0 || 0, accelTime: R.accelTime, brake: R.brake, turnBrake: R.turnBrake, latAccel: R.latAccel });
+    pathCache.set(key, p);
+  }
+  return p;
+}
+function brakeState(L, t, out) {
+  const dur = L.v0 / L.B;
+  const u = Math.max(0, Math.min(dur, t - L.t0));
+  const d = L.v0 * u - 0.5 * L.B * u * u;
+  out.x = L.x + Math.sin(L.heading) * d; out.z = L.z + Math.cos(L.heading) * d;
+  out.heading = L.heading; out.speed = Math.max(0, L.v0 - L.B * u); out.accel = u < dur ? -L.B : 0;
+  out.kappa = 0; out.turn = 0; out.side = 0; out.s = d; out.sLeft = 0; out.done = false;
+  return out;
+}
+/**
+ * He heads for base `base` from wherever he is at `tAct` (either direction along the base paths): if he is running the wrong way
+ * he pulls up first. Changes `legs` in place.
+ */
+export function redirectLegs(legs, from, base, tAct, cfg = CONFIG, spd = 1) {
+  const R = cfg.runner;
+  const q = runnerState({ from, to: from, legs: legs.map((L) => ({ ...L })), spd, tStart: legs.length ? legs[0].t0 : tAct }, tAct, cfg, {});
+  let x = q.x, z = q.z, t0 = tAct, v0 = 0;
+  const verts = bagsBetween(pathParam(x, z), base);
+  const first = bagXZ(verts[0]);
+  if (Math.hypot(first[0] - x, first[1] - z) < 0.3 && verts.length === 1 && q.speed < 0.5) { legs.push({ kind: 'path', t0, pts: [[x, z], [first[0], first[1]]], keys: [null, base], v0: 0, toBase: base }); return legs; }
+  if (q.speed > 0.5) {
+    const want = Math.atan2(first[0] - x, first[1] - z);
+    let dh = want - q.heading;
+    while (dh > Math.PI) dh -= 2 * Math.PI; while (dh < -Math.PI) dh += 2 * Math.PI;
+    if (Math.abs(dh) < R.turnKeep) v0 = q.speed * Math.cos(dh); // (nearly the way he is going: he just carries on)
+    else {
+      const B = R.brake * 0.8;
+      legs.push({ kind: 'brake', t0: tAct, x, z, heading: q.heading, v0: q.speed, B });
+      const d = (q.speed * q.speed) / (2 * B);
+      x += Math.sin(q.heading) * d; z += Math.cos(q.heading) * d;
+      t0 = tAct + q.speed / B;
+    }
+  }
+  const vs = bagsBetween(pathParam(x, z), base);
+  legs.push({ kind: 'path', t0, pts: [[x, z], ...vs.map((k) => bagXZ(k).slice())], keys: [null, ...vs.map((k) => (k === 0 ? 4 : k))], v0, toBase: base });
+  return legs;
 }
 
 /** When (seconds after contact) does the runner of this move touch `base`? (undefined if his run does not reach it) */
@@ -456,7 +481,8 @@ export function moveArrival(cfg, move, base) {
   // (the LAST time he touches it: a runner who turned back touched second on the way out and touches first again on the way back)
   let res;
   for (const L of moveLegs(move, cfg)) {
-    if (L.kind === 'reverse') { if (base === L.toBase) res = reversePlan(L, move, cfg).tHome; continue; }
+    if (L.kind === 'brake') continue;
+    if (L.kind === 'path') { const tb = pathProfile(L, cfg, move.spd || 1).tBase[base]; if (tb !== undefined && L.t0 + tb <= (L.cut ?? Infinity)) res = L.t0 + tb; continue; }
     const kind = L.kind === 'run' && L.last ? moveKind(move) : L.kind;
     if (kind === 'through' && base === 1) { res = L.t0 + runnerProfile(0, 1, 'run', cfg, move.spd || 1).tBase[1]; continue; } // (timed as if he stopped on it: see runnerState)
     if (base > L.to || (L.kind !== 'resume' && base <= L.from)) continue;
@@ -470,7 +496,6 @@ export function moveArrival(cfg, move, base) {
 export function moveFinish(cfg, move) {
   const legs = moveLegs(move, cfg);
   const L = legs[legs.length - 1];
-  if (L.kind === 'reverse') return reversePlan(L, move, cfg).tHome;
   return L.t0 + legProfile(L, move, cfg).duration;
 }
 
@@ -487,7 +512,7 @@ export function runnerState(move, t, cfg = CONFIG, out = {}) {
   const legs = moveLegs(move, cfg);
   let L = legs[0];
   for (const q of legs) if (t >= q.t0 && !(move.stopAt !== undefined && q.t0 > move.stopAt)) L = q; // (the inning ended before he set off again: he stays)
-  if (L.kind === 'reverse') { reverseState(L, move, t, cfg, out); out.waiting = t <= legs[0].t0; out.leg = legs.indexOf(L); return out; }
+  if (L.kind === 'brake') { brakeState(L, t, out); out.kind = 'back'; out.waiting = false; out.running = out.speed > 0.05; out.tStart = legs[0].t0; out.profile = BRAKE_PROFILE; out.total = 0; out.leg = legs.indexOf(L); return out; }
   const kind = L.kind === 'run' ? (L.last ? moveKind(move) : 'run') : L.kind;
   let t0 = L.t0;
   if (kind === 'through') t0 += runnerProfile(0, 1, 'run', cfg, spd).tBase[1] - runnerProfile(0, 1, 'through', cfg, spd).tBase[1];
@@ -520,11 +545,12 @@ export function runnerState(move, t, cfg = CONFIG, out = {}) {
 // Changing a runner's mind (your orders, or the ball being caught). `legs` are a move's explicit legs (see moveLegs), changed in place.
 // ---------------------------------------------------------------------------------------------------------------
 const stillLeg = (L) => L.kind === 'run' && L.to <= L.from; // (waiting at his lead-off spot)
+const BRAKE_PROFILE = { brake: 44, route: null, duration: 0, sEnd: 0 };
 /** Where does the leg in progress end, as a runner who keeps on going? (the base he is on, or will stop at) */
 export function legsGoal(legs) {
   const L = legs[legs.length - 1];
   if (!L) return 0;
-  if (L.kind === 'reverse') return L.toBase;
+  if (L.kind === 'path') return L.toBase;
   if (L.kind === 'half') return L.from;
   return L.to;
 }
@@ -537,15 +563,18 @@ export function extendLegs(legs, from, base, tAct, cfg = CONFIG, spd = 1) {
   if (!legs.length) { legs.push({ kind: 'run', from, to: base, t0: tAct, fromBag: false }); return legs; }
   const L = legs[legs.length - 1];
   if (stillLeg(L)) { legs[legs.length - 1] = { kind: 'run', from: L.from, to: base, t0: Math.max(tAct, L.t0), fromBag: L.fromBag }; return legs; }
-  if (L.kind !== 'reverse' && L.kind !== 'half' && L.to >= base) return legs; // (he is on his way there already)
-  if (L.kind === 'reverse') {
-    const tHome = moveFinish(cfg, { from, legs: legs.map((q) => ({ ...q })), spd, tStart: legs[0].t0 });
-    // (one who has been standing on the bag waiting - a tag-up - leaves with a rocking start)
-    const leg = { kind: 'run', from: L.toBase, to: base, t0: Math.max(tAct, tHome), fromBag: true };
-    if (tAct > tHome + 0.3) leg.v0 = cfg.runner.tagRoll;
+  if (L.kind === 'brake') return redirectLegs(legs, from, base, tAct, cfg, spd);
+  if (L.kind === 'path') {
+    const tEnd = L.t0 + pathProfile(L, cfg, spd).duration;
+    if (L.toBase >= base && tAct < tEnd) return legs; // (he is on his way there already)
+    if (tAct < tEnd || L.toBase >= base) return redirectLegs(legs, from, base, tAct, cfg, spd);
+    // he is standing on the bag: off he goes (one who has been waiting there - a tag-up - leaves with a rocking start)
+    const leg = { kind: 'run', from: L.toBase, to: base, t0: tAct, fromBag: true };
+    if (tAct > tEnd + 0.3) leg.v0 = cfg.runner.tagRoll;
     legs.push(leg);
     return legs;
   }
+  if (L.kind !== 'half' && L.to >= base) return legs; // (he is on his way there already)
   const cand = L.kind === 'resume' ? { ...L, to: base } : { kind: 'run', from: L.from, to: base, t0: L.t0, fromBag: L.fromBag };
   const pL = legProfile({ ...L, last: false }, mv, cfg);
   const pC = legProfile({ ...cand, last: false }, mv, cfg);
@@ -566,11 +595,11 @@ export function extendLegs(legs, from, base, tAct, cfg = CONFIG, spd = 1) {
 export function backLegs(legs, from, base, tAct, cfg = CONFIG, spd = 1) {
   const mv = { spd };
   const L = legs[legs.length - 1];
-  if (!L || L.kind === 'reverse') return legs;
+  if (!L) return legs;
+  if (L.kind === 'path' || L.kind === 'brake') return L.toBase === base && L.kind === 'path' ? legs : redirectLegs(legs, from, base, tAct, cfg, spd);
   if (stillLeg(L) || L.kind === 'half') {
     if (base > L.from) return extendLegs(legs, from, base, tAct, cfg, spd); // (the bag "back" is the one ahead of him: he goes on to it)
-    legs.push({ kind: 'reverse', tb: Math.max(tAct, L.t0), toBase: base, t0: Math.max(tAct, L.t0) });
-    return legs;
+    return redirectLegs(legs, from, base, Math.max(tAct, L.t0), cfg, spd);
   }
   const p = legProfile({ ...L, last: false }, mv, cfg);
   const tb = p.tBase[base];
@@ -579,8 +608,7 @@ export function backLegs(legs, from, base, tAct, cfg = CONFIG, spd = 1) {
     const cand = L.kind === 'resume' ? { ...L, to: base } : { kind: 'run', from: L.from, to: base, t0: L.t0, fromBag: L.fromBag };
     if (tAct - L.t0 <= sameUntil(p, legProfile({ ...cand, last: false }, mv, cfg))) { legs[legs.length - 1] = cand; return legs; }
   }
-  legs.push({ kind: 'reverse', tb: tAct, toBase: base, t0: tAct });
-  return legs;
+  return redirectLegs(legs, from, base, tAct, cfg, spd);
 }
 
 // A runner who was tagged out gets up and walks off toward the dugout (the third-base side, where the home team sits).
