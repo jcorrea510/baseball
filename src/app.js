@@ -861,9 +861,10 @@ export class App {
       if (r.runs > 0 && e.mode !== 'derby') {
         const hit = note && note.from === 0 && isHitResult(res) ? r.text : big; // (SINGLE, DOUBLE, SAC FLY, WALK, ERROR ...)
         const mph = r.exitVelocity ? `${Math.round(r.exitVelocity)} mph` : '';
-        big = `${r.runs} RUN${r.runs > 1 ? 'S' : ''}`;
-        sub = [hit, noteText || mph].filter(Boolean).join(' · ');
-        cls = 'good';
+        big = r.walkOff ? 'WALK-OFF!' : `${r.runs} RUN${r.runs > 1 ? 'S' : ''}`;
+        sub = r.walkOff ? [hit, `${r.runs} run${r.runs > 1 ? 's' : ''}`].filter(Boolean).join(' · ') : [hit, noteText || mph].filter(Boolean).join(' · ');
+        cls = r.walkOff ? 'hr' : 'good';
+        if (r.walkOff) { audio.crowdSwell(1, 3); this.S.stadium.crowd.cheer(1); }
       }
       ui.banner(big, sub, cls);
     }

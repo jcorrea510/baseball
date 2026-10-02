@@ -82,7 +82,7 @@ export function pitchBall(g, batter) {
     const runs = forceAdvance(g, batter);
     addRuns(g, runs);
     endPlateAppearance(g);
-    return { result: 'walk', paEnded: true, runs, halfOver: halfIsOver(g) };
+    return { result: 'walk', paEnded: true, runs, halfOver: halfIsOver(g), walkOff: g.walkOff };
   }
   return { result: 'ball', paEnded: false, runs: 0, halfOver: false };
 }
@@ -92,7 +92,7 @@ export function hitByPitch(g, batter) {
   const runs = forceAdvance(g, batter);
   addRuns(g, runs);
   endPlateAppearance(g);
-  return { result: 'hitByPitch', paEnded: true, runs, halfOver: halfIsOver(g) };
+  return { result: 'hitByPitch', paEnded: true, runs, halfOver: halfIsOver(g), walkOff: g.walkOff };
 }
 
 /** Called strike or swinging strike. */
