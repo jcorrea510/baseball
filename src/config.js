@@ -502,6 +502,8 @@ export const CONFIG = {
     supportSpeed: 0.85, // backups and base-coverers run at this fraction of top speed
     backupDepth: 24, // ft behind the fielder's spot where a teammate backs him up
     backupTravel: 48, // an outfielder backing up an infield play charges in at most this far
+    backupFirst: 30, // ft behind first base (along the throw) where the right fielder backs up an infielder's throw
+    catcherLine: [26, -21], // where the catcher runs to, down the first-base line, behind a throw to first with the bases empty
     pitcherBackupTravel: 32, // the pitcher backing up home or third goes at most this far (he has to be back on the rubber for the next pitch)
     // The wall: a fielder's centre never gets closer than `wallMargin` ft to a wall (his glove still reaches it). Running at
     // the wall he brakes at up to `wallBrake` ft/s^2 (bracing against it), so he stops in front of it instead of through it.
@@ -608,6 +610,7 @@ export const CONFIG = {
     // and go, instead of waiting to see it land.
     sureHitFeet: 10,
     sureHitRead: 0.55,
+    contactBreak: 0.15, // s: on a ground ball (fewer than two outs) the runner on third breaks for home this soon after contact
     tagDepth: 320,
     tagBack: 0.12,
     downReact: 0.15,
@@ -615,6 +618,7 @@ export const CONFIG = {
     turnKeep: 0.9, // radians: told to go somewhere nearly the way he is already running, he carries on; anything more and he pulls up and turns
     tagRoll: 19, // ...with a rocking start: he is already moving at this many ft/s as he leaves
     tagWindow: 1.2, // s after a catch you can still send a runner to tag up
+    leadThird: 16, // ft: off third he walks off in foul territory as the pitch comes in (a walking lead)
     leadSecond: 22, // ft: the lead off second base (nobody holds him on there, so he takes a much bigger one - and shuffles further as the pitch comes)
     // Rounding a base he keeps running through: he drifts out from the baseline over `turnLen` ft, goes round an arc of radius
     // `turnRadius` ft that touches the bag, and drifts back onto the next baseline over `turnLen` ft. (A smaller radius = a

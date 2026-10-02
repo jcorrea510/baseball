@@ -21,7 +21,8 @@ export function leadSpot(base, cfg = CONFIG) {
   const b = BASE_XZ[base], n = BASE_XZ[base === 3 ? 4 : base + 1];
   const [ux, uz] = norm(n[0] - b[0], n[1] - b[1]);
   const side = base === 1 ? 1.2 : base === 3 ? -1.2 : 0;
-  const lead = base === 2 ? cfg.runner.leadSecond ?? cfg.runner.lead : cfg.runner.lead; // (off second base nobody holds him on: a bigger lead)
+  // (off second base nobody holds him on: a bigger lead; off third he walks off with the pitch in foul territory)
+  const lead = base === 2 ? cfg.runner.leadSecond ?? cfg.runner.lead : base === 3 ? cfg.runner.leadThird ?? cfg.runner.lead : cfg.runner.lead;
   return [b[0] + ux * lead + side, b[1] + uz * lead];
 }
 
@@ -260,7 +261,7 @@ const cache = new Map();
 export function runnerProfile(from, to, kind = 'run', cfg = CONFIG, spd = 1, fromBag = false, v0 = 0) {
   const R = cfg.runner;
   if (to <= from) return stationary(from, cfg); // a runner who stays where he is
-  const key = `${from}>${to}|${kind}|${spd}|${fromBag ? 'bag' : ''}|${v0}|${R.speed}|${R.accelTime}|${R.brake}|${R.latAccel}|${R.turnBrake}|${R.turnLen}|${R.turnRadius}|${R.lead}|${R.leadSecond}|${R.overrun}|${R.trotSpeed}`;
+  const key = `${from}>${to}|${kind}|${spd}|${fromBag ? 'bag' : ''}|${v0}|${R.speed}|${R.accelTime}|${R.brake}|${R.latAccel}|${R.turnBrake}|${R.turnLen}|${R.turnRadius}|${R.lead}|${R.leadSecond}|${R.leadThird}|${R.overrun}|${R.trotSpeed}`;
   let p = cache.get(key);
   if (!p) {
     const route = buildRoute(from, to, { through: kind === 'through', fromBag }, cfg);
@@ -296,7 +297,7 @@ export function moveKind(move) {
 // base), pulls up `roundPast` ft beyond the bag and waits there, ready to be sent on (see fielding.js, runner orders).
 export function roundProfile(from, to, cfg = CONFIG, spd = 1, fromBag = false) {
   const R = cfg.runner;
-  const key = `round|${from}>${to}|${spd}|${fromBag}|${R.speed}|${R.accelTime}|${R.brake}|${R.latAccel}|${R.turnBrake}|${R.turnLen}|${R.turnRadius}|${R.lead}|${R.leadSecond}|${R.roundPast}`;
+  const key = `round|${from}>${to}|${spd}|${fromBag}|${R.speed}|${R.accelTime}|${R.brake}|${R.latAccel}|${R.turnBrake}|${R.turnLen}|${R.turnRadius}|${R.lead}|${R.leadSecond}|${R.leadThird}|${R.roundPast}`;
   let p = cache.get(key);
   if (!p) {
     const full = buildRoute(from, to + 1, { fromBag }, cfg);
@@ -311,7 +312,7 @@ export function roundProfile(from, to, cfg = CONFIG, spd = 1, fromBag = false) {
 // base `to`, from a standstill.
 export function resumeProfile(from, to, s0, cfg = CONFIG, spd = 1, fromBag = false, v0 = 0) {
   const R = cfg.runner;
-  const key = `resume|${from}>${to}|${s0.toFixed(3)}|${v0.toFixed(3)}|${spd}|${fromBag}|${R.speed}|${R.accelTime}|${R.brake}|${R.latAccel}|${R.turnBrake}|${R.turnLen}|${R.turnRadius}|${R.lead}|${R.leadSecond}`;
+  const key = `resume|${from}>${to}|${s0.toFixed(3)}|${v0.toFixed(3)}|${spd}|${fromBag}|${R.speed}|${R.accelTime}|${R.brake}|${R.latAccel}|${R.turnBrake}|${R.turnLen}|${R.turnRadius}|${R.lead}|${R.leadSecond}|${R.leadThird}`;
   let p = cache.get(key);
   if (!p) {
     const full = buildRoute(from, to, { fromBag }, cfg);
@@ -325,7 +326,7 @@ export function resumeProfile(from, to, s0, cfg = CONFIG, spd = 1, fromBag = fal
 // the way there and waits to see what happens - the same on a ball that drops and on one that is caught, so nothing gives it away.
 export function halfProfile(from, frac, cfg = CONFIG, spd = 1) {
   const R = cfg.runner;
-  const key = `half|${from}|${frac}|${spd}|${R.speed}|${R.accelTime}|${R.roundBrake}|${R.latAccel}|${R.turnBrake}|${R.turnLen}|${R.turnRadius}|${R.lead}|${R.leadSecond}`;
+  const key = `half|${from}|${frac}|${spd}|${R.speed}|${R.accelTime}|${R.roundBrake}|${R.latAccel}|${R.turnBrake}|${R.turnLen}|${R.turnRadius}|${R.lead}|${R.leadSecond}|${R.leadThird}`;
   let p = cache.get(key);
   if (!p) {
     const full = buildRoute(from, from + 1, {}, cfg);

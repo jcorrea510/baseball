@@ -1446,13 +1446,23 @@ function addSupport(plan, i, cfg) {
   }
   // ---- a grounder to the right side that the first baseman goes after: the pitcher breaks for first anyway, in case
   if (c.kind === 'ground' && c.x > 0 && busy.has('1B') && !busy.has('P')) { const [x, z] = standAt(1); go('P', x, z, 2.0, 'cover'); }
+  // ---- an infielder's throw to first: the right fielder backs it up from behind the bag and, with the bases empty, the catcher
+  // runs down the line behind the play (an overthrow does not roll into the corner)
+  const toFirst = plan.throws.find((t) => t.toBase === 1 && t.from !== 'RF' && t.from !== 'CF' && t.from !== 'LF');
+  if (c.kind === 'ground' && toFirst) {
+    const [b1x, b1z] = BASE_XZ[1];
+    const ux = b1x - toFirst.ax, uz = b1z - toFirst.az, ul = Math.hypot(ux, uz) || 1;
+    const [rx, rz] = inside(b1x + (ux / ul) * F.backupFirst, b1z + (uz / ul) * F.backupFirst, 6);
+    if (!busy.has('RF')) go('RF', rx, rz, toFirst.t1 + 0.2, 'backup', F.backupTravel * 1.6);
+    if (!bases.some(Boolean) && !busy.has('C')) go('C', F.catcherLine[0], F.catcherLine[1], toFirst.t1, 'backup');
+  }
 
   // ---- bases and battery on a hit that turns into a throw
   if (!i.simple && c.leadDest !== undefined) {
     const lead = c.leadDest;
     const cover = (pos, base, t) => { const [x, z] = standAt(base); go(pos, x, z, t, 'cover', Infinity, knowAt[base] > 0 ? knowAt[base] + defense[pos].react : undefined); };
     if (!busy.has('1B')) cover('1B', 1, 2.0);
-    if (lead >= 2 || bases[0]) {
+    if (lead >= 2 || bases[0] || depth > 150) { // (a middle infielder covers second on any ball to the outfield: the batter has to stop at first)
       const mid = idle(['SS', '2B']).sort((a, b) => dist(defense[a].x, defense[a].z, BASE_XZ[2][0], BASE_XZ[2][1]) - dist(defense[b].x, defense[b].z, BASE_XZ[2][0], BASE_XZ[2][1]))[0];
       if (mid) cover(mid, 2, 2.4);
     }
@@ -1509,6 +1519,17 @@ function tryInfieldOut({ f, tF, tReady, pf, bases, forced, outs, defense, cfg, p
   const batterTo1 = arrivalAt(cfg, 0, 1);
   const way1 = outAt(1, batterTo1, ctx, plan, cfg);
   if (way1) options.push({ kind: 'first', base: 1, t: way1.tOut, margin: batterTo1 - way1.tOut, way: way1 });
+  // The runner on third breaks for home on the ground ball (fewer than two outs, not forced): with no double play on, the fielder
+  // throws home only if he clearly has him - otherwise he takes the sure out at first and gives up the run
+  // (he only goes on a ball to the middle infielders playing back - on one to the pitcher, a corner or the catcher he holds)
+  if (bases[2] && !forced.has(3) && outs < 2 && !forced.has(1) && (f.pos === 'SS' || f.pos === '2B')) {
+    const tHome = arrivalAt(cfg, 3, 4, rs(3) ?? cfg.runner.contactBreak);
+    const wayH = outAt(4, tHome, ctx, plan, cfg);
+    // (a runner who is going (a hit-and-run, a steal) is committed; one reading it holds on a ball hit so hard at the infielder that
+    // he would be out at the plate by a mile - then he is not going and there is no play at home)
+    if (wayH && rs(3) !== undefined && tHome - wayH.tOut >= cfg.fielding.homeThrowMargin) options.push({ kind: 'home', base: 4, t: wayH.tOut, margin: tHome - wayH.tOut, way: wayH, sure: true });
+    else if (!wayH || tHome - wayH.tOut < cfg.fielding.homeThrowMargin) plan.r3Breaks = true;
+  }
 
   if (!options.length) return null;
   // With < 2 outs and a force available, prefer the force (starts a double play); else the surest out.
@@ -1518,8 +1539,10 @@ function tryInfieldOut({ f, tF, tReady, pf, bases, forced, outs, defense, cfg, p
   // On a bunt the fielder charging in takes the sure out at first, unless the lead runner is clearly beaten.
   // (A thin force play is not worth it when the batter can be had easily: take the sure out.)
   const thin = force && first && force.margin < cfg.fielding.thinForce && first.margin > force.margin + cfg.fielding.thinForceGain;
+  const home = options.find((o) => o.kind === 'home');
   if (force && outs < 2 && !thin && (!bunt || !first || force.margin >= cfg.bunt.leadMargin)) choice = force;
-  else choice = options.sort((a, b) => b.margin - a.margin)[0];
+  else if (home) choice = home; // (he has the runner at the plate: cut the run off)
+  else choice = options.filter((o) => o.kind !== 'home').sort((a, b) => b.margin - a.margin)[0] || options[0];
   return { choice, force, first, leadForced };
 }
 
@@ -1562,7 +1585,14 @@ function finishInfieldOut(plan, at, ctx) {
     plan.moves.push({ from: 0, to: 0, out: true, outAt: tOut, outBase: 1 });
     plan.result = 'groundout';
     plan.batterDest = 0;
-    plan.moves.push(...advanceOnGroundout({ bases, forced, outsAfter: outs + 1, f, pf, tReady, cfg, bunt }));
+    plan.moves.push(...advanceOnGroundout({ plan, bases, forced, outsAfter: outs + 1, f, pf, tReady, cfg, bunt, after: { base: 1, t: tOut } }));
+  } else if (choice.kind === 'home') {
+    // the runner from third is tagged out at the plate; the batter is safe at first (a fielder's choice), the others move up if they can
+    plan.moves.push({ from: 3, to: 0, out: true, outAt: tOut, outBase: 4, tStart: rs(3) ?? cfg.runner.contactBreak });
+    plan.moves.push({ from: 0, to: 1, out: false });
+    plan.batterDest = 1;
+    plan.result = 'fieldersChoice';
+    plan.moves.push(...advanceOnGroundout({ plan, bases, forced, outsAfter: outs + 1, f, pf, tReady, cfg, skip: new Set([3]), bunt, after: { base: 4, t: tOut } }));
   } else {
     // force out at `choice.base`: the runner from base-1 is out
     const outFrom = choice.base === 4 ? 3 : choice.base - 1;
@@ -1597,7 +1627,8 @@ function finishInfieldOut(plan, at, ctx) {
   }
   if (plan._pendingRunners) {
     const outsAfter = outs + plan.outsMade;
-    plan.moves.push(...advanceOnGroundout({ bases, forced, outsAfter, f, pf, tReady, cfg, skip: plan._pendingRunners.skip, bunt }));
+    const last = plan.moves.filter((m) => m.out).sort((a, b) => b.outAt - a.outAt)[0];
+    plan.moves.push(...advanceOnGroundout({ plan, bases, forced, outsAfter, f, pf, tReady, cfg, skip: plan._pendingRunners.skip, bunt, after: last ? { base: last.outBase, t: last.outAt } : null }));
     delete plan._pendingRunners;
   }
   plan.endTime = endT + 0.8;
@@ -1632,7 +1663,7 @@ function groundoutOrders(plan, ctx) {
   if (plan.sentOut) plan.result = plan.outsMade >= 2 ? 'doublePlay' : plan.result;
 }
 
-function advanceOnGroundout({ bases, forced, outsAfter, f, pf, tReady, cfg, skip, bunt = false }) {
+function advanceOnGroundout({ plan = {}, bases, forced, outsAfter, f, pf, tReady, cfg, skip, bunt = false, after = null }) {
   // Runners move up on a routine groundout when there is room and fewer than two outs.
   const moves = [];
   const F = cfg.fielding;
@@ -1645,10 +1676,13 @@ function advanceOnGroundout({ bases, forced, outsAfter, f, pf, tReady, cfg, skip
     if (forced.has(b)) d = b + 1;
     else if (canAdvance) {
       if (b === 3) {
-        const defenseHome = tReady + throwTime(dist(pf.x, pf.z, 0, 0), f, cfg) + F.tagTime;
-        if (arrivalAt(cfg, 3, 4, rs(3)) + F.runnerMargin < defenseHome) d = 4;
+        // he broke on contact; the ball went somewhere else for the out - the only way to get him now is a relay home from there
+        const from = after ? BASE_XZ[after.base === 4 ? 4 : after.base] : [pf.x, pf.z];
+        const defenseHome = after ? after.t + F.transfer.IF + throwTime(dist(from[0], from[1], 0, 0), { type: 'IF' }, cfg) + F.tagTime : tReady + throwTime(dist(pf.x, pf.z, 0, 0), f, cfg) + F.tagTime;
+        const goes = rs(3) !== undefined || ((f.pos === 'SS' || f.pos === '2B') && plan.r3Breaks); // (he reads it: he goes on a ball to the middle infielders he can beat)
+        if (goes && arrivalAt(cfg, 3, 4, rs(3) ?? cfg.runner.contactBreak) + F.runnerMargin < defenseHome) d = 4;
       } else if (b === 2 && (dest[3] === 4 || !occupied[3])) {
-        if (f.x > 0) d = 3; // a grounder to the right side
+        if (f.x > 0 || pf.x > 0) d = 3; // a grounder to the right side
         else if (bunt || rs(2) !== undefined) { // (a runner going with the pitch has the same head start) // on a bunt he breaks for third as it is put down: he takes it unless a throw there would beat him
           const [tx, tz] = BASE_XZ[3];
           if (arrivalAt(cfg, 2, 3, rs(2)) + F.runnerMargin < tReady + throwTime(dist(pf.x, pf.z, tx, tz), f, cfg) + 0.3) d = 3;
@@ -1661,7 +1695,12 @@ function advanceOnGroundout({ bases, forced, outsAfter, f, pf, tReady, cfg, skip
     }
     dest[b] = d;
   }
-  for (const b of [3, 2, 1]) if (dest[b] !== undefined) moves.push({ from: b, to: dest[b], out: false });
+  for (const b of [3, 2, 1]) {
+    if (dest[b] === undefined) continue;
+    const m = { from: b, to: dest[b], out: false };
+    if (b === 3 && dest[3] === 4 && !forced.has(3) && rs(3) === undefined) m.tStart = cfg.runner.contactBreak; // (he went on contact)
+    moves.push(m);
+  }
   return moves;
 }
 
