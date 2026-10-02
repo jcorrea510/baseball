@@ -497,7 +497,7 @@ export class Engine {
       if (res.result.startsWith('strikeout')) { this.stats.strikeouts++; this.stats.ab++; }
       this.creditBatter(res.result, res.runs);
       this.emit('result', {
-        kind: 'pa', result: res.result, text: rules.RESULT_TEXT[res.result], runs: res.runs, outs: g.outs, halfOver: res.halfOver,
+        kind: 'pa', result: res.result, text: rules.RESULT_TEXT[res.result], runs: res.runs, outs: g.outs, halfOver: res.halfOver, walkOff: !!res.walkOff,
         batter: this.batter, ...info,
       });
       if (stealPlay) return this.startStealPlay(res);
@@ -531,7 +531,7 @@ export class Engine {
     this.emitCount();
     this.stats.pa++; this.stats.hbp = (this.stats.hbp || 0) + 1; this.stats.rbi += res.runs;
     this.creditBatter(res.result, res.runs);
-    this.emit('result', { kind: 'pa', result: res.result, text: rules.RESULT_TEXT.hitByPitch, runs: res.runs, outs: g.outs, halfOver: res.halfOver, batter: this.batter, ...info });
+    this.emit('result', { kind: 'pa', result: res.result, text: rules.RESULT_TEXT.hitByPitch, runs: res.runs, outs: g.outs, halfOver: res.halfOver, walkOff: !!res.walkOff, batter: this.batter, ...info });
     this.finishPitch(this.cfg.pace.callDisplay + 0.45, res.halfOver, true, res.result);
   }
 
@@ -994,6 +994,7 @@ const NO_FLIGHT = { firstBounce: null, wallHit: null, homerun: null, standsLandi
 // Everything that will happen during a play at a fixed time (seconds after contact), for sound / effects.
 function buildEventList(sim, plan) {
   const ev = [];
+  if (plan.foulTip) return ev; // (straight into the catcher's mitt: nothing else happens to the ball)
   if (sim.wallHit) ev.push({ t: sim.wallHit.t, type: 'wall', x: sim.wallHit.x, y: sim.wallHit.y, z: sim.wallHit.z });
   if (sim.homerun) ev.push({ t: sim.homerun.t, type: 'fence', x: sim.homerun.x, y: sim.homerun.y, z: sim.homerun.z });
   if (sim.standsLanding) ev.push({ t: sim.standsLanding.t, type: 'stands', x: sim.standsLanding.x, y: sim.standsLanding.y, z: sim.standsLanding.z });
