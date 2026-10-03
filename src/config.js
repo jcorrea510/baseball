@@ -336,7 +336,7 @@ export const CONFIG = {
     rookie: {
       label: 'Rookie',
       swingCue: true, // the strike-zone box pulses at the perfect moment to press the button
-      windowScale: 1.45,
+      windowScale: 1.5,
       // The bat's contact window (ft): how far the ball's centre can be above / below the sweet spot (`up`) and toward the end of the
       // bat / the hands and still be hit. The middle of `up` hits a line drive, a little under it a fly ball, above it a grounder.
       contactWindow: { up: 0.66, tip: 1.05, handle: 0.9 },
@@ -371,7 +371,7 @@ export const CONFIG = {
     },
     pro: {
       label: 'Pro',
-      windowScale: 1.1,
+      windowScale: 1.2,
       contactWindow: { up: 0.53, tip: 0.9, handle: 0.76 },
       sweetSpot: { up: 0.46, tip: 0.82, handle: 0.7 },
       batBonus: -0.5,
@@ -396,7 +396,7 @@ export const CONFIG = {
     },
     allstar: {
       label: 'All-Star',
-      windowScale: 0.8,
+      windowScale: 0.88,
       contactWindow: { up: 0.48, tip: 0.84, handle: 0.72 },
       sweetSpot: { up: 0.41, tip: 0.74, handle: 0.64 },
       batBonus: -1.5,
@@ -481,7 +481,7 @@ export const CONFIG = {
     // shortstop and second baseman play double-play depth, a few steps nearer second and in (`dpDepth`).
     align: { hold1B: [60.5, -61.5], dpDepth: { SS: [-28, -126], '2B': [27, -124] } },
     speed: { IF: 21, OF: 22.5, P: 21, C: 17 }, // ft/s, average (effective, includes getting up to speed)
-    reaction: { IF: 0.23, OF: 0.37, P: 0.36, C: 0.36 }, // seconds before a fielder reads the ball (outfielders read a ball off the bat a little slower: well-hit balls drop in more often)
+    reaction: { IF: 0.27, OF: 0.41, P: 0.36, C: 0.36 }, // seconds before a fielder reads the ball (outfielders read a ball off the bat a little slower: well-hit balls drop in more often)
     glove: 2.4, // ft: how far a fielder can reach without diving
     diveExtra: 3.0, // extra ft when diving (dive only on low balls)
     groundGlove: 2.9, // ft: an infielder's reach for a ground ball without diving (he stretches and backhands it)...
