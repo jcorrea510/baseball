@@ -950,7 +950,7 @@ function recToMove(r) {
 // play goes on long enough to see it and to see him walk off.
 function tagRunner(plan, r, base, way, cfg, tagged = true) {
   const arrive = recArrive(cfg, r, base) ?? way.tOut;
-  const tOut = tagged ? Math.max(way.tOut, Math.min(arrive - cfg.runner.tagLead, way.tOut + 2)) : way.tOut; // (doubled off: the bag is touched, no tag)
+  const tOut = tagged ? Math.max(way.tOut, arrive - cfg.runner.tagLead) : way.tOut; // (doubled off: the bag is touched, no tag)
   const ev = [...plan.events].reverse().find((e) => e.type === 'out' && e.base === base && Math.abs(e.t - way.tOut) < 1e-6);
   if (ev) ev.t = tOut;
   markOut(plan, r, base, tOut, cfg);
@@ -1201,6 +1201,7 @@ function caughtRunners(plan, i, f, air, type, bases, outs, defense, cfg) {
   for (const r of runners) if (r.sent) r.tagUp = true;
   // the defense: one throw - behind a runner you sent before the catch (doubled off), else at a runner tagging up
   const at = { x: air.ball.x, z: air.ball.z };
+  let chased = null; // (a runner the tag-up throw went after who is still far away: the live defense runs him down)
   if (!plan.doubledOff) {
     const tReady = tC + F.transfer[f.type];
     let done = false;
@@ -1219,7 +1220,14 @@ function caughtRunners(plan, i, f, air, type, bases, outs, defense, cfg) {
         const base = r.to;
         const arrive = recArrive(cfg, r, base);
         const way = coverOptions({ base, thrower: f, tReady, from: at, runnerT: arrive, tag: R.sendTag }, plan, defense, cfg).filter((w) => !w.self)[0];
-        if (way) {
+        if (way && arrive - R.tagLead > way.tOut + R.walkUp.min) {
+          // he is still a long way off when the ball gets there: the throw goes in and the play stays live - the man with it walks up
+          // the line and tags him for real, or he turns round (no tag "on the clock" while he is nowhere near the bag)
+          const carry = plan.carries.find((c) => c.pos === f.pos && Math.abs(c.t1 - tReady) < 1e-6);
+          if (carry) carry.t1 = Math.max(carry.t1, way.t0);
+          liveThrow(plan, way, base, { holder: f, at, t: tReady }, cfg);
+          chased = r;
+        } else if (way) {
           planOut(plan, way, base, f, at, tReady, cfg, 'cover', true);
           tagRunner(plan, r, base, way, cfg);
           plan.result = 'doublePlay';
@@ -1243,7 +1251,7 @@ function caughtRunners(plan, i, f, air, type, bases, outs, defense, cfg) {
     // (only orders you gave after the window: on its own the defense makes its one throw, as ever)
     const late = orders.filter((o) => o.t > by);
     const before = plan.outsMade;
-    if (late.length) liveDefense(plan, recs, st, late, outs, defense, cfg);
+    if (late.length || chased) liveDefense(plan, recs, st, late, outs, defense, cfg, chased);
     if (plan.outsMade > before && plan.result !== 'doublePlay') plan.result = 'doublePlay';
   }
   if (fair && plan.result !== 'doublePlay' && runners.some((r) => r.from === 3 && r.to === 4 && !r.out)) plan.result = 'sacFly';
