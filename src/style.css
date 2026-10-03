@@ -613,8 +613,10 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
 .summary .ln.run { background: linear-gradient(90deg, rgba(255, 178, 30, .3), rgba(255, 178, 30, .1)); box-shadow: inset 0 0 0 1px rgba(255, 212, 96, .5); font-weight: 800; }
 .summary .ln b { color: var(--gold-hi); }
 .summary .total { min-height: 28px; font: 400 28px/1 var(--display); color: var(--gold-hi); margin-bottom: var(--sp-3); letter-spacing: .01em; text-shadow: var(--outline); }
-.over { width: min(780px, 100%); max-height: 100%; overflow: auto; padding: var(--sp-5); text-align: center; scrollbar-width: none; }
-.over::-webkit-scrollbar { display: none; }
+.over { width: min(780px, 100%); max-height: 100%; display: flex; flex-direction: column; overflow: hidden; padding: var(--sp-5); text-align: center; }
+.over .overbody { flex: 0 1 auto; min-height: 0; overflow: auto; scrollbar-width: none; }
+.over .overbody::-webkit-scrollbar { display: none; }
+.over .overacts { flex: none; margin-top: 12px; padding-bottom: 5px; } /* (room for the button's edge) */
 .over .result { font-family: var(--display); font-style: normal; font-size: clamp(36px, 7vw, 64px); line-height: 1; margin: 8px 0 var(--sp-2); }
 .over .result.win { color: var(--gold-hi); } .over .result.loss { color: #ff9c92; }
 .linescore { margin: var(--sp-2) auto var(--sp-3); border-collapse: separate; border-spacing: 0; overflow: hidden; border-radius: 12px; box-shadow: inset 0 0 0 1px var(--line-hi); font-variant-numeric: tabular-nums; }
@@ -721,6 +723,8 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
   .over .result { font-size: 34px; margin: 2px 0; }
   .linescore { margin: 4px auto 6px; } .linescore th, .linescore td { padding: 3px 9px; font-size: 14px; }
   .statgrid { grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 6px 0; } .stat { padding: 6px 4px; } .stat .v { font-size: 20px; } .stat .l { font-size: 8px; margin-top: 2px; }
+  .over .overacts { margin-top: 6px; } .over .overacts .btn { min-height: 44px; }
+  .over .badges { margin: 4px 0; gap: 6px; }
   .badge { padding: 5px 10px; font-size: 11px; }
   .setrow { min-height: 40px; } .dialog .btn { min-height: 42px; } .setrow.stack { padding-top: 4px; padding-bottom: 4px; }
   .steps { gap: var(--sp-2); } .step { padding: 8px; } .step svg.pic { height: 40px; margin-bottom: 4px; } .step .n { display: none; }
@@ -807,3 +811,13 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
 @media (max-width: 560px) { .over { padding: var(--sp-4) var(--sp-3); } .linescore th, .linescore td { padding: 4px 6px; font-size: 14px; } }
 /* short screens: the next batter's card sits higher so its Ready button clears the score bug */
 @media (max-height: 520px) { .batterup { top: 22%; gap: 6px; } }
+/* a phone on its side: the results' eight numbers in one row */
+@media (max-height: 520px) and (min-aspect-ratio: 3/2) { .over .statgrid { grid-template-columns: repeat(8, 1fr); } .over .stat .v { font-size: 17px; white-space: nowrap; } }
+@media (max-height: 360px) {
+  .over { padding: var(--sp-2) var(--sp-3); }
+  .over .label { font-size: 12px; } .over .result { font-size: 28px; margin: 0; }
+  .over .linescore { margin: 2px auto 4px; } .over .linescore th, .over .linescore td { padding: 2px 8px; font-size: 13px; }
+  .over .statgrid { gap: 4px; margin: 4px 0; } .over .stat { padding: 4px 2px; } .over .stat .v { font-size: 14px; }
+  .over .badge { padding: 3px 8px; font-size: 10px; }
+  .over .overacts .btn { min-height: 40px; }
+}

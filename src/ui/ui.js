@@ -554,10 +554,12 @@ export class UI {
       head = `<div class="label">Derby</div><div class="result win">${headline(`${d2.hr} HOME RUN${d2.hr === 1 ? '' : 'S'}`, 'gold')}</div>`;
       grid = [[d2.hr, 'HR'], [d2.longest ? d2.longest + ' ft' : '--', 'Longest'], [d2.bestStreak, 'Streak'], [st.perfect, 'Perfect'], [st.maxEV ? Math.round(st.maxEV) + ' mph' : '--', 'Exit velo'], [`${Math.round(100 * d2.hr / Math.max(1, st.swings))}%`, 'HR rate'], [st.swings, 'Swings'], [st.whiffs, 'Misses']];
     }
-    d.innerHTML = `${head}${table}<div class="statgrid">${grid.map(([v, l]) => `<div class="stat"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('')}</div>
-      <div class="badges">${records.map((r) => `<span class="badge">${icon('star')}${r}</span>`).join('')}${unlocked.map((u) => `<span class="badge unlock">${icon('unlock')}${u.name}</span>`).join('')}</div>
-      ${seasonInfo ? `<div class="earned">${seasonInfo.items.map(([l, c]) => `<span class="badge">${l} +${c}</span>`).join('')}<span class="badge coinbadge">${icon('coin')}${seasonInfo.coins}</span></div>` : ''}
-      <div class="row" style="margin-top:12px">${seasonInfo
+    // (the buttons stay in view on any screen: the rest scrolls above them when a phone is too short for it all)
+    const badges = records.map((r) => `<span class="badge">${icon('star')}${r}</span>`).join('') + unlocked.map((u) => `<span class="badge unlock">${icon('unlock')}${u.name}</span>`).join('')
+      + (seasonInfo ? seasonInfo.items.map(([l, c]) => `<span class="badge">${l} +${c}</span>`).join('') + `<span class="badge coinbadge">${icon('coin')}${seasonInfo.coins}</span>` : '');
+    d.innerHTML = `<div class="overbody">${head}${table}<div class="statgrid">${grid.map(([v, l]) => `<div class="stat"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('')}</div>
+      ${badges ? `<div class="badges">${badges}</div>` : ''}</div>
+      <div class="row overacts">${seasonInfo
     ? `<button class="btn" data-a="seasonHub">${icon('play')}Continue</button>`
     : `<button class="btn" data-a="playAgain">${icon('play')}Again</button><button class="btn ghost" data-a="quit">${icon('home')}Menu</button>`}</div>`;
     s.appendChild(d);
