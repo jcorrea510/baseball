@@ -22,7 +22,7 @@ export function createResolution(max) {
       avg += (dtMs - avg) * 0.05;
       if (since < Q.checkEvery) return false;
       since = 0;
-      const floor = Math.min(Q.minPixelRatio, maxNow);
+      const floor = Math.min(Q.minPixelRatio, maxNow * Q.minShare);
       let next = Math.min(R.ratio, maxNow);
       if (probe) {
         if (avg > probe.avg * Q.helpGain) {

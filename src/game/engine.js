@@ -673,7 +673,7 @@ export class Engine {
     const p = this.play;
     if (this.phase !== 'play' || !p || p.steal || !p.plan.send || this.paused) return false;
     const t = this.time - p.t0;
-    return t >= p.plan.send.from && t <= p.plan.send.by;
+    return t >= p.plan.send.from && t <= p.plan.send.by && t < (p.plan.send.closeAt ?? Infinity);
   }
 
   // The bases you can tap right now: [{ base, from, kind: 'send' | 'back' }] (from = the runner's starting base, 0 = the batter).

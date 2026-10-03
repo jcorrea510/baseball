@@ -860,9 +860,12 @@ function viewOf(recs, cfg, tagOk = false) {
  * to end up on as things stand), sent (you sent him there), send (the base a Go takes him to, or null), back (the base a Back takes him
  * to, or null), tag (true / false / undefined = he decides by himself), canTag }.
  */
+// Is the diamond open at time t? (from just after contact until the play is over - closed once the third out is made)
+const windowOpen = (S, t) => !!S && t >= S.from && t <= S.by && t < (S.closeAt ?? Infinity);
+
 export function runnerOptions(plan, t, cfg = CONFIG) {
   const S = plan && plan.send;
-  if (!S || !(t >= S.from && t <= S.by) || t >= (S.closeAt ?? Infinity)) return [];
+  if (!windowOpen(S, t)) return [];
   const view = S.res !== undefined && t < S.res && S.pre ? S.pre : S.post;
   if (!view) return [];
   const gone = (q) => (q.lockAt !== undefined && t >= q.lockAt) || (q.out && q.outAt !== undefined && t >= q.outAt);
@@ -885,7 +888,7 @@ export function runnerOptions(plan, t, cfg = CONFIG) {
  */
 export function sendOptions(plan, t, cfg = CONFIG) {
   const S = plan && plan.send;
-  if (!S || !(t >= S.from && t <= S.by) || t >= (S.closeAt ?? Infinity)) return [];
+  if (!windowOpen(S, t)) return [];
   const view = S.res !== undefined && t < S.res && S.pre ? S.pre : S.post;
   if (!view) return [];
   const out = [];
@@ -911,7 +914,7 @@ export function sendOptions(plan, t, cfg = CONFIG) {
  */
 export function tapOptions(plan, t) {
   const S = plan && plan.send;
-  if (!S || !(t >= S.from && t <= S.by) || t >= (S.closeAt ?? Infinity)) return [];
+  if (!windowOpen(S, t)) return [];
   const view = S.res !== undefined && t < S.res && S.pre ? S.pre : S.post;
   if (!view) return [];
   const out = [];
@@ -949,36 +952,15 @@ function tagRunner(plan, r, base, way, cfg, tagged = true) {
   const tOut = tagged ? Math.max(way.tOut, Math.min(arrive - cfg.runner.tagLead, way.tOut + 2)) : way.tOut; // (doubled off: the bag is touched, no tag)
   const ev = [...plan.events].reverse().find((e) => e.type === 'out' && e.base === base && Math.abs(e.t - way.tOut) < 1e-6);
   if (ev) ev.t = tOut;
+  markOut(plan, r, base, tOut, cfg);
+}
+// A runner is out at `tOut` (at or toward `base`): his record, the play's count of outs, the banner's note, and time to see it.
+function markOut(plan, r, base, tOut, cfg) {
   r.out = true; r.outAt = tOut; r.outBase = base; r.to = 0;
   plan.outsMade = (plan.outsMade || 0) + 1;
   if (r.sent || r.recalled || r.wasSent) plan.sentOut = true;
   plan.outNote = { base, from: r.from };
   plan.endTime = Math.max(plan.endTime, tOut + cfg.runner.outLinger);
-}
-
-// One more throw after the play's main one: whoever has the ball goes after a runner you sent (or called back) if he can get him.
-function followUpThrow(plan, recs, holder, at, tHave, outs, defense, cfg, skip = null) {
-  if (outs + plan.outsMade >= 3 || !holder) return false;
-  const F = cfg.fielding, R = cfg.runner;
-  const cands = recs.filter((r) => !r.out && r !== skip && (r.sent || r.recalled || r.wasSent || r.tagUp) && r.to >= 1 && r.to <= 4 && (r.to > r.from || r.recalled || r.wasSent)).sort((a, b) => b.to - a.to);
-  for (const r of cands) {
-    const base = r.to;
-    const arrive = recArrive(cfg, r, base);
-    if (arrive === undefined || arrive <= tHave + 0.2) continue;
-    const near = dist(at.x, at.z, BASE_XZ[base][0], BASE_XZ[base][1]) < 3;
-    if (near) continue; // (he is standing on that bag already: the runner went back to it before he got there - nothing to throw)
-    const tReady = tHave + F.relayTransfer;
-    const tag = base === 1 && r.from === 0 && !r.recalled ? 0 : R.sendTag;
-    const coverStart = r.lastOrderAt > 0 ? Math.max(F.cover.start, r.lastOrderAt + R.sendReact + F.reaction.IF) : undefined; // (they go when they see him go)
-    const way = coverOptions({ base, thrower: holder, tReady, from: at, runnerT: arrive, tag, coverStart }, plan, defense, cfg).filter((w) => !w.self)[0];
-    if (!way) continue;
-    for (const c of plan.carries) if (c.pos === holder.pos && c.t0 <= tReady + 1e-6 && c.t1 > tReady) c.t1 = way.t0;
-    planOut(plan, way, base, holder, at, tReady, cfg, 'cover', true);
-    tagRunner(plan, r, base, way, cfg);
-    plan.ballEnd = Math.max(plan.ballEnd || 0, way.t1);
-    return true;
-  }
-  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -994,7 +976,7 @@ function liveDefense(plan, recs, st, late, outs, defense, cfg, first = null) {
   let k = 0;
   const applyUntil = (t) => { while (k < late.length && late[k].t <= t) applyOrder(recs, late[k++], cfg); };
   const seen = (o) => o.t + R.sendReact + R.liveRead;
-  for (let guard = 0; guard < 24; guard++) {
+  for (let guard = 0; guard < R.live.maxPlays; guard++) {
     if (outs + (plan.outsMade || 0) >= 3) break;
     applyUntil(st.t);
     const pick = liveTarget(plan, recs, st, defense, cfg, first);
@@ -1016,7 +998,7 @@ function liveDefense(plan, recs, st, late, outs, defense, cfg, first = null) {
       // no: he is tagged
       if (!pick.onBag) liveThrow(plan, pick.way, pick.base, st, cfg);
       liveTag(plan, pick, cfg);
-      st = { holder: pick.recv, at: pick.meet ? { x: pick.meet.x, z: pick.meet.z } : { x: BASE_XZ[pick.base][0], z: BASE_XZ[pick.base][1] }, t: pick.tTag + 0.1, onBag: pick.meet ? null : pick.base };
+      st = { holder: pick.recv, at: pick.meet ? { x: pick.meet.x, z: pick.meet.z } : { x: BASE_XZ[pick.base][0], z: BASE_XZ[pick.base][1] }, t: pick.tTag + R.live.afterTag, onBag: pick.meet ? null : pick.base };
       continue;
     }
     const tSee = seen(late[stop]);
@@ -1031,7 +1013,7 @@ function liveDefense(plan, recs, st, late, outs, defense, cfg, first = null) {
     const [bx, bz] = BASE_XZ[pick.base];
     let at = { x: bx, z: bz }, onBag = pick.base;
     const walked = pick.walk ? pick.walk(tSee) : 0;
-    if (walked > 0.5) {
+    if (walked > R.live.minWalk) {
       at = { x: pick.from.x + pick.dir[0] * walked, z: pick.from.z + pick.dir[1] * walked };
       addMove(plan, pick.recv, at.x, at.z, tSee, { role: 'tag', start: tSee - walked / R.walkUp.speed, minEffort: 0.3 }, cfg);
       onBag = null;
@@ -1046,11 +1028,12 @@ function liveDefense(plan, recs, st, late, outs, defense, cfg, first = null) {
 function liveTarget(plan, recs, st, defense, cfg, first) {
   const F = cfg.fielding, R = cfg.runner, W = R.walkUp;
   // (a runner who turned back by himself only did so because he makes it: nobody throws after him unless you send him again)
-  const cands = recs.filter((r) => !r.out && r.legs.length && !(r.lockAt !== undefined && st.t >= r.lockAt) && !(r.retreated && !((r.lastOrderAt ?? -1) > r.retreatAt)) && (r === first || r.sent || r.recalled || r.wasSent || r.tagUp) && r.to >= 1 && r.to <= 4 && (r.to > r.from || r.recalled || r.wasSent)).sort((a, b) => b.to - a.to);
+  // (the runner the main throw went after comes first - the ball is on his bag already - then the lead runner)
+  const cands = recs.filter((r) => !r.out && r.legs.length && !(r.lockAt !== undefined && st.t >= r.lockAt) && !(r.retreated && !((r.lastOrderAt ?? -1) > r.retreatAt)) && (r === first || r.sent || r.recalled || r.wasSent || r.tagUp) && r.to >= 1 && r.to <= 4 && (r.to > r.from || r.recalled || r.wasSent)).sort((a, b) => (b === first) - (a === first) || b.to - a.to);
   for (const r of cands) {
     const base = r.to;
     const arrive = recArrive(cfg, r, base);
-    if (arrive === undefined || arrive <= st.t + 0.05) continue; // (he is there already)
+    if (arrive === undefined || arrive <= st.t + R.live.arrived) continue; // (he is there already)
     const forced = base === 1 && r.from === 0 && !r.recalled;
     let way = null, recv = st.holder, tBall = st.t;
     const onBag = st.onBag === base;
@@ -1064,7 +1047,7 @@ function liveTarget(plan, recs, st, defense, cfg, first) {
       const runs = plan.paths[recv.pos], last = runs && runs[runs.length - 1];
       const [bx0, bz0] = BASE_XZ[base];
       const off = last ? Math.hypot(last.xStop - bx0, last.zStop - bz0) : 0;
-      if (off > 1.5) tBall = Math.max(st.t, last.tStop) + F.reaction.IF + timeToCover(recv.speed, off, F.accel);
+      if (off > R.live.offBag) tBall = Math.max(st.t, last.tStop) + F.reaction.IF + timeToCover(recv.speed, off, F.accel);
       if (!(tBall + (forced ? 0 : R.sendTag) + F.outMargin <= arrive)) continue;
     }
     // the tag: on the bag as he slides in - or, when he is still a good way off, the man with the ball walks up the line to meet him
@@ -1078,7 +1061,7 @@ function liveTarget(plan, recs, st, defense, cfg, first) {
       const last = onBag && runs && runs[runs.length - 1];
       const tFree = (last ? Math.max(tBall, last.tStop) : tBall) + W.react;
       from = last ? { x: last.xStop, z: last.zStop } : onBag ? { x: recv.x, z: recv.z } : { x: bx, z: bz };
-      const aim = runnerState(mv, Math.min(arrive, tFree + 0.4), cfg, q);
+      const aim = runnerState(mv, Math.min(arrive, tFree + R.live.aimAhead), cfg, q);
       const dd = Math.hypot(aim.x - from.x, aim.z - from.z) || 1;
       dir = [(aim.x - from.x) / dd, (aim.z - from.z) / dd];
       walk = (t) => Math.min(W.maxOut, Math.max(0, (t - tFree - W.pickup) * W.speed)); // (`pickup`: getting going)
@@ -1086,7 +1069,7 @@ function liveTarget(plan, recs, st, defense, cfg, first) {
         const p = runnerState(mv, t, cfg, q);
         const w = walk(t);
         if (Math.hypot(p.x - (from.x + dir[0] * w), p.z - (from.z + dir[1] * w)) <= W.reach) {
-          if (w > 1) { tTag = Math.max(t, tBall); meet = { x: from.x + dir[0] * w, z: from.z + dir[1] * w, start: tFree }; }
+          if (w > R.live.minMeet) { tTag = Math.max(t, tBall); meet = { x: from.x + dir[0] * w, z: from.z + dir[1] * w, start: tFree }; }
           break;
         }
       }
@@ -1118,7 +1101,7 @@ function liveTag(plan, pick, cfg) {
     // (on the bag: if his last play took him off it, he steps back on)
     const runs = plan.paths[pick.recv.pos], last = runs && runs[runs.length - 1];
     const [bx, bz] = BASE_XZ[pick.base];
-    if (last && Math.hypot(last.xStop - bx, last.zStop - bz) > 1.5) addMove(plan, pick.recv, bx, bz, pick.tBall, { role: 'cover', start: last.tStop + cfg.fielding.reaction.IF, stop: true, minEffort: 0.6 }, cfg);
+    if (last && Math.hypot(last.xStop - bx, last.zStop - bz) > R.live.offBag) addMove(plan, pick.recv, bx, bz, pick.tBall, { role: 'cover', start: last.tStop + cfg.fielding.reaction.IF, stop: true, minEffort: 0.6 }, cfg);
   }
   if (pick.meet) {
     addMove(plan, pick.recv, pick.meet.x, pick.meet.z, pick.tTag, { role: 'tag', start: pick.meet.start, minEffort: 0.3 }, cfg);
@@ -1132,12 +1115,8 @@ function liveTag(plan, pick, cfg) {
     }
   }
   plan.events.push({ t: pick.tTag, type: 'out', base: pick.base, pos: pick.recv.pos, tag: !pick.forced, ...(pick.meet ? { between: true, x: pick.meet.x, z: pick.meet.z } : {}) });
-  r.out = true; r.outAt = pick.tTag; r.outBase = pick.base; r.to = 0;
+  markOut(plan, r, pick.base, pick.tTag, cfg);
   if (pick.meet) r.stopAt = pick.tTag;
-  plan.outsMade = (plan.outsMade || 0) + 1;
-  if (r.sent || r.recalled || r.wasSent) plan.sentOut = true;
-  plan.outNote = { base: pick.base, from: r.from };
-  plan.endTime = Math.max(plan.endTime, pick.tTag + R.outLinger);
 }
 
 // A ball caught in the air: what the runners do. Until the catch they did what they do on every ball in the air (airLegs, and your
@@ -1260,8 +1239,10 @@ function caughtRunners(plan, i, f, air, type, bases, outs, defense, cfg) {
     const ev = plan.events.filter((q) => q.type === 'out' && q.t >= tC - 1e-6 && q.base >= 1).sort((a, b) => b.t - a.t)[0];
     const st = ev && (!th || ev.t >= th.t1) ? { holder: defense[ev.pos], at: { x: BASE_XZ[ev.base][0], z: BASE_XZ[ev.base][1] }, t: ev.t + 0.1, onBag: ev.base }
       : th ? { holder: defense[th.to], at: { x: th.bx, z: th.bz }, t: th.t1 + 0.1, onBag: th.toBase >= 1 ? th.toBase : null } : { holder: f, at, t: tC + F.transfer[f.type], onBag: null };
+    // (only orders you gave after the window: on its own the defense makes its one throw, as ever)
+    const late = orders.filter((o) => o.t > by);
     const before = plan.outsMade;
-    liveDefense(plan, recs, st, orders.filter((o) => o.t > by), outs, defense, cfg);
+    if (late.length) liveDefense(plan, recs, st, late, outs, defense, cfg);
     if (plan.outsMade > before && plan.result !== 'doublePlay') plan.result = 'doublePlay';
   }
   if (fair && plan.result !== 'doublePlay' && runners.some((r) => r.from === 3 && r.to === 4 && !r.out)) plan.result = 'sacFly';
@@ -1511,15 +1492,26 @@ export function planPlay(i, cfg = CONFIG) {
   READ = 0;
   try {
     const plan = planPlayCore(i, cfg);
+    // (a runner who first waited to see a ball in the air - READ - set off late: every move the planner timed that way says so, so
+    // the picture and the referee see him where the planner did)
+    for (const m of plan.moves) if (m.tStart === undefined && !m.legs && !m.back && !m.trot && m.from >= 1) { const d = readDelay(cfg, m.from); if (d !== undefined) m.tStart = d; }
     if (RUN) runningStarts(plan, cfg);
     if (PREV) keepOldRuns(plan);
     speedsOnMoves(plan);
     if (!i.simple) endInningStop(plan, i.outs || 0, cfg);
+    if (plan.send && (i.outs || 0) + (plan.outsMade || 0) >= 3) plan.send.closeAt = thirdOutAt(plan, i.outs || 0); // (no sending runners in a dead inning)
     addSupport(plan, i, cfg);
     settleThrows(plan);
     addCalls(plan, cfg);
     return plan;
   } finally { RUN = null; SPD = null; ORD = null; PREV = null; READ = 0; }
+}
+// When the inning's third out is made in this play.
+function thirdOutAt(plan, outs) {
+  const times = plan.moves.filter((m) => m.out && m.outAt !== undefined).map((m) => m.outAt);
+  if (plan.caught && plan.catchT !== undefined) times.push(plan.catchT);
+  times.sort((a, b) => a - b);
+  return times[Math.max(0, Math.min(times.length - 1, 2 - outs))] ?? 0;
 }
 // A play planned again: a fielder who has no job in it any more still did what he was doing until the fielders saw the order.
 function keepOldRuns(plan) {
@@ -2209,7 +2201,7 @@ function finishHit(plan, ctx) {
     if (m.out) { last = Math.max(last, m.outAt + R.outLinger - 0.35); continue; }
     last = Math.max(last, mFinish(cfg, m));
   }
-  const onBase = plan.moves.some((m) => !m.out && m.to >= 1 && m.to <= 3);
+  const onBase = plan.moves.some((m) => !m.out && m.to >= 1 && m.to <= 3) && outs + plan.outsMade < 3;
   plan.endTime = Math.max(plan.endTime || 0, last + (onBase ? R.liveHold : 0.35));
   return plan;
 }

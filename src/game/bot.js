@@ -43,7 +43,9 @@ export function createBot(engine, o = {}) {
         if (sendPlay !== p) { sendPlay = p; sendAt = engine.time + rng.range(0.15, 0.6); }
         const t = engine.time - p.t0;
         const res = p.plan.send && p.plan.send.res;
-        if (engine.time >= sendAt && !(res !== undefined && t < res)) { // (it waits to see the ball caught or down)
+        // (it waits to see the ball caught or down, and only looks while a send still decides the play - the live play after it is a
+        // person's to use, and looking all through every play would multiply its misjudgements)
+        if (engine.time >= sendAt && !(res !== undefined && t < res) && t <= (p.plan.send.main ?? Infinity)) {
           sendAt = engine.time + 0.4;
           for (const tg of engine.baseTargets().reverse()) {
             const hyp = planPlay({ ...p.planIn, orders: [...p.planIn.orders, { base: tg.base, t, from: tg.from }] }, engine.cfg);

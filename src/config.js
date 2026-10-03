@@ -610,6 +610,11 @@ export const CONFIG = {
     // runner is still `min` s away: he starts `react` s after he has the ball and needs `pickup` s to get going, then `speed` ft/s, never further than `maxOut` ft from the
     // bag, and the tag goes on when his glove is `reach` ft from the runner.
     walkUp: { min: 0.6, react: 0.15, pickup: 0.25, speed: 12, maxOut: 36, reach: 3 },
+    // the live play's small numbers: he aims his walk at where the runner will be `aimAhead` s on; a man more than `offBag` ft from
+    // the bag steps back on before a tag; a walk shorter than `minWalk` ft (when the runner turns round) or a meeting closer than
+    // `minMeet` ft to the bag is no walk at all; a runner within `arrived` s of the bag is there; the man with the ball is ready
+    // `afterTag` s after a tag; the defense makes at most `maxPlays` decisions in one play
+    live: { aimAhead: 0.4, offBag: 1.5, minWalk: 0.5, minMeet: 1, arrived: 0.05, afterTag: 0.1, maxPlays: 24 },
     // after a play runners stand on their bag and only walk out to their lead `leadAfterSet` s after the pitcher is set again; a runner
     // who holds on a hit goes back to his bag `holdBackDelay` s after the ball is fielded, at `holdBackSpeed` ft/s
     leadAfterSet: 0.6,
@@ -739,7 +744,8 @@ export const CONFIG = {
     // on every device. The game draws fewer dots only while it stays slow, and goes back up when it is smooth (render/resolution.js).
     maxPixelRatio: 2,
     maxPixelRatioMobile: 2,
-    minPixelRatio: 1, // never blurrier than this (a phone screen's own layout size)
+    minPixelRatio: 1, // never blurrier than this (a phone screen's own layout size)...
+    minShare: 0.7, // ...or this share of the screen's own dots, whichever is lower (so a plain 1x screen can still step down)
     slowFrameMs: 24, // frames slower than this on average (under ~42 a second) = too slow: draw fewer dots
     smoothFrameMs: 20, // frames faster than this (a 60-a-second screen keeping up) = smooth: draw more dots again
     hiccupMs: 100, // a single frame longer than this (a park loading, the tab hidden) is ignored

@@ -1,5 +1,5 @@
 // Real-game check of the pitch guide: is the circle there during the flight, where the pitch really goes, fading in, and gone
-// when the setting is off (and in the Derby)? Saves screenshots to qa-output/.
+// when the setting is off? (The Derby shows it too, since round seven.) Saves screenshots to qa-output/.
 //   npm run dev (another window)  then  CHROME_PATH=... node scripts/guideqa.mjs [url]
 import { chromium } from 'playwright-core';
 import fs from 'node:fs';
@@ -26,7 +26,8 @@ async function session(query, fn) {
 const sample = (page, fractions, shots = null) => page.evaluate(({ fractions, shots }) => {
   const a = window.__app, e = a.engine, out = [];
   e.swingPressed = () => false; // (never swing: we only look)
-  for (let i = 0; i < 4000 && e.phase !== 'windup'; i++) a.tick(1 / 60, false);
+  // (a game starts with the computer's half and the Ready card: skip the one, press the other)
+  for (let i = 0; i < 8000 && e.phase !== 'windup'; i++) { if (e.phase === 'aiSummary') e.skipSummary(); if (e.awaitingBatter) e.batterReady(); a.tick(1 / 60, false); }
   for (let i = 0; i < 4000 && e.phase !== 'pitch'; i++) a.tick(1 / 120, false);
   const p = e.pitch;
   for (const f of fractions) {
@@ -43,7 +44,7 @@ const sample = (page, fractions, shots = null) => page.evaluate(({ fractions, sh
 for (const level of ['rookie', 'pro', 'allstar']) {
   console.log(`\n${level}`);
   await session(`mode=quick&diff=${level}&seed=5&tod=day`, async (page) => {
-    const res = await sample(page, [0.05, 0.2, 0.35, 0.55, 0.75, 0.95], { 0.75: true });
+    const res = await sample(page, [0.01, 0.2, 0.35, 0.55, 0.75, 0.95], { 0.75: true }); // (it fades in from 2-4.5% of the flight)
     const rows = res.rows;
     fs.writeFileSync(`qa-output/guide-${level}.png`, Buffer.from(res.shot[0.75].split(',')[1], 'base64'));
     for (const r of rows) console.log(`   ${String(r.f).padEnd(5)} ${r.visible ? 'shown' : 'hidden'} alpha ${r.alpha} at (${r.x}, ${r.y}) radius ${r.r}    real spot (${r.tx}, ${r.ty}) ${r.type} ${r.strike ? 'strike' : 'ball'}`);
@@ -71,7 +72,7 @@ await session('mode=quick&diff=pro&seed=6', async (page) => {
 console.log('\nDerby');
 await session('mode=derby&diff=pro&seed=5', async (page) => {
   const rows = (await sample(page, [0.6, 0.9])).rows;
-  check(rows.every((r) => !r.visible), 'no guide in the Derby (every pitch is a strike)');
+  check(rows.some((r) => r.visible), 'the Derby shows the guide too (round seven)');
 });
 await browser.close();
 console.log(bad ? `\n${bad} problem(s)` : '\nthe pitch guide behaves in the real game');

@@ -47,11 +47,14 @@ describe('adaptive resolution', () => {
     expect(res.ratio).toBe(2);
   });
 
-  it('never goes under the floor, and the floor never goes over the screen', () => {
+  it('never goes under the floor - and a plain 1x screen can still step down when it is too slow', () => {
     const res = createResolution(2);
     for (let t = 0; t < 120; t += 0.05) res.sample(res.ratio > Q.minPixelRatio ? 45 : 15, 2);
     expect(res.ratio).toBeGreaterThanOrEqual(Q.minPixelRatio - 1e-9);
-    expect(run(createResolution(0.8), 45, 30, 0.8)).toBe(0.8);
+    const one = createResolution(1);
+    for (let t = 0; t < 30; t += 0.03) one.sample(28 * one.ratio ** 2, 1); // (a frame costs what its dots cost)
+    expect(one.ratio).toBeLessThan(1);
+    expect(one.ratio).toBeGreaterThanOrEqual(Q.minShare - 1e-9);
   });
 
   it('phones draw at least 2 dots per point and smooth edges', () => {

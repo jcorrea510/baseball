@@ -118,7 +118,7 @@ export function loft(rings, { seg = 16, sub = 2, cap = true, dome = 0.35, key = 
 // for the right, so `side * PI / 2` is always the outside of the limb.
 const H = Math.PI / 2;
 const lod = (dl) => ({ seg: Math.max(8, Math.round(18 * dl)), sub: dl > 0.7 ? 2 : 1 });
-const L = (rings, dl, key, extra = {}) => { const o = lod(dl); return loft(rings, { ...o, ...extra, key: `${key}|${o.seg}|${o.sub}` }); };
+const L = (rings, dl, key, extra = {}) => { const o = { ...lod(dl), ...extra }; return loft(rings, { ...o, key: `${key}|${o.seg}|${o.sub}|${o.dome ?? ''}|${o.cap ?? ''}` }); }; // (the key says exactly what is built)
 
 /** The upper arm (from the shoulder joint down, the elbow at -upperArm): skin or undershirt with a deltoid, biceps and triceps, and a
  *  short jersey sleeve over the top with its piping. */
