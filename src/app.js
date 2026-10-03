@@ -1159,7 +1159,7 @@ export class App {
   backKey(base) {
     const e = this.engine;
     if (!e) return;
-    const r = e.runnerTargets().find((q) => q.sent && q.goal === base && q.back !== null && q.back !== undefined);
+    const r = e.runnerTargets().find((q) => q.goal === base && q.back !== null && q.back !== undefined);
     if (r) this.runnerBack(r.from);
   }
 
@@ -1172,12 +1172,13 @@ export class App {
     const p = e.play, t = e.time - p.t0;
     const dots = [];
     // (a runner you sent can be called back: tap his dot)
-    const backs = new Set(e.runnerTargets().filter((r) => r.sent && r.back !== null && r.back !== undefined).map((r) => r.from));
+    // (any runner off his bag who can still turn round: tap his dot - one about to be tagged too, that is a rundown)
+    const backs = new Set(e.runnerTargets().filter((r) => r.back !== null && r.back !== undefined).map((r) => r.from));
     for (const m of p.plan.moves) {
       if (m.back && m.from === 0) continue;
       if (m.out && m.outAt !== undefined && t > m.outAt) continue; // (tagged out: off the diamond)
       const q = runnerState(m, t, e.cfg, this.padQ || (this.padQ = {}));
-      dots.push({ x: q.x, z: q.z, sent: !!m.sent && t < (m.outAt ?? Infinity), from: m.from, canBack: backs.has(m.from) && !m.out });
+      dots.push({ x: q.x, z: q.z, sent: !!m.sent && t < (m.outAt ?? Infinity), from: m.from, canBack: backs.has(m.from) && !(m.out && t >= m.outAt) });
     }
     // (the batter on a ball caught in the air has no move: he is still a dot on his way to first until the catch)
     if (!p.plan.moves.some((m) => m.from === 0) && !p.plan.homer && t < (p.plan.catchT ?? 0)) {

@@ -601,6 +601,15 @@ export const CONFIG = {
     outLinger: 1.7, // s the play goes on after a runner is tagged out, so you see the tag and see him walk off
     walkOffDelay: 1.3, // s after the tag before he gets up and walks to the dugout
     walkOffSpeed: 13, // ft/s: he jogs off (and is gone by the next pitch)
+    // The play stays live until it is over: you can send a runner on or call him back as often as you like. The fielders see a runner
+    // change his mind `liveRead` s after he does, and answer from wherever the ball is (a rundown). With every runner standing on a
+    // bag the play still waits `liveHold` s before it ends, so there is time to send somebody.
+    liveRead: 0.2,
+    liveHold: 0.9,
+    // A fielder with the ball on the bag a runner is heading for walks up the line to tag him (instead of waiting on the bag) when the
+    // runner is still `min` s away: he starts `react` s after he has the ball and needs `pickup` s to get going, then `speed` ft/s, never further than `maxOut` ft from the
+    // bag, and the tag goes on when his glove is `reach` ft from the runner.
+    walkUp: { min: 0.6, react: 0.15, pickup: 0.25, speed: 12, maxOut: 36, reach: 3 },
     // after a play runners stand on their bag and only walk out to their lead `leadAfterSet` s after the pitcher is set again; a runner
     // who holds on a hit goes back to his bag `holdBackDelay` s after the ball is fielded, at `holdBackSpeed` ft/s
     leadAfterSet: 0.6,

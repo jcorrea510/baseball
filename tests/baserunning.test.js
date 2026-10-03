@@ -18,6 +18,8 @@ const plan = (c, o = {}) => {
   return { plan: planPlay(i, o.cfg || CONFIG), defense, i };
 };
 const FREE = { ...CONFIG, runner: { ...CONFIG.runner, freeAdvance: true } }; // (the old rule: a free runner takes the next base when safe)
+// The end of the main send window (the diamond itself stays up for the whole play - see the live play tests).
+const mainBy = (S) => S.main ?? S.by;
 const C = (ev, la, spray) => ({ exitVelocity: ev, launchAngle: la, sprayAngle: spray, backspin: 900, hook: 0 });
 
 // Where every runner of a plan is at time t (the batter is 0).
@@ -39,7 +41,7 @@ describe('sending runners', () => {
     expect(gap).toBeGreaterThan(30); // (balls to the outfield leave time to send runners)
   });
 
-  it('a send is taken from the moment the ball is hit until just after the fielder is ready to throw', () => {
+  it('a send is taken from the moment the ball is hit and for the rest of the play (a late one is answered by the defense)', () => {
     const rng = createRng(5);
     let n = 0;
     for (let k = 0; k < 400 && n < 40; k++) {
@@ -48,9 +50,13 @@ describe('sending runners', () => {
       if (!base.plan.send || base.plan.result !== 'single') continue;
       n++;
       const early = plan(c, { orders: [{ base: 2, t: base.plan.send.from - 0.3 }] }).plan;
-      const late = plan(c, { orders: [{ base: 2, t: base.plan.send.by + 0.3 }] }).plan;
+      expect(base.plan.send.by).toBe(Infinity); // (the diamond stays up for the whole play)
+      const lateIn = plan(c, { orders: [{ base: 2, t: base.plan.send.main + 0.3 }] });
+      const late = lateIn.plan;
       expect(early.batterDest).toBe(1);
-      expect(late.batterDest).toBe(1);
+      const bm = late.moves.find((m) => m.from === 0);
+      expect(bm.sent || bm.out).toBe(true); // (he goes: he makes it, or the throw gets him)
+      expect(auditPlan(late, lateIn.defense)).toEqual([]);
       const ok = plan(c, { orders: [{ base: 2, t: base.plan.send.from + 0.05 }] }).plan;
       expect(ok.moves.find((m) => m.from === 0).sent).toBe(true);
     }
@@ -65,7 +71,7 @@ describe('sending runners', () => {
       const bases = [rng.chance(0.5) ? 1 : null, rng.chance(0.4) ? 2 : null, rng.chance(0.3) ? 3 : null];
       const a = plan(c, { bases }).plan;
       if (!a.send) continue;
-      const tap = a.send.from + rng.next() * (a.send.by - a.send.from);
+      const tap = a.send.from + rng.next() * (mainBy(a.send) - a.send.from);
       const opts = sendOptions(a, tap);
       if (!opts.length) continue;
       const o = opts[Math.floor(rng.next() * opts.length)];
@@ -104,7 +110,7 @@ describe('sending runners', () => {
       const taps = rng.chance(0.3) ? 2 : 1;
       let cur = first;
       for (let q = 0; q < taps; q++) {
-        const t = Math.max(orders.length ? orders[orders.length - 1].t : 0, cur.send.from + rng.next() * (cur.send.by - cur.send.from));
+        const t = Math.max(orders.length ? orders[orders.length - 1].t : 0, cur.send.from + rng.next() * (mainBy(cur.send) - cur.send.from));
         const opts = sendOptions(cur, t);
         if (!opts.length) break;
         const o = opts[Math.floor(rng.next() * opts.length)];
@@ -149,7 +155,7 @@ describe('sending runners', () => {
       // send the runner on second home and the batter on to second, as soon as the pad offers them
       const orders = [];
       let cur = first;
-      for (let t = first.send.from; t <= cur.send.by && orders.length < 2; t += 0.1) {
+      for (let t = first.send.from; t <= mainBy(cur.send) && orders.length < 2; t += 0.1) {
         for (const o of sendOptions(cur, t)) {
           if (o.kind !== 'send' || orders.some((q) => q.from === o.from)) continue;
           if ((o.from === 2 && o.base === 4) || (o.from === 0 && o.base === 2)) { orders.push({ base: o.base, t, from: o.from }); cur = plan(c, { bases, orders }).plan; break; }
@@ -460,7 +466,7 @@ describe('only forced runners move by themselves; you tap a base for the rest', 
       const bases = [rng.chance(0.6) ? 1 : null, rng.chance(0.5) ? 2 : null, rng.chance(0.4) ? 3 : null];
       const { plan: p, defense } = plan(c, { bases });
       if (!p.send || !p.fair || p.homer) continue;
-      const t = (p.send.from + p.send.by) / 2;
+      const t = (p.send.from + mainBy(p.send)) / 2;
       const view = p.send.res !== undefined && t < p.send.res && p.send.pre ? p.send.pre : p.send.post;
       for (const o of tapOptions(p, t)) {
         if (o.base < 4 && view.some((v) => !v.out && v.goal === o.base)) problems.push(`base ${o.base} lit while a runner is heading there`);
@@ -496,7 +502,7 @@ describe('a runner you sent who turns back', () => {
       const base = plan(c).plan;
       if (base.result !== 'single' || !base.send) continue;
       // send him to second just as the fielder gets the ball (late: the throw will beat him, so he turns back)
-      for (const t of [base.send.decide, (base.send.decide + base.send.by) / 2]) {
+      for (const t of [base.send.decide, (base.send.decide + mainBy(base.send)) / 2]) {
         const p = plan(c, { orders: [{ base: 2, t, from: 0 }] }).plan;
         if (!(p.retreated && p.retreated.from === 0)) continue;
         found++;
