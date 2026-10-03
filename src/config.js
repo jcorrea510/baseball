@@ -525,9 +525,9 @@ export const CONFIG = {
       armReach: 3.4, // ft the glove reaches in front of a layed-out body
       slideDecel: 30, // ft/s^2 sliding along the grass
       landSpeed: 11, // ft/s, top touchdown speed
-      hold: 0.16, // s lying with the ball
-      getUp: 0.62, // s to get back onto his feet
-      throwExtra: 0.42, // extra s before a fielder who dove can throw (he throws from his knees)
+      hold: 0.1, // s lying with the ball
+      getUp: 0.45, // s to get back onto his feet (he pops straight up)
+      throwSet: 0.35, // s from on his feet to letting the throw go (he never throws before he is up)
       preferRun: 0.2, // nobody dives for a ball a fielder can simply run to within this many seconds
     },
     // Covering a base: an out needs a fielder standing on the bag WITH the ball before the runner gets there. Whoever is not fielding

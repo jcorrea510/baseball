@@ -44,6 +44,16 @@ export function createDefense(cfg = CONFIG, rng = null) {
 }
 
 const dist = (ax, az, bx, bz) => Math.hypot(ax - bx, az - bz);
+// A fielder who dove for the ball: when he is back on his feet (undefined if he did not dive).
+function diveUpAt(plan, f) {
+  const m = plan.fielderMoves.find((q) => q.pos === f.pos && q.dive);
+  return m && m.run.dive ? m.run.dive.tEnd : undefined;
+}
+// When can the fielder who has the ball at tHave let go of a throw? His exchange - and after a dive, only once he is up and set.
+function readyAt(plan, f, tHave, cfg) {
+  const F = cfg.fielding, up = diveUpAt(plan, f);
+  return Math.max(tHave + F.transfer[f.type], up === undefined ? 0 : up + F.dive.throwSet);
+}
 
 /** Puts the infielders where they stand for this situation (holding a runner on, double-play depth) - see fielding.align. */
 export function alignDefense(defense, bases, outs, cfg = CONFIG) {
@@ -428,7 +438,7 @@ function coverOptions(o, plan, defense, cfg) {
     const runs = plan.paths[thrower.pos];
     const last = runs && runs[runs.length - 1];
     // he turns for the bag as soon as he has the ball (still braking from the pickup is fine: that run is cut short)
-    const want = o.tHave + F.cover.selfStart + (o.dive ? F.dive.throwExtra : 0);
+    const want = Math.max(o.tHave + F.cover.selfStart, o.upAt ?? 0); // (after a dive: once he is up)
     const cut = cutPoint(last, want);
     let x0 = cut ? cut.x : last ? last.xStop : from.x, z0 = cut ? cut.z : last ? last.zStop : from.z;
     let start = cut ? want : Math.max(want, last ? last.tStop : 0);
@@ -661,8 +671,7 @@ function planPlayCore(i, cfg) {
   // as soon as it is past the infield and go)
   if (AIR[type]) plan.airRes = !i.simple && airShortfall(sim, defense, cfg) > cfg.runner.sureHitFeet ? Math.min(plan.downT, cfg.runner.sureHitRead) : plan.downT;
   plan.events.push({ t: tF, type: 'field', pos: f.pos, dive: !!plan.fielderMoves[0].dive });
-  const tr = F.transfer[f.type] + (plan.fielderMoves[0].dive ? F.dive.throwExtra : 0); // a fielder who dove throws from his knees
-  const tReady = tF + tr;
+  const tReady = readyAt(plan, f, tF, cfg); // (a fielder who dove throws only once he is back on his feet)
   plan.carries.push({ pos: f.pos, t0: tF, t1: tReady });
 
   if (i.simple) {
@@ -1168,7 +1177,7 @@ function caughtRunners(plan, i, f, air, type, bases, outs, defense, cfg) {
   // (a ball caught out in the outfield - a fly or a liner - is one he can tag up on)
   if (fair && (kind === 'fly' || Math.hypot(air.ball.x, air.ball.z) > F.tagUpDepth)) {
     const home = BASE_XZ[4];
-    const tR = tC + F.transfer[f.type];
+    const tR = readyAt(plan, f, tC, cfg);
     const throwTo = (base) => tR + throwTime(dist(air.ball.x, air.ball.z, BASE_XZ[base][0], BASE_XZ[base][1]), f, cfg) + (base === 4 ? F.tagTime : 0);
     const auto = (r, base, margin) => {
       const hyp = cloneRec(r);
@@ -1203,7 +1212,7 @@ function caughtRunners(plan, i, f, air, type, bases, outs, defense, cfg) {
   const at = { x: air.ball.x, z: air.ball.z };
   let chased = null; // (a runner the tag-up throw went after who is still far away: the live defense runs him down)
   if (!plan.doubledOff) {
-    const tReady = tC + F.transfer[f.type];
+    const tReady = readyAt(plan, f, tC, cfg);
     let done = false;
     for (const r of runners.filter((q) => q.wasSent && q.to === q.from).sort((a, b) => b.from - a.from)) {
       const arrive = recArrive(cfg, r, r.from);
@@ -1247,7 +1256,7 @@ function caughtRunners(plan, i, f, air, type, bases, outs, defense, cfg) {
     const th = plan.throws.filter((q) => q.t0 >= tC - 1e-6).sort((a, b) => b.t1 - a.t1)[0];
     const ev = plan.events.filter((q) => q.type === 'out' && q.t >= tC - 1e-6 && q.base >= 1).sort((a, b) => b.t - a.t)[0];
     const st = ev && (!th || ev.t >= th.t1) ? { holder: defense[ev.pos], at: { x: BASE_XZ[ev.base][0], z: BASE_XZ[ev.base][1] }, t: ev.t + 0.1, onBag: ev.base }
-      : th ? { holder: defense[th.to], at: { x: th.bx, z: th.bz }, t: th.t1 + 0.1, onBag: th.toBase >= 1 ? th.toBase : null } : { holder: f, at, t: tC + F.transfer[f.type], onBag: null };
+      : th ? { holder: defense[th.to], at: { x: th.bx, z: th.bz }, t: th.t1 + 0.1, onBag: th.toBase >= 1 ? th.toBase : null } : { holder: f, at, t: readyAt(plan, f, tC, cfg), onBag: null };
     // (only orders you gave after the window: on its own the defense makes its one throw, as ever)
     const late = orders.filter((o) => o.t > by);
     const before = plan.outsMade;
@@ -1277,8 +1286,8 @@ function runnersGoBack(plan, f, air, type, bases, outs, defense, cfg) {
     const retT = retreatArrival(cfg, b, rs(b), backAt, sp(b));
     if (!triedOut && outs + plan.outsMade < 3) {
       triedOut = true;
-      const tReady = air.t + F.transfer[f.type];
-      const way = coverOptions({ base: b, thrower: f, tReady, from: { x: air.ball.x, z: air.ball.z }, tHave: air.t, runnerT: retT }, plan, defense, cfg)[0];
+      const tReady = readyAt(plan, f, air.t, cfg);
+      const way = coverOptions({ base: b, thrower: f, tReady, from: { x: air.ball.x, z: air.ball.z }, tHave: air.t, upAt: diveUpAt(plan, f), runnerT: retT }, plan, defense, cfg)[0];
       if (way) {
         planOut(plan, way, b, f, { x: air.ball.x, z: air.ball.z }, tReady, cfg);
         plan.moves.push({ from: b, to: 0, out: true, outAt: way.tOut, outBase: b, back: true, tStart: rs(b), backAt });
@@ -1733,8 +1742,8 @@ function throwArrival(f, tReady, base, fx, fz, cfg) {
 // Can the defense get an out at this base before the runner does? Returns the best way, or null.
 function outAt(base, runnerT, ctx, plan, cfg) {
   const { f, tF, tReady, pf } = ctx;
-  const dive = !!(plan.fielderMoves[0] && plan.fielderMoves[0].dive);
-  const opts = coverOptions({ base, thrower: f, tReady, from: { x: pf.x, z: pf.z }, tHave: tF, dive, runnerT }, plan, ctx.defense, cfg);
+  const upAt = diveUpAt(plan, f);
+  const opts = coverOptions({ base, thrower: f, tReady, from: { x: pf.x, z: pf.z }, tHave: tF, upAt, runnerT }, plan, ctx.defense, cfg);
   return opts[0] || null;
 }
 
@@ -2151,7 +2160,7 @@ function finishHit(plan, ctx) {
     plan.events.push({ t: t3, type: 'throwEnd', pos: recv.pos, base: tgtBase });
     plan.ballEnd = t3;
   } else {
-    const way = coverOptions({ base: tgtBase, thrower: f, tReady, from: { x: pf.x, z: pf.z }, tHave: tF, dive: !!(plan.fielderMoves[0] && plan.fielderMoves[0].dive), coverStart: kStart }, plan, defense, cfg)[0];
+    const way = coverOptions({ base: tgtBase, thrower: f, tReady, from: { x: pf.x, z: pf.z }, tHave: tF, upAt: diveUpAt(plan, f), coverStart: kStart }, plan, defense, cfg)[0];
     const recv = way.recv;
     addMove(plan, recv, rp.x, rp.z, Math.max(way.coverStart + 0.05, way.tOut), { role: 'cover', start: way.coverStart, vmax: way.speed, minEffort: 0.8, stop: !way.self }, cfg);
     if (way.self) {
