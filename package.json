@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "sim": "node scripts/sim.mjs",
     "smoke": "node scripts/smoke.mjs",
-    "umpire": "node scripts/addumpire.mjs"
+    "umpire": "node scripts/addumpire.mjs",
+    "install-app": "bash scripts/install-mac.sh"
   },
   "dependencies": {
     "@fontsource/barlow-condensed": "^5.3.0",
