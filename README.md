@@ -158,6 +158,9 @@ If something feels too hard, too easy, too slow or too fast, open **`src/config.
 | Steals too easy / too hard | `difficulty.<level>.catcherArm`, `steal.jump`, `runner.lead` |
 | Too many / too few errors | `fielding.errors`, `difficulty.<level>.errorScale` |
 | Fielders too good / too weak | `fielding.speed`, `fielding.reaction`, `fielding.glove` |
+| Off-centre hits too weak / too strong (too many weak grounders and pop-ups) | `difficulty.<level>.aimAssist` (0 = no help, 1 = every contact squared up), `swing.assist` |
+| Turning a runner round feels slow | `runner.sendReact`, `runner.reverseBrake`, `runner.pivotRate` |
+| Diving fielders slow to get up and throw | `fielding.dive.getUp`, `fielding.dive.throwSet` |
 | Too much waiting between pitches | `pace.*` and `difficulty.<level>.windup` |
 | Computer scores too much / too little | `difficulty.<level>.ai` |
 | League too easy / too hard | `season.tierRating` (how good each tier of team is), `season.strength` (what a strong team does), `season.starters` (how good your role players are), `season.yearStep` |
