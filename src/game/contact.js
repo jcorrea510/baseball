@@ -112,7 +112,13 @@ export function computeSwing(i, cfg = CONFIG) {
   let heading = pullSign * Math.sign(earliness) * c.spray.timingMax * Math.pow(Math.abs(earliness), c.spray.timingCurve);
   heading += pullSign * S.pullBias; // (on time = a little out front: toward the pull-side gap)
   // (how the ball comes off depends on where it is against the SWEET zone; outside it the bat only gets a piece)
-  const uq = clamp(off.uq, -1, 1), wq = clamp(off.wq, -1, 1);
+  // Aim help (difficulty.<level>.aimAssist): once the bat touches the ball, a contact point outside the good part of the bat (on top
+  // of the ball, under it, out by the end or in on the hands) is pulled that share of the way back into it - a thumb or a mouse a
+  // little off still squares it up more often. A well-aimed swing is left exactly as it was, and misses are unchanged.
+  const A = clamp(i.aimAssist || 0, 0, 1), [lo, hi] = S.assist.band, wb = S.assist.alongBand;
+  const pull = (v, a, b) => (v < a ? a + (v - a) * (1 - A) : v > b ? b + (v - b) * (1 - A) : v);
+  const uq = clamp(pull(off.uq, lo, hi), -1, 1), wq = clamp(pull(off.wq, -wb, wb), -1, 1);
+  base.u = uq; base.w = wq;
   heading += -pullSign * S.endSpray * wq; // off the end of the bat the ball goes the other way a little; in on the hands, pulled
   let speed = S.batSpeed * speedFromTiming(timing, cfg);
   speed *= 1 - S.handleSlow * Math.max(0, -wq); // nearer the hands the bat is moving slower
@@ -140,7 +146,7 @@ export function computeSwing(i, cfg = CONFIG) {
 
   // how it is graded on screen: the timing, marked down for a ball off the barrel or hit way off-centre
   let grade = timing.grade;
-  const squared = off.uq > S.squared[0] && off.uq < S.squared[1] && Math.abs(off.wq) < S.squaredAlong;
+  const squared = uq > S.squared[0] && uq < S.squared[1] && Math.abs(wq) < S.squaredAlong;
   if ((grade === 'perfect' || grade === 'good') && !squared) grade = grade === 'perfect' ? 'good' : (i.errorMs < 0 ? 'early' : 'late');
   if (chase > 0.5 && (grade === 'perfect' || grade === 'good')) grade = i.errorMs < 0 ? 'early' : 'late';
   const quality = clamp((exitVelocity - c.exitVelocityFloor) / (c.maxExitVelocity - c.exitVelocityFloor), 0, 1);

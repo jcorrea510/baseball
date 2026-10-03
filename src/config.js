@@ -270,6 +270,9 @@ export const CONFIG = {
     chase: { from: 1.15, to: 1.6, speedLoss: 0.22 }, // reaching for a ball out of the zone (zone widths) costs bat speed
     squared: [-0.3, 0.62], // a ball hit inside this part of the window (and near the sweet spot) counts as squared up for the grade
     squaredAlong: 0.45,
+    // aim help (difficulty.<level>.aimAssist = how much): where the bat meets the ball, as a share of the sweet zone, is pulled back
+    // into `band` (under the ball's middle +, on top -: from a low line drive to a high fly) and along the bat into +-`alongBand`
+    assist: { band: [0.1, 0.8], alongBand: 0.3 },
     noise: { ev: 0.7, launch: { perfect: 0.8, good: 1.2, weak: 2.2 }, spray: { perfect: 2.5, good: 4, weak: 6.5 } }, // degrees / mph of human scatter
     // where the bat can be aimed (the cursor is held inside this box over the plate): feet from the middle of the plate, height range
     reach: { x: 1.9, yMin: 0.85, yMax: 4.5 },
@@ -343,6 +346,7 @@ export const CONFIG = {
       // ...and the sweet zone inside it: how the ball comes off depends on where it is in THIS (smaller) part - beyond it, still
       // inside the contact window, the bat only gets a piece of the ball (a foul tip, a pop-up, a chopper).
       sweetSpot: { up: 0.58, tip: 1.0, handle: 0.85 },
+      aimAssist: 0.85, // share of a badly aimed contact pulled back into the good part of the bat (swing.assist): a thumb a little off still makes good contact
       batBonus: 5, // mph of extra bat speed (slower pitches come off the bat slower: this keeps the easy level from being the weakest)
       fastball: [62, 72],
       mix: { fastball: 0.62, changeup: 0.12, curveball: 0.13, slider: 0.13, heater: 0 },
@@ -374,6 +378,7 @@ export const CONFIG = {
       windowScale: 1.2,
       contactWindow: { up: 0.53, tip: 0.9, handle: 0.76 },
       sweetSpot: { up: 0.46, tip: 0.82, handle: 0.7 },
+      aimAssist: 0.75,
       batBonus: -0.5,
       fastball: [80, 90],
       mix: { fastball: 0.46, changeup: 0.18, curveball: 0.18, slider: 0.18, heater: 0 },
@@ -399,6 +404,7 @@ export const CONFIG = {
       windowScale: 0.88,
       contactWindow: { up: 0.48, tip: 0.84, handle: 0.72 },
       sweetSpot: { up: 0.41, tip: 0.74, handle: 0.64 },
+      aimAssist: 0.6,
       batBonus: -1.5,
       fastball: [88, 98],
       mix: { fastball: 0.36, changeup: 0.18, curveball: 0.17, slider: 0.19, heater: 0.1 },
@@ -480,8 +486,8 @@ export const CONFIG = {
     // holds him on, on the front edge of the bag (`hold1B`); when a double play is on (a runner on first, fewer than two outs) the
     // shortstop and second baseman play double-play depth, a few steps nearer second and in (`dpDepth`).
     align: { hold1B: [60.5, -61.5], dpDepth: { SS: [-28, -126], '2B': [27, -124] } },
-    speed: { IF: 21, OF: 22.5, P: 21, C: 17 }, // ft/s, average (effective, includes getting up to speed)
-    reaction: { IF: 0.27, OF: 0.41, P: 0.36, C: 0.36 }, // seconds before a fielder reads the ball (outfielders read a ball off the bat a little slower: well-hit balls drop in more often)
+    speed: { IF: 20, OF: 22.5, P: 21, C: 17 }, // ft/s, average (effective, includes getting up to speed)
+    reaction: { IF: 0.31, OF: 0.41, P: 0.36, C: 0.36 }, // seconds before a fielder reads the ball (outfielders read a ball off the bat a little slower: well-hit balls drop in more often)
     glove: 2.4, // ft: how far a fielder can reach without diving
     diveExtra: 3.0, // extra ft when diving (dive only on low balls)
     groundGlove: 2.9, // ft: an infielder's reach for a ground ball without diving (he stretches and backhands it)...

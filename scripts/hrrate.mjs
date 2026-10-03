@@ -33,7 +33,7 @@ export function hrRate({ mode = 'derby', difficulty = 'pro', kind = 'perfect', c
     const pt = contactPoint(flight, tHit, flight.T + errorMs / 1000, cfg);
     const u = uMean + rng.gauss(0, uSd);
     const aim = { x: pt.ball.x + rng.gauss(0, 0.05), y: pt.ball.y - u * win.sweet.up };
-    const c = computeSwing({ errorMs, aim, ...pt, window: win, windowScale: d.windowScale, batterHand: hand, batBonus: d.batBonus || 0, ...(mode === 'derby' ? derbyBatting(cfg) : {}), rng }, cfg);
+    const c = computeSwing({ errorMs, aim, ...pt, window: win, windowScale: d.windowScale, batterHand: hand, batBonus: d.batBonus || 0, aimAssist: d.aimAssist || 0, ...(mode === 'derby' ? derbyBatting(cfg) : {}), rng }, cfg);
     if (!c.made) continue;
     made++;
     const start = flight.at(tHit);

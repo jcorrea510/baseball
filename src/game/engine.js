@@ -377,7 +377,7 @@ export class Engine {
       ? computeBunt({ errorMs: times.errorMs, ball, aim, window, windowScale, batterHand: this.batterHand, side: buntSide, rng: this.rng }, this.cfg)
       : computeSwing({
         errorMs: times.errorMs, ball, aim, window, vBall, wBall,
-        windowScale, speedScale: pitchWindowScale(pitch.type), batterHand: this.batterHand, batBonus: this.d.batBonus || 0,
+        windowScale, speedScale: pitchWindowScale(pitch.type), batterHand: this.batterHand, batBonus: this.d.batBonus || 0, aimAssist: this.d.aimAssist || 0,
         ...(this.mode === 'derby' ? derbyBatting(this.cfg) : { evBonus: eff.ev }),
         rng: this.rng,
       }, this.cfg);
