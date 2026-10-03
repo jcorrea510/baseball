@@ -4,6 +4,7 @@
 // +x = the person's LEFT hand side.
 import * as THREE from 'three';
 import { jerseyTexture, makeCanvas, toTexture } from './textures.js';
+import { torsoGeometry, upperArmParts, foreArmParts, thighParts, shinParts, headParts as headParts_ } from './anatomy.js';
 
 // ---------------------------------------------------------------- proportions (feet)
 export const DIM = {
@@ -135,27 +136,6 @@ function cylHalf(r, h) {
 function torus(r, tube, arc = Math.PI * 2, ts = 6, rs = 16) {
   const key = `t${r}|${tube}|${arc}|${ts}|${rs}`;
   return geoCache[key] || (geoCache[key] = new THREE.TorusGeometry(r, tube, ts, rs, arc));
-}
-// A jersey torso: a lathe (so it can carry the jersey texture, front at u = 0.25 like the old capsule) whose half-width
-// follows a real V-taper - broad chest and shoulders narrowing to the waist. Scaled in z for the body's depth.
-const TORSO_PROFILE = [[0, 0.34], [0.06, 0.46], [0.22, 0.5], [0.5, 0.55], [0.8, 0.63], [1.1, 0.7], [1.35, 0.75], [1.52, 0.73], [1.62, 0.62], [1.7, 0.36], [1.76, 0.16], [1.79, 0.0]];
-function torsoGeometry(dl = 1) {
-  const key = 'torso' + Math.round(dl * 10);
-  if (geoCache[key]) return geoCache[key];
-  const P = TORSO_PROFILE, top = P[P.length - 1][0], N = Math.max(10, Math.round(26 * dl));
-  const r = (y) => { // smooth interpolation through the profile
-    let i = 0;
-    while (i < P.length - 2 && y > P[i + 1][0]) i++;
-    const [y0, r0] = P[i], [y1, r1] = P[i + 1];
-    const t = (y - y0) / (y1 - y0);
-    const m0 = i > 0 ? (r1 - P[i - 1][1]) / (y1 - P[i - 1][0]) : (r1 - r0) / (y1 - y0);
-    const m1 = i + 2 < P.length ? (P[i + 2][1] - r0) / (P[i + 2][0] - y0) : (r1 - r0) / (y1 - y0);
-    const h = y1 - y0, t2 = t * t, t3 = t2 * t;
-    return (2 * t3 - 3 * t2 + 1) * r0 + (t3 - 2 * t2 + t) * h * m0 + (-2 * t3 + 3 * t2) * r1 + (t3 - t2) * h * m1;
-  };
-  const pts = [];
-  for (let i = 0; i < N; i++) { const y = (top * i) / (N - 1); pts.push(new THREE.Vector2(Math.max(0.001, r(y)), y)); }
-  return (geoCache[key] = new THREE.LatheGeometry(pts, Math.max(12, Math.round(28 * dl)), -Math.PI / 2, Math.PI * 2));
 }
 const _mm = new THREE.Matrix4(), _mq = new THREE.Quaternion(), _me = new THREE.Euler(), _mp = new THREE.Vector3(), _ms = new THREE.Vector3();
 const _mc = new THREE.Color();
@@ -350,7 +330,7 @@ export class Person {
     this.spine.position.set(0, 0.1, 0);
     this.pelvisG.add(this.spine);
     const torso = this._mesh(torsoGeometry(dl), shirt, this.spine, 0, 0, 0);
-    torso.scale.set(B, 1, 0.62 * B);
+    torso.scale.set(B, 1, B);
     this.torsoMesh = torso;
     const yoke = this._merged(this.spine, [
       { geo: torus(0.2, 0.05, Math.PI * 2, 6, 18), color: trimHex, y: 1.7, rx: Math.PI / 2, sx: 1.08, sy: 1, sz: 0.85 },
@@ -369,41 +349,39 @@ export class Person {
     this.headG.position.set(0, DIM.spine + DIM.neck * 0.5 + 0.2, 0);
     this.spine.add(this.headG);
     const R = DIM.headR;
+    // (a sculpted face: jaw, cheekbones, brow, nose, lips, eyes with lids, ears - anatomy.js; a little different for every number)
+    const n = Math.abs(u.number || 0);
+    const eyeHex = ['#3b2414', '#2a1a10', '#4a3420', '#2f4f6f', '#3e5a3a', '#5a4630'][(n * 7 + 3) % 6];
+    _mc.set(skinHex);
+    const lipHex = '#' + _mc.clone().lerp(new THREE.Color('#9a4a4a'), 0.35).multiplyScalar(0.92).getHexString();
     const headParts = [
-      { geo: cyl(0.125, 0.145, DIM.neck + 0.12, 10), color: skinHex, y: -0.2, ao: 0.2 },
-      { geo: sphere(R, 22, 16), color: skinHex, y: 0.14, z: 0.02, sx: 0.88, sy: 1.08, sz: 1.0 },
-      { geo: sphere(0.24, 14, 10), color: skinHex, y: 0.02, z: 0.14, sx: 0.85, sy: 0.9, sz: 0.85 }, // jaw and chin
-      { geo: sphere(0.05, 8, 6), color: skinHex, y: 0.09, z: 0.375, sx: 0.9, sy: 1.15, sz: 1.2 }, // nose
-      { geo: box(0.13, 0.02, 0.03), color: '#8a4b3d', y: -0.02, z: 0.335 }, // mouth
-      { geo: hemi(R + 0.022, 0.64), color: hairHex, y: 0.14, z: -0.03, rx: -0.3, sx: 0.9, sy: 1.08, sz: 1.0 }, // hair: a cap of hair over the top and back (shows under the cap at the back and sides)
+      ...headParts_({ dl, skin: skinHex, lip: lipHex, eye: eyeHex, brow: hairHex, variant: ((n * 37) % 100) / 100 }),
+      // hair: over the top and down the back to the nape, the hairline well above the brow (it shows under the cap at the back and sides)
+      { geo: hemi(R + 0.02, 0.5), color: hairHex, y: 0.25, z: -0.035, rx: -0.42, sx: 0.92, sy: 0.92, sz: 1.0 },
+      { geo: sphere(0.3, 14, 10), color: hairHex, y: 0.17, z: -0.15, sx: 0.98, sy: 0.95, sz: 0.85 },
     ];
-    for (const sd of [-1, 1]) {
-      headParts.push({ geo: sphere(0.052, 10, 8), color: '#f4f1ea', x: sd * 0.13, y: 0.2, z: 0.325, sz: 0.5 }); // eye white
-      headParts.push({ geo: sphere(0.03, 8, 6), color: '#2a1d14', x: sd * 0.13, y: 0.2, z: 0.348 }); // iris
-      headParts.push({ geo: box(0.14, 0.028, 0.04), color: hairHex, x: sd * 0.13, y: 0.275, z: 0.328, rz: -sd * 0.12 }); // eyebrow
-      headParts.push({ geo: sphere(0.07, 8, 6), color: skinHex, x: sd * 0.325, y: 0.13, sx: 0.5, sy: 1, sz: 0.8 }); // ear
-      headParts.push({ geo: box(0.05, 0.15, 0.06), color: hairHex, x: sd * 0.315, y: 0.2, z: 0.1 }); // sideburn
-    }
+    for (const sd of [-1, 1]) headParts.push({ geo: sphere(0.06, 8, 6), color: hairHex, x: sd * 0.305, y: 0.24, z: 0.08, sx: 0.35, sy: 1.3, sz: 0.7 }); // sideburn
     if (!o.helmet) {
-      headParts.push({ geo: hemi(R + 0.035, 0.53), color: capHex, y: 0.2, sx: 0.93, sy: 1.05, sz: 1.06 });
-      headParts.push({ geo: sphere(0.045, 8, 6), color: capHex, y: 0.62 }); // button
-      headParts.push({ geo: sphere(0.09, 10, 8), color: trimHex, y: 0.35, z: 0.385, sx: 1.05, sy: 0.9, sz: 0.2 }); // team badge
-      headParts.push({ geo: torus(0.375, 0.014, Math.PI * 2, 4, 20), color: capHex, y: 0.235, rx: Math.PI / 2, sx: 0.93, sz: 1.04 }); // band
-      headParts.push({ geo: cylHalf(0.4, 0.028), color: u.capBill || capHex, y: 0.28, z: 0.06, ry: -Math.PI * 0.5, rx: 0.16, sz: 0.8 });
+      // the cap sits on the forehead, its edge just above the brow (the eyes show under the bill)
+      headParts.push({ geo: hemi(R + 0.035, 0.53), color: capHex, y: 0.29, sx: 0.93, sy: 0.84, sz: 1.06 });
+      headParts.push({ geo: sphere(0.045, 8, 6), color: capHex, y: 0.635 }); // button
+      headParts.push({ geo: sphere(0.09, 10, 8), color: trimHex, y: 0.43, z: 0.375, rx: -0.35, sx: 1.05, sy: 0.9, sz: 0.2 }); // team badge
+      headParts.push({ geo: torus(0.375, 0.014, Math.PI * 2, 4, 20), color: capHex, y: 0.315, rx: Math.PI / 2, sx: 0.93, sz: 1.04 }); // band
+      headParts.push({ geo: cylHalf(0.4, 0.028), color: u.capBill || capHex, y: 0.345, z: 0.07, ry: -Math.PI * 0.5, rx: 0.2, sz: 0.8 });
     }
     this._merged(this.headG, headParts);
     if (o.helmet) {
       const hm = getMat(helmHex, 0.32, 0.06);
-      const helm = this._mesh(hemi(R + 0.045, 0.62), hm, this.headG, 0, 0.19, 0.0);
-      helm.scale.set(0.95, 1.08, 1.05);
-      const brim = this._mesh(cylHalf(0.42, 0.03), hm, this.headG, 0, 0.27, 0.05);
+      const helm = this._mesh(hemi(R + 0.045, 0.6), hm, this.headG, 0, 0.255, -0.01);
+      helm.scale.set(0.95, 0.98, 1.05);
+      const brim = this._mesh(cylHalf(0.42, 0.03), hm, this.headG, 0, 0.335, 0.06);
       brim.rotation.x = 0.08; brim.scale.set(0.9, 1, 1.0); brim.rotation.y = Math.PI;
-      const flap = this._mesh(sphere(0.2, 12, 8), hm, this.headG, 0.34, 0.08, 0.02);
+      const flap = this._mesh(sphere(0.2, 12, 8), hm, this.headG, 0.345, 0.12, 0.02);
       flap.scale.set(0.35, 0.9, 0.9);
       // team badge on the front and a stripe over the top
       this._merged(this.headG, [
-        { geo: sphere(0.085, 10, 8), color: trimHex, y: 0.42, z: 0.4, sx: 1.05, sy: 0.9, sz: 0.2 },
-        { geo: box(0.05, 0.02, 0.86), color: trimHex, y: 0.62, z: 0.0, rx: 0.0 },
+        { geo: sphere(0.085, 10, 8), color: trimHex, y: 0.48, z: 0.4, rx: -0.3, sx: 1.05, sy: 0.9, sz: 0.2 },
+        { geo: box(0.05, 0.02, 0.86), color: trimHex, y: 0.685, z: -0.01, rx: 0.0 },
       ]);
     }
     if (isCatcher || isUmpire) {
@@ -420,20 +398,11 @@ export class Person {
       sh.position.set(side * DIM.shoulderW * B, DIM.shoulderY, 0);
       this.spine.add(sh);
       const upper = new THREE.Group(); sh.add(upper);
-      this._merged(upper, [
-        { geo: sphere(0.235, 12, 10), color: u.primary, sy: 0.95 }, // shoulder
-        { geo: capsule(0.152, DIM.upperArm - 0.3, 4, 10), color: armHex, y: -DIM.upperArm / 2, ao: 0.1 },
-        { geo: sphere(0.16, 10, 8), color: armHex, y: -DIM.upperArm * 0.62, z: 0.035, sx: 1.0, sy: 1.7, sz: 1.08 }, // biceps / triceps
-        { geo: capsule(0.2, 0.42, 4, 12), color: u.primary, y: -0.33 }, // short sleeve
-        { geo: cyl(0.205, 0.205, 0.05, 12), color: trimHex, y: -0.7 }, // sleeve piping
-      ]);
+      // (lofted: a deltoid, biceps and triceps under a short sleeve - see anatomy.js)
+      this._merged(upper, upperArmParts({ side, dl, len: DIM.upperArm, arm: armHex, sleeve: u.primary, trim: trimHex }));
       const elbow = new THREE.Group(); elbow.position.set(0, -DIM.upperArm, 0); upper.add(elbow);
       const wrist = new THREE.Group(); wrist.position.set(0, -DIM.foreArm, 0); elbow.add(wrist);
-      const foreParts = [
-        { geo: sphere(0.15, 10, 8), color: armHex }, // elbow
-        { geo: cyl(0.138, 0.1, DIM.foreArm - 0.24, 10), color: armHex, y: -DIM.foreArm / 2 - 0.02, ao: 0.08 }, // tapered forearm
-        { geo: sphere(0.145, 10, 8), color: armHex, y: -0.3, z: 0.01, sx: 1.02, sy: 1.8, sz: 0.95 }, // forearm muscle (thick by the elbow)
-      ];
+      const foreParts = foreArmParts({ side, dl, len: DIM.foreArm, arm: armHex });
       const isGloveHand = side === 1 && (o.glove || isCatcher);
       const handParts = [];
       if (isGloveHand) {
@@ -468,7 +437,7 @@ export class Person {
           // (a ring of 270 deg round the grip line, from the knuckles over the front and under to the palm)
           handParts.push({ geo: torus(0.088, 0.028, Math.PI * 1.5, 6, 14), color: hand, x: (-0.075 + f * 0.05) * side, y: gp.y, z: gp.z, ry: Math.PI / 2, rz: 1.2 });
         }
-        if (side === 1) foreParts.push({ geo: capsule(0.165, 0.22, 4, 10), color: '#191b20', y: -0.16, sz: 1.05, ao: 0.1 }); // elbow guard on the lead arm
+        if (side === 1) foreParts.push({ geo: capsule(0.185, 0.22, 4, 10), color: '#191b20', y: -0.16, sz: 1.05, ao: 0.1 }); // elbow guard on the lead arm
       } else {
         // the bare hand is its own piece on the wrist (positions are from the wrist)
         const hand = skinHex;
@@ -495,22 +464,11 @@ export class Person {
       hip.position.set(side * DIM.hipW, -0.06, 0);
       this.pelvisG.add(hip);
       const thigh = new THREE.Group(); hip.add(thigh);
-      this._merged(thigh, [
-        { geo: sphere(0.285, 12, 8), color: pantsHex, y: -0.2, sy: 1.15, sz: 0.95, ao: 0.06 }, // top of the thigh (a baggy pant leg), tucked up into the hips
-        { geo: cyl(0.3, 0.225, DIM.thigh - 0.3, 14), color: pantsHex, y: -DIM.thigh / 2 - 0.02 }, // thigh, tapering to the knee
-        { geo: sphere(0.235, 10, 8), color: pantsHex, y: -DIM.thigh, sz: 1.04 }, // knee
-        { geo: box(0.045, DIM.thigh - 0.34, 0.16), color: trimHex, x: side * 0.262, y: -DIM.thigh / 2 - 0.02 }, // side stripe
-      ]);
+      this._merged(thigh, thighParts({ side, dl, len: DIM.thigh, pants: pantsHex, trim: trimHex }));
       const knee = new THREE.Group(); knee.position.set(0, -DIM.thigh, 0); thigh.add(knee);
-      const shinParts = [
-        { geo: capsule(0.16, DIM.shin - 0.4, 4, 10), color: socksHex, y: -DIM.shin / 2 + 0.03, ao: 0.1 },
-        { geo: sphere(0.17, 10, 8), color: socksHex, y: -0.52, z: -0.05, sx: 1.02, sy: 2.1, sz: 1.1 }, // calf
-        { geo: cyl(0.268, 0.236, 0.19, 14), color: pantsHex, y: -0.1 }, // pant cuff below the knee (a touch wider than the knee so the two never z-fight)
-        { geo: cyl(0.176, 0.176, 0.07, 10), color: trimHex, y: -0.62 }, // sock bands
-        { geo: cyl(0.176, 0.176, 0.05, 10), color: u.secondary || '#ffffff', y: -0.74 },
-      ];
-      if (isCatcher || isUmpire) shinParts.push({ geo: capsule(0.23, DIM.shin - 0.5, 4, 10), color: u.gear || '#20242b', y: -DIM.shin / 2 + 0.05, z: 0.1, sz: 0.8 });
-      this._merged(knee, shinParts);
+      const shin = shinParts({ dl, len: DIM.shin, pants: pantsHex, socks: socksHex, trim: trimHex, band: u.secondary || '#ffffff' });
+      if (isCatcher || isUmpire) shin.push({ geo: capsule(0.23, DIM.shin - 0.5, 4, 10), color: u.gear || '#20242b', y: -DIM.shin / 2 + 0.05, z: 0.1, sz: 0.8 });
+      this._merged(knee, shin);
       const ankle = new THREE.Group(); ankle.position.set(0, -DIM.shin, 0); knee.add(ankle);
       const accent = u.secondary && u.secondary !== shoeHex ? u.secondary : '#d8dbe0';
       this._merged(ankle, [
