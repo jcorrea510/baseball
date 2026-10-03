@@ -465,7 +465,7 @@ export function redirectLegs(legs, from, base, tAct, cfg = CONFIG, spd = 1) {
     while (dh > Math.PI) dh -= 2 * Math.PI; while (dh < -Math.PI) dh += 2 * Math.PI;
     if (Math.abs(dh) < R.turnKeep) v0 = q.speed * Math.cos(dh); // (nearly the way he is going: he just carries on)
     else {
-      const B = R.brake * 0.8;
+      const B = R.reverseBrake;
       legs.push({ kind: 'brake', t0: tAct, x, z, heading: q.heading, v0: q.speed, B });
       const d = (q.speed * q.speed) / (2 * B);
       x += Math.sin(q.heading) * d; z += Math.cos(q.heading) * d;

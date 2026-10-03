@@ -850,7 +850,7 @@ export class Actors {
       return;
     }
     if (!st.prevRun) st.prevRun = makePose();
-    if (!r.done && slide && !st.sliding && r.speed > 7 && r.sLeft <= (r.speed * r.speed) / (2 * brake) * 1.06 + 0.4) {
+    if (!r.done && slide && !st.sliding && r.profile.route && r.speed > 7 && r.sLeft <= (r.speed * r.speed) / (2 * brake) * 1.06 + 0.4) {
       st.sliding = true; st.slideStart = Math.max(1, r.sLeft); st.getT = undefined; // start the slide as the braking begins
     }
     if (!r.done) {
@@ -903,9 +903,11 @@ export class Actors {
       }
       // he turns from watching the pitcher to running as he takes off
       const tRun = r.waiting ? 0 : smoothstep(0, 0.4, playT - r.tStart);
-      if (r.waiting) st.yaw = face;
-      else st.yaw = lerpAngle(face, r.heading, tRun);
-      if (r.done && !r.waiting && st.getT === undefined && !st.sliding) st.yaw = r.heading;
+      let yaw = r.waiting ? face : lerpAngle(face, r.heading, tRun);
+      if (r.done && !r.waiting && st.getT === undefined && !st.sliding) yaw = r.heading;
+      // turned round (a rundown, a call-back): he pivots on his planted foot instead of flipping in one frame
+      const dy = Math.atan2(Math.sin(yaw - st.yaw), Math.cos(yaw - st.yaw));
+      st.yaw = Math.abs(dy) > R.pivotFrom && !r.waiting ? st.yaw + dy * Math.min(1, dt * R.pivotRate) : yaw;
       rp.place(st.x, 0, st.z, st.yaw);
       rp.root.updateMatrixWorld(true);
       this.runnerPoseFrame(rp, st, r, dt, time, this.wantsSlide(plan, move), plan.homer);

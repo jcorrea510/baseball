@@ -597,7 +597,7 @@ export const CONFIG = {
     sendFrom: 0.1,
     sendAfter: 0.45,
     sendLead: 0.1,
-    sendReact: 0.12,
+    sendReact: 0.05,
     sendTag: 0.08, // s for the fielder to catch the throw and put the tag on a runner you sent (a throw that beats him gets him)
     tagLead: 0.1, // s: the tag goes on him this long before he would have touched the bag (he slides into the glove)
     outLinger: 1.7, // s the play goes on after a runner is tagged out, so you see the tag and see him walk off
@@ -649,7 +649,10 @@ export const CONFIG = {
     tagBack: 0.12,
     downReact: 0.15,
     tagReact: 0.02, // s after the catch a runner tagging up leaves the bag (he times it)...
-    turnKeep: 0.9, // radians: told to go somewhere nearly the way he is already running, he carries on; anything more and he pulls up and turns
+    reverseBrake: 75, // ft/s^2: told to turn round, he plants and stops this hard (two quick choppy steps from a sprint, ~0.4 s) before he runs back
+    turnKeep: 0.9,
+    pivotFrom: 0.6, // radians: a runner whose way changes more than this at once (he turned round) swings his body round over a moment
+    pivotRate: 16, // ...this quickly (about a quarter second for a full about-turn) // radians: told to go somewhere nearly the way he is already running, he carries on; anything more and he pulls up and turns
     tagRoll: 19, // ...with a rocking start: he is already moving at this many ft/s as he leaves
     tagWindow: 1.2, // s after a catch you can still send a runner to tag up
     leadThird: 16, // ft: off third he walks off in foul territory as the pitch comes in (a walking lead)
