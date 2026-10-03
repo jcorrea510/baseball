@@ -557,9 +557,13 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
 .dialog h2 { margin: 0 0 var(--sp-1); text-align: center; font: italic 800 30px/1 var(--cond); letter-spacing: .14em; text-transform: uppercase; }
 .dialog .btn { align-self: center; }
 .setgrid { display: flex; flex-direction: column; gap: var(--sp-2); }
-.summary { width: min(540px, 100%); max-height: 100%; overflow: auto; padding: var(--sp-5); }
+.summary { width: min(540px, 100%); max-height: 100%; display: flex; flex-direction: column; overflow: hidden; padding: var(--sp-5); }
+.summary .sumhead { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-3); flex: none; }
+.summary .sumhead .btn { flex: none; }
 .summary h2 { margin: 6px 0 0; font: italic 800 34px/1 var(--cond); letter-spacing: .06em; text-transform: uppercase; }
-.summary .lines { margin: var(--sp-3) 0; min-height: 84px; display: flex; flex-direction: column; gap: 5px; }
+.summary .lines { margin: var(--sp-3) 0; min-height: 40px; flex: 0 1 auto; overflow-y: auto; scroll-behavior: smooth; display: flex; flex-direction: column; gap: 5px; }
+.summary .ln { flex: none; }
+.summary .total { flex: none; }
 .summary .ln { opacity: 0; transform: translateX(-14px); transition: opacity .3s, transform .3s var(--ease); font: 600 16px/1.2 var(--cond); letter-spacing: .04em; padding: 8px 12px; background: rgba(0, 0, 0, .3); border-left: 3px solid var(--line-hi); }
 .summary .ln.show { opacity: 1; transform: none; }
 .summary .ln.run { background: rgba(247, 185, 43, .16); border-left-color: var(--gold); font-weight: 800; }
@@ -664,6 +668,7 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
   .mini-logo { width: min(220px, 50%); }
   .title-stack { gap: var(--sp-3); }
   .dialog, .over, .howto, .locker, .summary { padding: var(--sp-3) var(--sp-4); gap: 6px; }
+  .summary h2 { font-size: 24px; } .summary .lines { margin: var(--sp-2) 0; gap: 4px; } .summary .ln { padding: 5px 10px; font-size: 14px; } .summary .total { font-size: 20px; min-height: 22px; margin-bottom: 0; }
   .dialog h2 { font-size: 22px; margin: 0; }
   .over .result { font-size: 34px; margin: 2px 0; }
   .linescore { margin: 4px auto 6px; } .linescore th, .linescore td { padding: 3px 9px; font-size: 14px; }

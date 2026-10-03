@@ -518,13 +518,14 @@ export class UI {
   showSummary(data, teamName, lineStart = 0.55) {
     const s = this.fresh('summary');
     const d = h('div', 'summary panel rise');
-    d.innerHTML = `<div class="label">${data.half === 'top' ? 'Top' : 'Bottom'} ${data.inning}</div><h2>${teamName}</h2><div class="lines"></div><div class="total"></div><div class="row"><button class="btn small ghost" data-a="skipSummary">${icon('ff')}Skip</button></div>`;
+    // (Skip sits in the header: always on screen, however many lines the inning had)
+    d.innerHTML = `<div class="sumhead"><div><div class="label">${data.half === 'top' ? 'Top' : 'Bottom'} ${data.inning}</div><h2>${teamName}</h2></div><button class="btn small" data-a="skipSummary">${icon('ff')}Skip</button></div><div class="lines"></div><div class="total"></div>`;
     s.appendChild(d);
     const lines = $(d, '.lines');
     data.events.forEach((ev, i) => {
       const ln = h('div', 'ln' + (ev.runs > 0 ? ' run' : ''), ev.text + (ev.runs > 0 ? ` <b>+${ev.runs}</b>` : ''));
       lines.appendChild(ln);
-      setTimeout(() => ln.classList.add('show'), 250 + i * lineStart * 1000);
+      setTimeout(() => { ln.classList.add('show'); lines.scrollTop = lines.scrollHeight; }, 250 + i * lineStart * 1000); // (newest line in view)
     });
     const tot = $(d, '.total');
     setTimeout(() => { tot.textContent = data.runs > 0 ? `${data.runs} run${data.runs > 1 ? 's' : ''}` : 'No runs'; }, 250 + data.events.length * lineStart * 1000);
