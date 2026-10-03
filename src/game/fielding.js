@@ -454,7 +454,7 @@ function coverOptions(o, plan, defense, cfg) {
  * @param {Array}  i.bases     [runnerOn1st, runnerOn2nd, runnerOn3rd] (truthy = occupied)
  * @param {number} i.outs
  * @param {object} i.defense   createDefense()
- * @param {boolean} [i.simple] derby / practice: no baserunning, stop after the ball is fielded
+ * @param {boolean} [i.simple] Home Run Derby: no baserunning, and nobody fields a ball in the park (it is an out)
  */
 function planPlayCore(i, cfg) {
   const { sim, contact, defense } = i;
@@ -512,6 +512,17 @@ function planPlayCore(i, cfg) {
       const recs = makeRecords(bases, new Set(), () => [{ kind: 'run', from: 0, to: 0, t0: 0 }], [{ kind: 'run', from: 0, to: 1, t0: 0 }]);
       plan.send = { from: cfg.runner.sendFrom, by: sim.homerun.t, res: sim.homerun.t + 1, pre: viewOf(recs, cfg), post: null };
     }
+    return plan;
+  }
+
+  // ---------------- Home Run Derby: anything in the park is an out, so nobody chases it ----------------
+  // (the fielders stay where they are and the play ends a moment after the ball comes down)
+  if (i.simple && fair) {
+    plan.result = 'hitSimple';
+    plan.batterDest = 0;
+    const down = Math.min(firstBounce ? firstBounce.t : Infinity, sim.wallHit ? sim.wallHit.t : Infinity, sim.duration);
+    plan.ballHitEnd = Math.min(sim.duration, down + cfg.modes.derby.watchAfter);
+    plan.endTime = plan.ballHitEnd;
     return plan;
   }
 

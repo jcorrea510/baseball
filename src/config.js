@@ -665,6 +665,7 @@ export const CONFIG = {
       batBonus: 3, // mph of extra bat speed in the Derby on every level (instead of the level's own)
       windowGrow: 1.75, // the bat's contact window is this much bigger (the pitches are meatballs)
       locationSigma: 0.24,
+      watchAfter: 0.9, // s a ball in the park is watched after it comes down before the next pitch (nobody runs after it: it is an out)
     },
     practice: { speedMin: 45, speedMax: 105, speedDefault: 85 },
   },
