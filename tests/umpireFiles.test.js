@@ -48,7 +48,7 @@ describe('which file names are understood', () => {
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
     expect(listUmpireFiles(path.join(dir, 'nope'))).toEqual([]);
     expect(umpireDir('/repo', {})).toBe(path.join('/repo', 'public', 'sounds', 'umpire'));
-    expect(umpireDir('/repo', { SANDLOT_UMPIRE_DIR: '/tmp/x' })).toBe('/tmp/x');
+    expect(umpireDir('/repo', { SANDLOT_UMPIRE_DIR: '/tmp/x' })).toBe(path.resolve('/tmp/x'));
   });
 
   it('the folder in the repo has its instructions and a recording for every call the game makes', () => {
