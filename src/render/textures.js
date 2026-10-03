@@ -426,3 +426,41 @@ export function jerseyTexture({ primary, secondary, trim, text = '', number = 0,
   }
   return toTexture(canvas, { anisotropy: 4 });
 }
+
+// A tileable normal map for the players' surfaces, painted in code: 'fabric' (the fine weave of a uniform and soft creases) or
+// 'leather' (the pebbled grain of a glove, a belt, a shoe). Made once and shared.
+const surfaceCache = {};
+export function surfaceNormalTexture(kind = 'fabric', size = 256) {
+  if (surfaceCache[kind]) return surfaceCache[kind];
+  const rng = createRng(kind === 'fabric' ? 31 : 47);
+  const hgt = new Float32Array(size * size);
+  if (kind === 'fabric') {
+    const folds = tileNoise(size, size, 4, 6, rng);
+    const fine = tileNoise(size, size, 32, 32, rng);
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+      const weave = Math.sin((x / size) * Math.PI * 2 * 48) * Math.sin((y / size) * Math.PI * 2 * 48);
+      hgt[y * size + x] = 0.35 * weave + 1.2 * folds[y * size + x] + 0.25 * fine[y * size + x];
+    }
+  } else {
+    const grain = tileNoise(size, size, 48, 48, rng);
+    const mid = tileNoise(size, size, 12, 12, rng);
+    for (let i = 0; i < hgt.length; i++) hgt[i] = 1.1 * Math.pow(grain[i], 1.6) + 0.8 * mid[i];
+  }
+  const { canvas, ctx } = makeCanvas(size, size);
+  const img = ctx.createImageData(size, size);
+  const at = (x, y) => hgt[((y + size) % size) * size + ((x + size) % size)];
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const dx = at(x + 1, y) - at(x - 1, y), dy = at(x, y + 1) - at(x, y - 1);
+    const nx = -dx * 2, ny = -dy * 2, nz = 1, L = Math.hypot(nx, ny, nz);
+    const k = (y * size + x) * 4;
+    img.data[k] = Math.round((nx / L * 0.5 + 0.5) * 255);
+    img.data[k + 1] = Math.round((ny / L * 0.5 + 0.5) * 255);
+    img.data[k + 2] = Math.round((nz / L * 0.5 + 0.5) * 255);
+    img.data[k + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = toTexture(canvas, { srgb: false, wrap: true, anisotropy: 4 });
+  tex.repeat.set(kind === 'fabric' ? 6 : 4, kind === 'fabric' ? 6 : 4);
+  surfaceCache[kind] = tex;
+  return tex;
+}
