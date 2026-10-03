@@ -262,6 +262,7 @@ export class App {
       case 'batterReady': if (this.engine) this.engine.batterReady(); break;
       case 'bunt': if (this.engine) this.engine.setBunt(!this.engine.buntStance); break;
       case 'steal': if (this.engine) this.engine.setSteal(!this.engine.stealArmed); break;
+      case 'fast': if (this.engine && this.engine.phase === 'play') this.fast = !this.fast; break; // (the on-screen button: tap again for normal speed)
       case 'base': this.baseKey(d.base); break;
       case 'runnerBack': this.runnerBack(d.from); break;
       case 'swing': this.swingInput(d); break;
@@ -1239,6 +1240,9 @@ export class App {
       // the Steal button is only there while a runner could go
       const can = e.canSteal && !this.paused, on = e.stealArmed || !!(e.steal && (e.phase === 'windup' || e.phase === 'pitch'));
       if (can !== this.stealShown || on !== this.stealOn) { this.stealShown = can; this.stealOn = on; this.ui.setSteal(can, on); }
+      // the fast-forward button is up while a play runs
+      const ff = e.phase === 'play' && !this.paused && !this.ui.current && !e.over;
+      if (ff !== this.ffShown || this.fast !== this.ffOn) { this.ffShown = ff; this.ffOn = this.fast; this.ui.setFast(ff, this.fast); }
     }
     if (e && !this.paused && !e.over || (e && e.phase === 'gameOver')) {
       if (this.hitStop > 0) { this.hitStop -= realDt; simDt = 0; }

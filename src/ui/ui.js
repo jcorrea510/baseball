@@ -164,6 +164,7 @@ export class UI {
         <svg class="bpfield bpover" viewBox="0 0 160 160" aria-hidden="true"><g class="dots"></g></svg>
         <svg class="bpfield bphits" viewBox="0 0 160 160" aria-hidden="true"><g class="hits"></g></svg>
       </div>
+      <button class="ffbtn" data-a="fast" aria-pressed="false" title="Speed up (Space)">${icon('ff')}<span>Fast</span></button>
       <div class="acts"><button class="stealbtn" data-a="steal" aria-pressed="false" title="Steal (S)">${icon('go')}<span>Steal</span></button><button class="buntbtn" data-a="bunt" aria-pressed="false" title="Bunt (B)">${icon('bat')}<span>Bunt</span></button></div>
       <div class="practice panel collapsed">
         <button class="prhead" aria-label="Pitch settings">${icon('sliders')}<span>Pitch</span>${icon('chevDown', 'chev')}</button>
@@ -218,7 +219,7 @@ export class UI {
       this.act('practice', { location: b.dataset.loc });
     });
     $(hud, '.practice .prhead').addEventListener('click', () => this.q.practice.classList.toggle('collapsed'));
-    for (const el of hud.querySelectorAll('.practice, .hudbtns, .batterup, .acts, .lineup')) el.addEventListener('pointerdown', (e) => e.stopPropagation());
+    for (const el of hud.querySelectorAll('.practice, .hudbtns, .batterup, .acts, .lineup, .ffbtn')) el.addEventListener('pointerdown', (e) => e.stopPropagation());
 
     // ---------------- toast + rotate hint
     this.toastEl = h('div', 'toast');
@@ -916,6 +917,14 @@ export class UI {
     this.meterTimer = setTimeout(() => m.classList.remove('show'), 2200);
   }
   hideTiming() { this.q.meter.classList.remove('show'); }
+  // the fast-forward button: up while a play runs (show), lit while the play is sped up (on)
+  setFast(show, on) {
+    const b = this.hud && this.hud.querySelector('.ffbtn');
+    if (!b) return;
+    b.classList.toggle('show', !!show);
+    b.classList.toggle('on', !!on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
   // the Swing button shows (phones) while you are up
   setSwingButton(on) { this.q.swingBtn.classList.toggle('show', !!on); }
   // The base diamond while you can send runners: o = null hides it, else { open: [bases that light up], dots: [{ x, z, sent, from,

@@ -28,11 +28,11 @@ for (const sz of sizes) {
       if (a.engine.mode === 'quick' && state === 'pitch') ui.showBatterUp({ number: 12, name: 'J. Delgado-Whitfield', pos: 'SS' }, { pa: 2, ab: 2, h: 1, hr: 1, rbi: 2, bb: 0 }, ['.312 AVG', '14 HR', 'Contact 62 · Power 70 · Speed 55']);
       if (a.engine.mode === 'quick') { ui.setSteal(true, true); a.refreshLineup(); }
       if (state === 'pitch') ui.setSwingButton(true); // (the Steal button next to Bunt)
-      else ui.setBasePad({ open: [3, 4], dots: [{ x: 0, z: 0, from: 0 }, { x: 60, z: -60, sent: true, from: 1 }] }); // (during a play: the base diamond, no Swing button)
+      else ui.setBasePad({ open: [3, 4], dots: [{ x: 0, z: 0, from: 0 }, { x: 60, z: -60, sent: true, from: 1 }] }), ui.setFast(true, false); // (during a play: the base diamond and the fast-forward button, no Swing button)
       ui.q.banner.style.opacity = '1';
       a.tick(0.001, true);
       // overlap check between visible HUD boxes
-      const sel = ['.lineup', '.pitchinfo', '.callout', '.meter', '.batterup', '.bugwrap', '.derbybox', '.practbox', '.practice', '.hudbtns', '.acts', '.swingbtn', '.basepad'];
+      const sel = ['.lineup', '.pitchinfo', '.callout', '.meter', '.batterup', '.bugwrap', '.derbybox', '.practbox', '.practice', '.hudbtns', '.acts', '.swingbtn', '.basepad', '.ffbtn'];
       const boxes = [];
       for (const s of sel) { const e = document.querySelector('.hud ' + s); if (!e) continue; const cs = getComputedStyle(e); if (cs.display === 'none' || +cs.opacity === 0) continue; const b = e.getBoundingClientRect(); if (b.width && b.height) boxes.push({ s, b }); }
       const hits = [];

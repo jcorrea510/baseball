@@ -325,7 +325,8 @@ body.touch .swingbtn.show { display: flex; }
 
 /* the base diamond (sending runners): bottom right while a hit is being played. A base lights up when you can send a runner there -
    tap it and the runner behind it goes. */
-.basepad { --bp: 200px; position: absolute; right: calc(var(--safe-r) + 14px); bottom: calc(var(--safe-b) + 10px); width: var(--bp); height: var(--bp); opacity: 0; transform: translateY(10px) scale(.96); transition: opacity .16s var(--ease), transform .16s var(--ease); pointer-events: none; touch-action: none; }
+.hud { --bp: 200px; }
+.basepad { position: absolute; right: calc(var(--safe-r) + 14px); bottom: calc(var(--safe-b) + 10px); width: var(--bp); height: var(--bp); opacity: 0; transform: translateY(10px) scale(.96); transition: opacity .16s var(--ease), transform .16s var(--ease); pointer-events: none; touch-action: none; }
 .basepad.show { opacity: 1; transform: none; pointer-events: auto; }
 .basepad .bpfield { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; filter: drop-shadow(0 6px 16px rgba(0, 0, 0, .55)); }
 .basepad .bpover { filter: none; }
@@ -352,6 +353,10 @@ body.touch .swingbtn.show { display: flex; }
 .bpbase[data-base="3"] { left: 12.5%; top: 50%; }
 .bpbase[data-base="4"] { left: 50%; top: 87.5%; }
 @keyframes bppulse { to { box-shadow: 0 0 4px rgba(255, 196, 64, .4); filter: brightness(1.12); } }
+.ffbtn { appearance: none; position: absolute; right: calc(var(--safe-r) + 26px + var(--bp)); bottom: calc(var(--safe-b) + 14px); display: none; align-items: center; gap: 8px; height: 46px; padding: 0 20px; border: 0; background: var(--glass); box-shadow: inset 0 0 0 1px var(--line-hi); color: var(--ink); font: 800 14px/1 var(--cond); letter-spacing: .16em; text-transform: uppercase; cursor: pointer; pointer-events: auto; touch-action: manipulation; clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); transition: background var(--dur), color var(--dur); }
+.ffbtn.show { display: inline-flex; }
+.ffbtn svg.i { width: 20px; height: 20px; }
+.ffbtn.on { background: linear-gradient(180deg, var(--gold-hi), var(--gold)); color: var(--gold-ink); }
 .hud.sending .acts, .hud.sending .swingbtn, .hud.sending .meter { display: none !important; } /* (while a hit is played the diamond has the corner) */
 
 /* bunt and steal: toggles above the aim control (lit while the batter is squared around / the runners are going) */
@@ -619,7 +624,7 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
   .meter .txt { font-size: 20px; margin-top: 8px; }
   .callout .item { padding: 6px 12px 5px; min-width: 60px; }
   .swingbtn { width: 84px; height: 84px; }
-  .basepad { --bp: 160px; }
+  .hud { --bp: 160px; }
   .practice { width: 196px; }
   .lineup { width: 146px; }
 }
@@ -650,6 +655,7 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
   body.touch .acts { right: auto; left: calc(var(--safe-l) + 12px); bottom: calc(var(--safe-b) + 112px); }
   body.touch .meter { bottom: calc(var(--safe-b) + 196px); }
   .basepad { right: calc(var(--safe-r) + 8px); bottom: calc(var(--safe-b) + 96px); }
+  .ffbtn { right: calc(var(--safe-r) + 18px + var(--bp)); bottom: calc(var(--safe-b) + 96px); }
   .hud.sending .meter { opacity: 0; } /* (no room for both: the swing's meter has had its moment by the time the ball is down) */
 }
 @media (max-height: 520px) {
@@ -715,7 +721,7 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
   .setgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
   .setgrid .setrow.stack { grid-column: 1 / -1; }
 }
-@media (max-height: 360px) and (max-width: 700px) { .basepad { --bp: 140px; } } /* the smallest phones held sideways: clear of the score box */
+@media (max-height: 360px) and (max-width: 700px) { .hud { --bp: 140px; } } /* the smallest phones held sideways: clear of the score box */
 @media (orientation: portrait) and (min-width: 761px) and (max-width: 1100px) { .basepad { bottom: calc(var(--safe-b) + 96px); } } /* upright tablets: above the score box */
 @media (max-width: 520px) {
   .title-stack .row { display: grid; grid-template-columns: 1fr 1fr; width: min(300px, 86vw); }
