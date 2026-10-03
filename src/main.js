@@ -1,6 +1,13 @@
 // Sandlot entry point.
 // The splash and the on-screen error screen live in index.html (window.__sandlotBoot). The splash is hidden by the game
 // loop after the first frame is drawn; anything that goes wrong before that is reported through boot.fail().
+// The two typefaces are bundled with the game (no font server): the rounded display face for headlines and big buttons, the narrow one
+// for everything else.
+import '@fontsource/lilita-one/latin-400.css';
+import '@fontsource/barlow-condensed/latin-600.css';
+import '@fontsource/barlow-condensed/latin-700.css';
+import '@fontsource/barlow-condensed/latin-800.css';
+import '@fontsource/barlow-condensed/latin-800-italic.css';
 import './style.css';
 import { App } from './app.js';
 

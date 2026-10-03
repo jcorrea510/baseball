@@ -358,7 +358,7 @@ export class UI {
     wrap.innerHTML = `
       ${this.backHead('Play', `<button class="iconbtn" data-a="howto" aria-label="How to play" title="How to play">${icon('help')}</button><button class="iconbtn" data-a="settings" aria-label="Settings" title="Settings">${icon('gear')}</button>`)}
       <div class="tiles">
-        ${tiles.map((m) => `<button class="tile ${m.cls}" data-a="start" data-mode="${m.mode}" style="${m.accent ? `--accent:${m.accent};` : ''}"><span class="art" style="background-image:${artUrl(m.art)}"></span>${m.tag ? `<span class="tag ${m.tag === 'New' ? '' : ''}">${m.tag}</span>` : ''}<span class="eyebrow">${m.eyebrow}</span><h3>${m.title}</h3>${m.sub ? `<span class="sub">${m.sub}</span>` : ''}${m.fresh ? `<span class="tilebtn" role="button" tabindex="0" data-a="quickNew">${icon('restart')}New game</span>` : ''}<span class="go">${icon('chevRight')}</span></button>`).join('')}
+        ${tiles.map((m) => `<button class="tile ${m.cls}${m.fresh ? ' has-new' : ''}" data-a="start" data-mode="${m.mode}" style="${m.accent ? `--accent:${m.accent};` : ''}"><span class="art" style="background-image:${artUrl(m.art)}"></span>${m.tag ? `<span class="tag ${m.tag === 'New' ? '' : ''}">${m.tag}</span>` : ''}<span class="eyebrow">${m.eyebrow}</span><h3>${m.title}</h3>${m.sub ? `<span class="sub">${m.sub}</span>` : ''}${m.fresh ? `<span class="tilebtn" role="button" tabindex="0" data-a="quickNew" aria-label="New game">${icon('restart')}New</span>` : ''}<span class="go">${icon('chevRight')}</span></button>`).join('')}
       </div>
       <div class="opts">
         <div class="grp"><span class="label">Level <small>Quick · Derby · Practice</small></span>${seg('difficulty', DIFFICULTIES.map((d) => [d, CONFIG.difficulty[d].label]), st.difficulty)}</div>
@@ -401,17 +401,17 @@ export class UI {
   buildPause(st, season = false, saves = season) { // season: a League game (no restart); saves: quitting keeps the game to resume later
     const s = this.fresh('pause');
     const d = h('div', 'dialog panel pause rise');
-    const sw = (key, ic, label, on) => `<div class="setrow"><span class="nm">${icon(ic)}${label}</span><button class="switch ${on ? 'on' : ''}" data-set="${key}" data-bool="1" role="switch" aria-checked="${on ? 'true' : 'false'}" aria-label="${label}"></button></div>`;
-    d.innerHTML = `<h2>Paused</h2>
-      <button class="btn" data-a="resume">${icon('play')}Resume</button>
-      <div class="setgrid">
-        ${sw('zone', 'zone', 'Strike zone', st.zone)}
-        ${sw('pitchGuide', 'guide', 'Pitch guide', st.pitchGuide)}
-        ${sw('landingRing', 'landing', 'Landing ring', st.landingRing)}
-        ${sw('sound', 'soundOn', 'Sound', st.sound)}
+    // (the four switches are big icon tiles that light up green; they keep the .switch class the rest of the game and the tests use)
+    const tg = (key, ic, label, on) => `<button class="switch tgl ${on ? 'on' : ''}" data-set="${key}" data-bool="1" role="switch" aria-checked="${on ? 'true' : 'false'}" aria-label="${label}">${icon(ic)}<span>${label}</span><i class="lamp"></i></button>`;
+    d.innerHTML = `<div class="ribbon"><h2>Paused</h2></div>
+      <button class="btn big" data-a="resume">${icon('play')}Resume</button>
+      <div class="tgls">
+        ${tg('zone', 'zone', 'Strike zone', st.zone)}
+        ${tg('pitchGuide', 'guide', 'Pitch guide', st.pitchGuide)}
+        ${tg('landingRing', 'landing', 'Landing ring', st.landingRing)}
+        ${tg('sound', 'soundOn', 'Sound', st.sound)}
       </div>
-      <div class="row"><button class="btn small ghost" data-a="settingsPause">${icon('gear')}Settings</button><button class="btn small ghost" data-a="howtoPause">${icon('help')}Help</button></div>
-      <div class="row">${season ? '' : `<button class="btn small ghost" data-a="restart" data-confirm="Restart?">${icon('restart')}Restart</button>`}<button class="btn small ghost warn" data-a="quit" data-confirm="${saves ? 'Save & quit?' : 'Quit game?'}">${icon('home')}${saves ? 'Save &amp; quit' : 'Quit'}</button></div>`;
+      <div class="pbtns"><button class="btn small ghost" data-a="settingsPause">${icon('gear')}Settings</button><button class="btn small ghost" data-a="howtoPause">${icon('help')}Help</button>${season ? '' : `<button class="btn small ghost" data-a="restart" data-confirm="Restart?">${icon('restart')}Restart</button>`}<button class="btn small ghost warn" data-a="quit" data-confirm="${saves ? 'Save & quit?' : 'Quit game?'}">${icon('home')}${saves ? 'Save &amp; quit' : 'Quit'}</button></div>`;
     s.appendChild(d);
     s.onclick = (e) => {
       if (this.settingClick(e, true)) return;
