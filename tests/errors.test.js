@@ -4,6 +4,7 @@ import { CONFIG } from '../src/config.js';
 import { simulateBattedBall } from '../src/physics/ballistics.js';
 import { createDefense, planPlay } from '../src/game/fielding.js';
 import { auditPlan } from '../src/game/playAudit.js';
+import { runnerArrival } from '../src/game/runnerMotion.js';
 import * as rules from '../src/game/rules.js';
 import { simulateHalf } from '../src/game/aiHalf.js';
 import { createRng } from '../src/util/rng.js';
@@ -43,7 +44,14 @@ describe('fielding errors', () => {
     expect(plan.looses.length).toBe(1);
     const lo = plan.looses[0];
     expect(lo.t1).toBeGreaterThan(lo.t0 + 0.5);
-    expect(Math.hypot(lo.bx - lo.ax, lo.bz - lo.az)).toBeCloseTo(CONFIG.fielding.errors.looseDist, 0);
+    const far = Math.hypot(lo.bx - lo.ax, lo.bz - lo.az);
+    expect(far).toBeGreaterThanOrEqual(CONFIG.fielding.errors.looseDist - 0.5);
+    expect(far).toBeLessThanOrEqual(CONFIG.fielding.errors.looseMax + 0.5);
+    // an error costs the out: no throw after it gets to a bag before the runner forced there
+    for (const th of plan.throws) {
+      const m = plan.moves.find((mm) => mm.to === th.toBase && mm.from === th.toBase - 1);
+      if (m && th.toBase <= 2) expect(th.t1).toBeGreaterThan(runnerArrival(CONFIG, m.from, th.toBase, m.tStart, 'run', 1));
+    }
     // the ball is in his hands again only once he has run to it
     const pick = plan.carries.find((c) => c.t0 >= lo.t1 - 1e-6);
     expect(pick).toBeTruthy();

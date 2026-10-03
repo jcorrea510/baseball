@@ -689,7 +689,8 @@ function planPlayCore(i, cfg) {
   plan.bunt = bunt;
   // a bobbled grounder (rare): the out is gone; he picks it up again and throws to where the lead runner is going
   if (isInfieldPlay && groundBall && errorHappens(i, F.errors.ground * (contact.exitVelocity > 95 || plan.fielderMoves[0].dive ? F.errors.hardFactor : 1))) {
-    return bobble(plan, i, f, tF, pf, bases, forced, outs, defense, cfg);
+    const bobbled = bobble(plan, i, f, tF, pf, bases, forced, outs, defense, cfg);
+    if (bobbled) return bobbled; // (null: he had time to recover it - the out stands and it is no error)
   }
   if (isInfieldPlay && groundBall) {
     const attempt = tryInfieldOut({ f, tF, tReady, pf, bases, forced, outs, defense, cfg, plan, bunt });
@@ -1407,9 +1408,9 @@ function errorHappens(i, p) {
   return i.errorRoll !== undefined && !i.simple && i.errorRoll < p * (i.errorScale ?? 1);
 }
 // Where the ball squirts to (a direction fixed by the roll, so a replay is identical), kept inside the ballpark.
-function looseSpot(i, x, z, cfg) {
+function looseSpot(i, x, z, cfg, d = cfg.fielding.errors.looseDist) {
   const a = ((i.errorRoll * 7919) % 1) * Math.PI * 2;
-  return clampToField(x + Math.cos(a) * cfg.fielding.errors.looseDist, z + Math.sin(a) * cfg.fielding.errors.looseDist, cfg.fielding.wallMargin);
+  return clampToField(x + Math.cos(a) * d, z + Math.sin(a) * d, cfg.fielding.wallMargin);
 }
 // The fielder goes after the loose ball; he has it again when the ball has stopped rolling AND he is there.
 function chaseLoose(plan, f, loose, tEarliest, cfg) {
@@ -1421,8 +1422,24 @@ function chaseLoose(plan, f, loose, tEarliest, cfg) {
 }
 function bobble(plan, i, f, tF, pf, bases, forced, outs, defense, cfg) {
   const F = cfg.fielding;
-  const [lx, lz] = looseSpot(i, pf.x, pf.z, cfg);
+  const E = F.errors;
   const tOut = tF + 0.08;
+  // An error has to cost the out: the ball squirts far enough that a throw after he picks it up can no longer beat the batter (or a
+  // forced runner) - a fumble he recovers in time is just an out, and the picture must never show a throw beating a runner called safe.
+  const arrivals = [runnerArrival(cfg, 0, 1, cfg.runner.batterStart, 'run', sp(0))];
+  for (const b of forced) arrivals.push([b + 1, runnerArrival(cfg, b, b + 1, rs(b) ?? cfg.runner.startDelay, 'run', sp(b))]);
+  arrivals[0] = [1, arrivals[0]];
+  const costsOut = (lx, lz) => {
+    const tPick = Math.max(tF + E.bobbleTime, tOut + dist(pf.x, pf.z, lx, lz) / F.speed[f.type]);
+    return arrivals.every(([base, tRun]) => throwArrival(f, tPick + F.transfer[f.type], base, lx, lz, cfg).t > tRun + E.safeMargin);
+  };
+  let [lx, lz] = looseSpot(i, pf.x, pf.z, cfg);
+  if (!costsOut(lx, lz)) {
+    // (it got away from him - away from first base, the way a booted ball runs off the glove past him)
+    const ux = pf.x - BASE_XZ[1][0], uz = pf.z - BASE_XZ[1][1], ul = Math.hypot(ux, uz) || 1;
+    for (let d = E.looseDist; d <= E.looseMax && !costsOut(lx, lz); d += 2) [lx, lz] = clampToField(pf.x + (ux / ul) * d, pf.z + (uz / ul) * d, F.wallMargin);
+  }
+  if (!costsOut(lx, lz)) return null;
   const carry = plan.carries.find((c) => c.pos === f.pos);
   if (carry) carry.t1 = tOut;
   const tPick = chaseLoose(plan, f, { t0: tOut, ax: pf.x, ay: 1.6, az: pf.z, bx: lx, bz: lz }, tF + F.errors.bobbleTime, cfg);

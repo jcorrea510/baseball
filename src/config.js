@@ -559,8 +559,10 @@ export const CONFIG = {
     runnerMargin: 0.35, // s: a runner takes an extra base by himself only when he beats the throw by this much (no bang-bang plays he did not ask for)
     // Errors (rare): a grounder bobbled, a fly ball dropped. Chance per chance, x difficulty.<level>.errorScale; hard chances (a smash,
     // a dive, a leap) are `hardFactor` times as likely. The ball pops loose `looseDist` ft and he needs `bobbleTime` / `dropTime` to
-    // pick it up again - the batter and runners take whatever that delay gives them.
-    errors: { ground: 0.04, fly: 0.018, hardFactor: 2, bobbleTime: 0.95, dropTime: 0.85, looseDist: 5 },
+    // pick it up again - the batter and runners take whatever that delay gives them. A bobbled grounder always costs the out: when a
+    // throw after picking it up would still beat the batter (or a forced runner) by less than `safeMargin` s, the ball squirts further
+    // (up to `looseMax` ft) - the picture never shows a throw beating a runner who was called safe.
+    errors: { ground: 0.057, fly: 0.018, hardFactor: 2, bobbleTime: 0.95, dropTime: 0.85, looseDist: 5, looseMax: 40, safeMargin: 0.3 },
   },
   // Stealing a base (S / the Steal button before the pitch; quick games only). The runner goes with the pitcher's first move;
   // the catcher's exchange and throw race him to the bag, and the man covering needs a moment to put the tag on. Everything is
