@@ -120,7 +120,7 @@ export class Engine {
   get pitchTime() { return this.pitch ? this.time - this.pitch.tRelease : -1; }
   get playTime() { return this.play ? this.time - this.play.t0 : -1; }
   get batterHand() { return this.batter.hand || 'R'; }
-  get windowScale() { return this.d.windowScale * (this.mode === 'derby' ? 1.12 : 1); }
+  get windowScale() { return this.d.windowScale * (this.mode === 'derby' ? this.cfg.modes.derby.timingGrow : 1); }
 
   setPhase(p) { this.phase = p; this.phaseSince = this.time; }
   setAim(v) { this.aim = Math.max(-1, Math.min(1, v)); }

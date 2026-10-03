@@ -42,7 +42,7 @@ export function feel({ difficulty = 'pro', player = 'average', mode = 'quick', n
     const aim = { x: seen.x + rng.gauss(0, P.hand * 1.3), y: seen.y - P.under * win.sweet.up + rng.gauss(0, P.hand) };
     const times = resolveSwingTimes(tPress, flight.T, cfg);
     const pt = contactPoint(flight, times.hitTime, times.barrelTime, cfg);
-    const c = computeSwing({ errorMs: times.errorMs, aim, ...pt, window: win, windowScale: d.windowScale, batterHand: 'R', batBonus: d.batBonus || 0, ...(mode === 'derby' ? derbyBatting(cfg) : {}), rng }, cfg);
+    const c = computeSwing({ errorMs: times.errorMs, aim, ...pt, window: win, windowScale: d.windowScale * (mode === 'derby' ? cfg.modes.derby.timingGrow : 1), batterHand: 'R', batBonus: d.batBonus || 0, ...(mode === 'derby' ? derbyBatting(cfg) : {}), rng }, cfg);
     out.swings++;
     if (!c.made) { out.why[c.reason] = (out.why[c.reason] || 0) + 1; continue; }
     out.contact++;
