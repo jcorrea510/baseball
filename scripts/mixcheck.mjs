@@ -44,6 +44,7 @@ const res = await page.evaluate(async () => {
   }
   out['crowd idle'] = await measure((a) => a.startAmbience(), 4);
   out['crowd swell big'] = await measure((a) => { a.startAmbience(); a.crowdSwell(0.95, 2.4); }, 4);
+  out['crowd groan big'] = await measure((a) => { a.startAmbience(); a.crowdSwell(0.8, 3); setTimeout(() => a.crowdGroan(0.9), 0); }, 4);
   out['applause single'] = await measure((a) => a.applause(1.2, 0.5), 3);
   out['applause run'] = await measure((a) => a.applause(1.6, 0.8), 3);
   out['home run'] = await measure((a) => { a.startAmbience(); a.homeRun(420); }, 5);

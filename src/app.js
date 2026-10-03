@@ -504,7 +504,7 @@ export class App {
     e.on('practice', (st) => { ui.setPracticeState(st); this.updateScoreboard(); });
     e.on('stealArmed', ({ on }) => ui.setSteal(e.canSteal, on));
     e.on('stealGo', () => audio.crowdSwell(0.3, 1.4)); // the crowd sees him go
-    e.on('stealPlay', () => { this.landing = null; this.landRing.hide(); this.playOuts = 0; });
+    e.on('stealPlay', () => { this.landing = null; this.landRing.hide(); this.playOuts = 0; this.groaned = false; });
     e.on('windup', ({ pitch }) => {
       this.hrShown = false;
       this.pitchMarker.visible = false;
@@ -548,7 +548,7 @@ export class App {
     e.on('pitchCall', (p) => this.onPitchCall(p));
     e.on('contact', (c) => this.onContact(c));
     e.on('playEvent', (ev) => this.onPlayEvent(ev));
-    e.on('result', (r) => this.onResult(r));
+    e.on('result', (r) => { this.onResult(r); this.groaned = false; });
     e.on('derby', (d) => { ui.setDerby(d); this.updateScoreboard(); });
     e.on('aiHalf', (s) => {
       ui.hideBanner(); ui.hideCallout();
@@ -569,6 +569,7 @@ export class App {
   onContact(c) {
     const e = this.engine, ui = this.ui, audio = this.audio, F = CONFIG.feel;
     this.playOuts = 0;
+    this.groaned = false;
     this.landing = landingSpot(c.sim, c.plan, CONFIG); // (null for grounders, home runs and balls that hit the wall first)
     const grade = c.grade;
     if (c.contact && c.contact.bunt) {
@@ -592,8 +593,12 @@ export class App {
     else if (grade === 'good') ui.banner('SOLID CONTACT', `${Math.round(c.exitVelocity)} mph`, 'good'); // (the timing was good - what becomes of the ball is the play's to say)
     if (c.homer) { this.slowMo = { t: 0, dur: F.slowMoDuration, delay: this.hitStop + 0.02 }; }
     if (e.mode === 'practice') ui.callout([{ v: Math.round(c.exitVelocity), u: 'mph', l: 'Exit velo' }, { v: Math.round(c.launchAngle), u: '°', l: 'Launch' }], 2400);
-    // The follow-through swoosh already played; a big hit swells the crowd - a beat after the crack, once they see it fly
-    if (c.big) this.audio.crowdSwell(0.35, 2, CONFIG.audio.crowdReact);
+    // The crowd is always on your side: every fair ball gets a cheer a beat after the crack (once they see it fly), and the
+    // deeper it is going the louder and longer it builds (a catch or an out turns it into a groan)
+    if (!foul) {
+      const deep = clamp((c.distance - 180) / 220, 0, 1);
+      this.audio.crowdSwell(0.22 + 0.55 * Math.max(deep, c.big ? 0.6 : 0), 1.6 + 1.8 * deep, CONFIG.audio.crowdReact);
+    }
     this.lastContact = c;
   }
 
@@ -672,12 +677,12 @@ export class App {
         audio.glovePop(0.8);
         // a caught ball that is an out: the umpire calls it (at a base the 'outCall' event does it)
         if (e.mode !== 'derby' && c && !c.homer && c.plan.caught && c.plan.outsMade > 0 && !c.plan.infieldFly) this.later(() => this.umpireCall('out', 0), 160); // (an infield fly was called already)
-        if (c && !c.homer) { audio.crowdSwell(c.big ? 0.55 : 0.28, 2); }
+        // your ball caught: the cheer turns into an "awww" - bigger the further it went (and for a diving catch)
+        if (c && !c.homer && c.plan.outsMade > 0) this.groaned = true;
+        if (c && !c.homer) audio.crowdGroan(ev.dive ? 0.9 : 0.4 + 0.45 * Math.max(clamp((c.distance - 180) / 220, 0, 1), c.big ? 0.6 : 0));
         if (ev.dive) {
-          // a diving catch is a highlight: big crowd reaction and a banner
-          audio.crowdSwell(0.95, 2.4);
-          this.S.stadium.crowd.cheer(0.6);
-          ui.banner('DIVING CATCH!', '', 'good');
+          // a diving catch is a highlight: a banner (the crowd groans - it is your ball)
+          ui.banner('DIVING CATCH!', '', 'bad');
           this.later(() => ui.hideBanner(), 1400);
         }
         break;
@@ -703,8 +708,9 @@ export class App {
         const pl = (e.play && e.play.plan) || (c && c.plan); // (the plan as it is now: you may have sent a runner since the hit)
         if (pl && e.mode !== 'derby' && (pl.events.some((q) => q.type === 'out' && q.tag && q.base === ev.base && Math.abs(q.t - ev.t) < 0.05) || (pl.outNote && pl.outNote.base === ev.base))) {
           ui.banner('OUT', `at ${['', '1st', '2nd', '3rd', 'home'][ev.base] || ''}`, 'bad');
-          audio.crowdGroan(0.4);
         }
+        // the crowd groans the moment one of yours is out (once a play: the second out of a double play needs no second groan)
+        if (!this.groaned) { this.groaned = true; audio.crowdGroan(0.45); }
         break;
       case 'safe': this.umpireCall('safe', ev.base); break;
       case 'error':
@@ -833,12 +839,12 @@ export class App {
     else if (res === 'walk') { cls = 'neutral'; sub = runsText.replace(' · ', ''); audio.crowdSwell(0.2, 1.2); }
     else if (res === 'hitByPitch') { cls = 'neutral'; sub = runsText.replace(' · ', '') || 'Take your base'; audio.glovePop(0.4); audio.crowdGroan(0.45); }
     else if (res === 'strikeoutSwinging' || res === 'strikeoutLooking') { cls = 'bad'; sub = r.detail || (res === 'strikeoutLooking' ? 'Looking' : 'Swinging'); audio.crowdGroan(0.7); if (r.detail === 'Foul tip') audio.glovePop(0.9); }
-    else if (res === 'out') { cls = 'bad'; sub = r.detail ? r.detail : ''; audio.crowdGroan(0.4); }
+    else if (res === 'out') { cls = 'bad'; sub = r.detail ? r.detail : ''; if (!this.groaned) audio.crowdGroan(0.4); }
     else if (['groundout', 'flyout', 'lineout', 'popout', 'foulOut', 'doublePlay', 'fieldersChoice', 'sacFly', 'sacBunt'].includes(res)) {
       const sac = res === 'sacFly' || res === 'sacBunt';
       cls = sac ? 'good' : 'bad'; sub = res === 'sacFly' ? `1 run` : res === 'sacBunt' ? (r.runs > 0 ? '' : 'Runner up') : (r.text && res === 'doublePlay' ? '2 outs' : `${Math.round(r.exitVelocity || 0)} mph`);
       if (r.plan && r.plan.infieldFly) sub = 'Batter is out';
-      if (!sac) audio.crowdGroan(0.35);
+      if (!sac && !this.groaned) audio.crowdGroan(0.35); // (already groaned at the out itself)
       if (runsText) sub += runsText;
     }
     // a runner you sent was tagged out (or doubled off): the banner says so - the batter thrown out stretching a hit is an out, not a hit

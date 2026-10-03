@@ -302,17 +302,25 @@ export class AudioEngine {
     a.bp.frequency.setTargetAtTime(700 + level * 500, t, 0.3);
     a.bp.frequency.setTargetAtTime(520, t + seconds * 0.6, 0.9);
   }
-  // disappointed "ooooh"
+  // The disappointed "awww" (a deep drive caught, a strikeout): whatever cheer was building is cut off, the voices fall in pitch
+  // and fade. level 0..1: how big the letdown is.
   crowdGroan(level = 0.5) {
     if (!this.ok || !this.ambience) return;
     const c = this.ctx, t = c.currentTime, a = this.ambience;
-    a.g2.gain.cancelScheduledValues(t);
-    a.g2.gain.setTargetAtTime(level * 0.16, t, 0.12);
-    a.g2.gain.setTargetAtTime(0, t + 0.5, 0.35);
-    a.f1.frequency.cancelScheduledValues(t);
-    a.f1.frequency.setValueAtTime(900, t);
-    a.f1.frequency.exponentialRampToValueAtTime(420, t + 1.0);
-    a.f1.frequency.setTargetAtTime(800, t + 1.6, 0.3);
+    for (const p of [a.g.gain, a.g2.gain, a.bp.frequency, a.f1.frequency, a.f2.frequency]) p.cancelScheduledValues(t);
+    a.g.gain.setTargetAtTime(0.085 + level * 0.18, t, 0.08);
+    a.g.gain.setTargetAtTime(0.085, t + 0.9, 0.5);
+    a.bp.frequency.setValueAtTime(a.bp.frequency.value, t);
+    a.bp.frequency.exponentialRampToValueAtTime(360, t + 1.1);
+    a.bp.frequency.setTargetAtTime(520, t + 1.6, 0.6);
+    a.g2.gain.setTargetAtTime(level * 0.34, t, 0.1);
+    a.g2.gain.setTargetAtTime(0, t + 0.85 + level * 0.4, 0.4);
+    a.f1.frequency.setValueAtTime(950, t);
+    a.f1.frequency.exponentialRampToValueAtTime(420, t + 1.2);
+    a.f1.frequency.setTargetAtTime(800, t + 1.9, 0.3);
+    a.f2.frequency.setValueAtTime(1450, t);
+    a.f2.frequency.exponentialRampToValueAtTime(760, t + 1.2);
+    a.f2.frequency.setTargetAtTime(1300, t + 1.9, 0.3);
   }
   // Applause: one pre-rendered stretch of clapping (made once, at unlock), played from a random point with a swell-and-fade.
   applause(seconds = 2.2, density = 1) {
