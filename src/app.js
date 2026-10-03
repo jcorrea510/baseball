@@ -665,7 +665,9 @@ export class App {
         if (e.playerSide === 'bottom' || e.mode !== 'quick') this.S.stadium.celebrate(); // (the home team's home run: Citi Field's apple)
         this.celebrateHomer(ev, dist);
         this.showDistanceCallout(c, true);
-        ui.banner('HOME RUN!', `${dist} ft`, 'hr', true);
+        // say what it is worth right away (a grand slam, a 3-run homer): everybody on base scores on a ball over the fence
+        const on = e.mode === 'derby' || !e.diamond ? 0 : e.diamond.bases.filter(Boolean).length;
+        ui.banner(on === 3 ? 'GRAND SLAM' : on > 0 ? `${on + 1}-RUN HOMER` : 'HOME RUN!', `${dist} ft`, 'hr', true);
         this.hrShown = true; // (the result banner at the end of the play only updates this one - the celebration never plays twice)
         if (this.settings.shake) this.cam.shake(F_HR());
         break;

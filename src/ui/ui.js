@@ -878,6 +878,7 @@ export class UI {
     el.className = 'banner ' + cls + (hold ? ' hold' : '');
     // the home-run celebration is drawn in the logo's letters (the same on every device); anything else is text
     const art = cls === 'hr' ? wordSVG(big, { id: 'hr' + (this.artN = (this.artN || 0) + 1) }) : null;
+    el.dataset.big = big;
     if (art) el.querySelector('.big').innerHTML = art; else el.querySelector('.big').textContent = big;
     el.querySelector('.sub').textContent = sub;
     void el.offsetWidth;
@@ -887,6 +888,9 @@ export class UI {
   bannerUpdate(big, sub = '') {
     const el = this.q.banner;
     if (!el.classList.contains('show')) return;
+    el.querySelector('.sub').textContent = sub;
+    if (el.dataset.big === big) return; // (already says it: do not redraw the letters)
+    el.dataset.big = big;
     const art = el.classList.contains('hr') ? wordSVG(big, { id: 'hr' + (this.artN = (this.artN || 0) + 1) }) : null;
     if (art) el.querySelector('.big').innerHTML = art; else el.querySelector('.big').textContent = big;
     el.querySelector('.sub').textContent = sub;
