@@ -5,7 +5,7 @@ import { CONFIG } from '../config.js';
 import { createRng } from '../util/rng.js';
 import { clamp } from '../util/math.js';
 import { SKINS } from './teams.js';
-import { FIRST_NAMES, LAST_NAMES, MLB_TEAMS, teamById, teamName, leagueFor, starsOf, allStars, uniformFor, teamLineup, shortName } from './mlb.js';
+import { FIRST_NAMES, LAST_NAMES, MLB_TEAMS, teamById, teamName, leagueFor, starsOf, allStars, armsOf, allArms, uniformFor, teamLineup, shortName } from './mlb.js';
 
 export const POSITIONS9 = ['CF', 'SS', '1B', 'LF', 'RF', '3B', 'C', '2B', 'DH'];
 
@@ -53,6 +53,27 @@ export function makePlayer(s, rng, mean, cfg = CONFIG, o = {}) {
   return p;
 }
 
+/** A journeyman pitcher around mean overall: a starter (long tank) or a reliever (short one), a few pitches. */
+export function makeArm(s, rng, mean, cfg = CONFIG) {
+  const used = new Set((s.roster || []).concat(s.shop || [], s.staff || []).map((p) => p.name));
+  let name;
+  do { name = rng.pick(FIRST_NAMES) + ' ' + rng.pick(LAST_NAMES); } while (used.has(name));
+  const role = rng.chance(0.5) ? 'SP' : 'RP';
+  const P = cfg.pitching.staff;
+  const n = role === 'SP' ? P.starterPitches : rng.int(P.relieverPitches[0], P.relieverPitches[1]);
+  const others = P.pool.filter((t) => t !== 'fastball');
+  const pitches = ['fastball'];
+  while (pitches.length < Math.min(n, P.pool.length)) pitches.push(others.splice(rng.int(0, others.length - 1), 1)[0]);
+  const sd = 5;
+  return {
+    id: 'p' + (s.nextId = (s.nextId || 0) + 1), name, short: shortName(name), team: '', star: false, role,
+    hand: rng.chance(cfg.season.realArms.filler.left) ? 'L' : 'R', number: rng.int(10, 70), skin: rng.pick(SKINS),
+    scale: +rng.range(1.0, 1.07).toFixed(3), build: +rng.range(0.98, 1.06).toFixed(3),
+    vel: rating(rng, mean, sd), ctl: rating(rng, mean, sd), stf: rating(rng, mean, sd),
+    sta: rating(rng, role === 'SP' ? mean : mean - cfg.season.shop.relieverStaminaGap, sd), pitches,
+  };
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // A new season
 // ---------------------------------------------------------------------------------------------------------------
@@ -81,6 +102,9 @@ export function newSeason(prev, o = {}, cfg = CONFIG) {
   const mine = teamById(teamId);
   // your team: its stars at their positions, role players around them and a bench (first season only; after that you keep who you have)
   if (!s.roster.length) s.roster = startingRoster(s, mine, rng, cfg);
+  s.pstats = {}; // (a new year, new lines)
+  if (prev && prev.teamId === teamId && prev.staff) { s.staff = prev.staff; s.rotation = 0; s.rest = {}; for (const p of s.staff) s.rest[p.id] = 1; }
+  ensureStaff(s, cfg);
   // the league: you and eight others (your division and a neighbour), each with a strength from its tier
   const league = leagueFor(teamId, seed);
   s.teams = league.map((t, i) => ({
@@ -318,6 +342,19 @@ export function recordGame(s, result, cfg = CONFIG) {
     T.g++;
     for (const k of ['pa', 'ab', 'h', 'hr', 'rbi', 'bb', 'k', 'sb']) T[k] += L[k] || 0;
   }
+  // pitchers' season lines, rest and the rotation
+  const starter = pickStarter(s, cfg);
+  for (const [id, L] of Object.entries(result.pitching || {})) {
+    const T = (s.pstats[id] ||= { g: 0, outs: 0, h: 0, r: 0, er: 0, bb: 0, k: 0 });
+    T.g++;
+    for (const k of ['outs', 'h', 'r', 'er', 'bb', 'k']) T[k] += L[k] || 0;
+  }
+  for (const p of s.staff) {
+    const used = clamp((result.pitching && result.pitching[p.id] && result.pitching[p.id].used) || 0, 0, 1);
+    s.rest[p.id] = Math.min(1, Math.max(0, (s.rest[p.id] ?? 1) - used) + (S.restPerGame[p.role] ?? 0));
+  }
+  const list = startersOf(s, cfg);
+  if (starter) s.rotation = (list.findIndex((p) => p.id === starter.id) + 1) % Math.max(1, list.length);
   const items = [];
   const won = !!result.won;
   const margin = Math.abs(result.runsFor - result.runsAgainst);
@@ -421,6 +458,15 @@ export const bench = (s, cfg = CONFIG) => s.roster.slice(cfg.season.roster.lineu
 
 /** Swap two players (batting order, or a bench player into the lineup). */
 export function swapPlayers(s, idA, idB) {
+  const sa = (s.staff || []).findIndex((p) => p.id === idA), sb = (s.staff || []).findIndex((p) => p.id === idB);
+  if (sa >= 0 || sb >= 0) {
+    // pitchers swap with pitchers only: the two trade places and jobs (a starter and a reliever trade roles)
+    if (sa < 0 || sb < 0 || sa === sb) return false;
+    const A = s.staff[sa], B = s.staff[sb];
+    [A.role, B.role] = [B.role, A.role];
+    [s.staff[sa], s.staff[sb]] = [B, A];
+    return true;
+  }
   const a = s.roster.findIndex((p) => p.id === idA), b = s.roster.findIndex((p) => p.id === idB);
   if (a < 0 || b < 0 || a === b) return false;
   [s.roster[a], s.roster[b]] = [s.roster[b], s.roster[a]];
@@ -430,6 +476,20 @@ export function swapPlayers(s, idA, idB) {
 function refillShop(s, rng, n, cfg) {
   const S = cfg.season.shop;
   for (let i = 0; i < n; i++) {
+    // now and then an arm: a real one from another club or a journeyman
+    if (rng.chance(S.pitcherShare)) {
+      if (rng.chance(S.starChance)) {
+        const taken = new Set(s.staff.concat(s.shop).map((p) => p.id));
+        const pool = allArms().filter((p) => !taken.has(p.id) && p.teamId !== s.teamId && overall(p) >= S.min);
+        if (pool.length) { s.shop.push(rng.pick(pool)); continue; }
+      }
+      const mean = S.mean + (s.boost || 0) * 0.5;
+      let p = makeArm(s, rng, mean, cfg);
+      let tries = 0;
+      while ((overall(p) < S.min || overall(p) > S.max) && tries++ < 20) p = makeArm(s, rng, mean + rng.gauss(0, S.sd), cfg);
+      s.shop.push(p);
+      continue;
+    }
     // now and then a star from another team is on the block
     if (rng.chance(S.starChance)) {
       const taken = new Set(s.roster.concat(s.shop).map((p) => p.id));
@@ -460,6 +520,18 @@ export function buyPlayer(s, shopId, replaceId, cfg = CONFIG) {
   if (k < 0) return { ok: false, reason: 'gone' };
   const p = s.shop[k];
   const cost = price(p, cfg);
+  if (p.role) {
+    // a pitcher takes the place (and the job) of a pitcher on the staff
+    const isFull = s.staff.length >= cfg.season.staff.size;
+    const at = isFull ? s.staff.findIndex((q) => q.id === replaceId) : -1;
+    if (isFull && at < 0) return { ok: false, reason: 'pick' };
+    if (s.coins < cost) return { ok: false, reason: 'coins' };
+    s.coins -= cost;
+    s.shop.splice(k, 1);
+    if (at >= 0) { const old = s.staff[at]; s.staff[at] = { ...p, role: old.role }; delete s.rest[old.id]; s.rest[p.id] = 1; }
+    else { s.staff.push({ ...p }); s.rest[p.id] = 1; }
+    return { ok: true, cost };
+  }
   const full = s.roster.length >= cfg.season.roster.size;
   const out = full ? s.roster.findIndex((q) => q.id === replaceId) : -1;
   if (full && out < 0) return { ok: false, reason: 'pick' };
@@ -513,6 +585,53 @@ export function clubSetup(s, cfg = CONFIG) {
   };
 }
 
+/** Your starters, in rotation order (the staff's 'SP' arms), and the rest of the staff. */
+export const startersOf = (s, cfg = CONFIG) => s.staff.filter((p) => p.role === 'SP');
+export const relieversOf = (s) => s.staff.filter((p) => p.role !== 'SP');
+
+/** Who starts your next game: the next man in the rotation when he is rested (season.startMin), else the most rested starter. */
+export function pickStarter(s, cfg = CONFIG) {
+  const list = startersOf(s, cfg);
+  if (!list.length) return s.staff[0] || null;
+  const next = list[(s.rotation || 0) % list.length];
+  if ((s.rest[next.id] ?? 1) >= cfg.season.startMin) return next;
+  let best = next;
+  for (let i = 1; i < list.length; i++) {
+    const p = list[((s.rotation || 0) + i) % list.length];
+    if ((s.rest[p.id] ?? 1) > (s.rest[best.id] ?? 1) + 1e-9) best = p;
+  }
+  return best;
+}
+
+/** The engine's staff: today's starter first, then your relievers, then the other starters (marked unavailable: never offered). */
+function gameStaff(s, cfg) {
+  const start = pickStarter(s, cfg);
+  return [{ ...start }, ...relieversOf(s).map((p) => ({ ...p })), ...startersOf(s, cfg).filter((p) => p.id !== start.id).map((p) => ({ ...p, unavailable: true }))];
+}
+
+/** The other club's starter for its game number n: its three real starters in turn. */
+export function opposingStarter(club, n, cfg = CONFIG) {
+  const sp = armsOf(club, cfg).filter((p) => p.role === 'SP');
+  return sp[n % sp.length];
+}
+
+/**
+ * A League from before staffs: your club's five arms, the rotation, everyone rested, empty pitching lines. Safe on any league
+ * (adds only what is missing); v stays 2. Returns it.
+ */
+export function ensureStaff(s, cfg = CONFIG) {
+  if (!s || typeof s !== 'object') return s;
+  if (!Array.isArray(s.staff) || !s.staff.length) {
+    const club = teamById(s.teamId);
+    s.staff = club ? armsOf(club, cfg) : [];
+  }
+  if (typeof s.rotation !== 'number') s.rotation = 0;
+  s.rest ||= {};
+  s.pstats ||= {};
+  for (const p of s.staff) if (typeof s.rest[p.id] !== 'number') s.rest[p.id] = 1;
+  return s;
+}
+
 /** Everything the engine needs for your next game. */
 export function gameSetup(s, cfg = CONFIG) {
   const g = nextGame(s);
@@ -528,6 +647,7 @@ export function gameSetup(s, cfg = CONFIG) {
     game: g, opponent: opp, playerTeam: mine, oppLineup: teamLineup(them, t.lineupSeed || 7, 'o'), lineup: lineup(s, cfg).map((p, i) => ({ ...p, order: i })),
     cfg: gameConfig(s.level, t.rating, cfg), level: s.level, innings: cfg.season.innings,
     seed: ((s.seed ^ ((s.games.length + 1) * 40503)) >>> 0),
+    staff: gameStaff(s, cfg), oppPitcher: opposingStarter(them, s.games.length + (t.lineupSeed || 0), cfg),
   };
 }
 

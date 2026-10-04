@@ -10,7 +10,7 @@ import { createBot } from '../src/game/bot.js';
 
 const play = (s, won, rf = 5, ra = 3) => S.recordGame(s, { won, runsFor: won ? Math.max(rf, ra + 1) : Math.min(rf, ra - 1), runsAgainst: ra, lines: {} });
 
-import { MLB_TEAMS, leagueFor, uniformFor, starsOf, lum, ratingsFromStats } from '../src/game/mlb.js';
+import { armsOf, MLB_TEAMS, leagueFor, uniformFor, starsOf, lum, ratingsFromStats } from '../src/game/mlb.js';
 
 describe('the big-league teams', () => {
   it('thirty teams, six divisions of five, stars with real numbers that make sensible ratings', () => {
@@ -90,7 +90,7 @@ describe('a new season', () => {
     expect(new Set(s.roster.map((p) => p.id)).size).toBe(12);
     expect(s.coins).toBe(CONFIG.season.coins.start);
     expect(s.shop.length).toBe(CONFIG.season.shop.size);
-    for (const p of s.roster.concat(s.shop)) for (const k of ['con', 'pow', 'spd']) { expect(p[k]).toBeGreaterThanOrEqual(20); expect(p[k]).toBeLessThanOrEqual(99); }
+    for (const p of s.roster.concat(s.shop).filter((q) => !q.role)) for (const k of ['con', 'pow', 'spd']) { expect(p[k]).toBeGreaterThanOrEqual(20); expect(p[k]).toBeLessThanOrEqual(99); }
   });
   it('some CPU teams are better than others', () => {
     const r = s.teams.slice(1).map((t) => t.rating);
@@ -185,7 +185,7 @@ describe('roster and shop', () => {
   });
   it('buying: costs exactly its price out of your coins, replaces the player you pick, cannot overspend', () => {
     const s = S.newSeason(null, { seed: 10 });
-    const target = s.shop[0];
+    const target = s.shop.find((p) => !p.role);
     const out = s.roster[3];
     expect(S.buyPlayer(s, target.id, null).reason).toBe('pick'); // the roster is full
     s.coins = 0;
@@ -322,4 +322,117 @@ describe('home and away', () => {
     expect(over.game.playerSide).toBe('top');
     expect(over.game.pf).toBe(over.game.score.top);
   }, 60000);
+});
+
+describe('pitchers', () => {
+  const game = (s, pitching = {}) => S.recordGame(s, { won: true, runsFor: 5, runsAgainst: 3, lines: {}, pitching });
+  const starterOf = (s) => S.gameSetup(s).staff[0].id;
+  it('a new league has a five-man staff of the club\'s real arms, all rested', () => {
+    const s = S.newSeason(null, { team: 'nym', seed: 21 });
+    expect(s.staff.length).toBe(5);
+    expect(s.staff.map((p) => p.role)).toEqual(['SP', 'SP', 'SP', 'RP', 'RP']);
+    expect(s.staff.every((p) => p.teamId === 'nym' && s.rest[p.id] === 1)).toBe(true);
+    expect(s.rotation).toBe(0);
+    expect(s.v).toBe(2);
+  });
+  it('ensureStaff adds a staff to an old league, keeps v 2 and is idempotent', () => {
+    const s = S.newSeason(null, { team: 'nym', seed: 22 });
+    const old = JSON.parse(JSON.stringify(s));
+    delete old.staff; delete old.rotation; delete old.rest; delete old.pstats;
+    S.ensureStaff(old);
+    expect(old.v).toBe(2);
+    expect(old.staff.map((p) => p.id)).toEqual(s.staff.map((p) => p.id));
+    expect(old.rotation).toBe(0);
+    expect(Object.keys(old.rest).length).toBe(5);
+    expect(old.pstats).toEqual({});
+    const again = JSON.stringify(S.ensureStaff(old));
+    expect(JSON.stringify(S.ensureStaff(old))).toBe(again);
+  });
+  it('the starter goes 1 -> 2 -> 3 -> 1 when everybody is rested', () => {
+    const s = S.newSeason(null, { team: 'nym', seed: 23 });
+    const sp = s.staff.filter((p) => p.role === 'SP').map((p) => p.id);
+    const seen = [];
+    for (let i = 0; i < 4; i++) { seen.push(starterOf(s)); game(s); }
+    expect(seen).toEqual([sp[0], sp[1], sp[2], sp[0]]);
+  });
+  it('the engine gets today\'s starter first, the relievers, then the other starters marked unavailable (never offered)', () => {
+    const s = S.newSeason(null, { team: 'nym', seed: 24 });
+    const setup = S.gameSetup(s);
+    expect(setup.staff.length).toBe(5);
+    expect(setup.staff.map((p) => p.role)).toEqual(['SP', 'RP', 'RP', 'SP', 'SP']);
+    expect(setup.staff.map((p) => !!p.unavailable)).toEqual([false, false, false, true, true]);
+    const e = new Engine({ difficulty: 'pro', staff: setup.staff, cpuHalf: 'pitch', playerSide: 'top', seed: 3 });
+    e.start();
+    expect(e.bullpenOptions().every((o) => o.pitcher.role === 'RP' && !o.pitcher.unavailable)).toBe(true);
+  });
+  it('a starter who used 90% of his stamina is skipped when below startMin; the most rested starter starts', () => {
+    const s = S.newSeason(null, { team: 'nym', seed: 25 });
+    const [a, b, c] = s.staff.filter((p) => p.role === 'SP').map((p) => p.id);
+    game(s, { [a]: { outs: 18, h: 6, r: 3, er: 3, bb: 1, k: 7, used: 0.9 } });
+    expect(s.rest[a]).toBeCloseTo(0.1 + 0.34, 5);
+    s.rest[b] = 0.5; s.rest[c] = 0.9; // the next in turn (b) is tired
+    expect(starterOf(s)).toBe(c);
+    s.rest[c] = 0.3; s.rest[b] = 0.4; s.rest[a] = 0.2;
+    expect(starterOf(s)).toBe(b); // nobody is fresh: the most rested
+  });
+  it('rest recovers a little every game and never goes over 1', () => {
+    const s = S.newSeason(null, { team: 'nym', seed: 26 });
+    const [r1] = s.staff.filter((p) => p.role === 'RP');
+    s.rest[r1.id] = 0.1;
+    game(s);
+    expect(s.rest[r1.id]).toBeCloseTo(0.1 + CONFIG.season.restPerGame.RP, 5);
+    game(s); game(s);
+    expect(s.rest[r1.id]).toBe(1);
+  });
+  it('earned runs and the rest of the line add up in pstats', () => {
+    const s = S.newSeason(null, { team: 'nym', seed: 27 });
+    const a = s.staff[0].id;
+    game(s, { [a]: { outs: 15, h: 5, r: 4, er: 3, bb: 2, k: 6, used: 0.5 } });
+    game(s, { [a]: { outs: 12, h: 4, r: 2, er: 2, bb: 1, k: 3, used: 0.4 } });
+    expect(s.pstats[a]).toEqual({ g: 2, outs: 27, h: 9, r: 6, er: 5, bb: 3, k: 9 });
+  });
+  it('buying a pitcher with a full staff needs a pitcher to replace; a hitter is refused; he takes the job', () => {
+    const s = S.newSeason(null, { team: 'nym', seed: 28 });
+    s.shop.push({ ...s.staff[0], id: 'zz1', name: 'Test Arm', teamId: 'xxx', role: 'SP' });
+    s.coins = 5000;
+    expect(S.buyPlayer(s, 'zz1', null).reason).toBe('pick');
+    expect(S.buyPlayer(s, 'zz1', s.roster[0].id).reason).toBe('pick');
+    const out = s.staff[4]; // a reliever
+    expect(S.buyPlayer(s, 'zz1', out.id).ok).toBe(true);
+    expect(s.staff[4].id).toBe('zz1');
+    expect(s.staff[4].role).toBe('RP');
+    expect(s.staff.length).toBe(5);
+    expect(s.rest.zz1).toBe(1);
+    // a hitter cannot replace a pitcher
+    const h = s.shop.find((p) => !p.role);
+    expect(S.buyPlayer(s, h.id, s.staff[0].id).reason).toBe('pick');
+  });
+  it('swapping a starter and a reliever trades their jobs; a pitcher and a hitter do not swap', () => {
+    const s = S.newSeason(null, { team: 'nym', seed: 29 });
+    const sp = s.staff[0], rp = s.staff[3];
+    expect(S.swapPlayers(s, sp.id, rp.id)).toBe(true);
+    expect(s.staff[0].id).toBe(rp.id);
+    expect(s.staff[0].role).toBe('SP');
+    expect(s.staff[3].role).toBe('RP');
+    expect(S.swapPlayers(s, sp.id, s.roster[0].id)).toBe(false);
+  });
+  it('the shop offers pitchers and they cost by overall', () => {
+    let arms = 0, total = 0;
+    for (let seed = 40; seed < 70; seed++) {
+      const s = S.newSeason(null, { team: 'nym', seed });
+      for (const p of s.shop) { total++; if (p.role) { arms++; expect(S.price(p)).toBeGreaterThan(0); } }
+    }
+    expect(arms / total).toBeGreaterThan(0.2);
+    expect(arms / total).toBeLessThan(0.5);
+  });
+  it('the opponent\'s starter is one of its real arms, in its own rotation', () => {
+    const s = S.newSeason(null, { team: 'nym', seed: 30 });
+    const setup = S.gameSetup(s);
+    const them = MLB_TEAMS.find((t) => t.id === setup.opponent.id);
+    const sp = armsOf(them).filter((p) => p.role === 'SP').map((p) => p.id);
+    expect(sp).toContain(setup.oppPitcher.id);
+    const seen = new Set();
+    for (let i = 0; i < 3; i++) { seen.add(S.opposingStarter(them, i).id); }
+    expect(seen.size).toBe(3);
+  });
 });

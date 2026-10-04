@@ -25,7 +25,7 @@ import { landingSpot, landingRing } from './game/landing.js';
 import * as SEA from './game/season.js';
 import { runnerState, runnerProfile } from './game/runnerMotion.js';
 import { currentPark } from './physics/field.js';
-import { pitchTopMph, isPainted } from './game/pitching.js';
+import { pitchTopMph, isPainted, staminaMax } from './game/pitching.js';
 const parkName = () => currentPark().name.toUpperCase();
 
 // scorekeeping numbers for the error banner (E6 = an error by the shortstop)
@@ -334,7 +334,7 @@ export class App {
     this.seasonLineup = saved ? saved.lineup : setup.lineup;
     this.seasonSeed = saved ? saved.seed : setup.seed;
     this.startGame('quick', {
-      engine: { difficulty: setup.level, innings: setup.innings, lineup: this.seasonLineup, opponent: setup.opponent, playerTeam: setup.playerTeam, oppLineup: setup.oppLineup, seed: this.seasonSeed, playerSide: setup.playerSide },
+      engine: { difficulty: setup.level, innings: setup.innings, lineup: this.seasonLineup, opponent: setup.opponent, playerTeam: setup.playerTeam, oppLineup: setup.oppLineup, seed: this.seasonSeed, playerSide: setup.playerSide, staff: setup.staff, oppPitcher: setup.oppPitcher },
       park: setup.park,
       cfg: setup.cfg,
       resume: saved ? saved.state : null,
@@ -988,7 +988,14 @@ export class App {
       for (const b of e.lineup) lines[b.id] = e.lineOf(b);
       const label = this.seasonGame.label;
       sea.inProgress = null; // (finished: nothing left to resume)
-      const r = SEA.recordGame(sea, { won: p.won, runsFor: p.game.pf, runsAgainst: p.game.pa, lines });
+      // your pitchers' lines and the share of his stamina each one used (the engine counts both)
+      const pitching = {};
+      for (const [id, L] of Object.entries(e.pitchStats.byPitcher || {})) {
+        const arm = e.staff.find((q) => q.id === id);
+        const used = arm ? Math.min(1, ((e.pitchStats.spent || {})[id] || 0) / Math.max(1, staminaMax(arm))) : 0;
+        pitching[id] = { outs: L.outs, h: L.h, r: L.r, er: L.er, bb: L.bb, k: L.k, used };
+      }
+      const r = SEA.recordGame(sea, { won: p.won, runsFor: p.game.pf, runsAgainst: p.game.pa, lines, pitching });
       const me = sea.teams[0];
       seasonInfo = { items: r.items, coins: sea.coins, label, record: `${me.w}–${me.l}` };
       p.season = true;

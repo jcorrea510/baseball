@@ -2,6 +2,7 @@
 // Everything goes through try/catch: if storage is blocked (private windows etc.) the game still works,
 // it just does not remember anything.
 import { CONFIG } from '../config.js';
+import { ensureStaff } from './season.js';
 
 export const DEFAULT_SAVE = () => ({
   v: 1,
@@ -79,6 +80,7 @@ export class Progress {
         if (d.settings.umpire !== 'off') d.settings.umpire = 'on'; // (older saves had 'synth' / 'speech' voices, now gone)
         if (!saved.duskV) { d.settings.tod = 'dusk'; d.duskV = 1; } // (dusk is the new default: every earlier save moves to it once; a later change sticks)
         if (d.season && d.season.v !== 2) d.season = null; // (a league from before the big-league teams cannot be carried over)
+        if (d.season) ensureStaff(d.season); // (a league from before staffs gets its arms, rotation and rest)
         this.fresh = false;
         return d;
       }

@@ -975,6 +975,12 @@ export const CONFIG = {
     },
     // A pitcher's overall (roster, shop, prices): this share of each rating. (A hitter's: 40% Contact, 40% Power, 20% Speed.)
     pitcherOverall: { vel: 0.3, ctl: 0.3, stf: 0.3, sta: 0.1 },
+    // Your club's pitching staff: `size` arms (the club's real ones), the first `starters` of them starters in a rotation, the rest
+    // relievers. A starter whose rest is under `startMin` (1 = fully rested) is skipped and the most rested starter starts. After a
+    // game every arm's rest falls by the share of his stamina he used, then recovers `restPerGame` (by role), up to 1.
+    staff: { size: 5, starters: 3 },
+    startMin: 0.8,
+    restPerGame: { SP: 0.34, RP: 0.6 },
     innings: 6, // innings in a season game
     cycles: { short: 1, full: 2 }, // how many times you play every other team (8 opponents: 8 or 16 games)
     // CPU team strength ratings (50 = the level you picked). Shuffled onto the teams each season; the schedule goes from the
@@ -1005,7 +1011,7 @@ export const CONFIG = {
     starters: { base: 40, perRating: 0.36 }, // the unnamed starters on your team are rated base + perRating x the team's strength (a strong team has better role players)
     bench: 44,
     ratingSd: 9,
-    shop: { size: 6, refresh: 2, mean: 60, sd: 9, min: 44, max: 92, starChance: 0.4 }, // players on offer (journeymen, and now and then a star from another team); `refresh` are replaced after every game
+    shop: { size: 6, refresh: 2, mean: 60, sd: 9, min: 44, max: 92, starChance: 0.4, pitcherShare: 0.35, relieverStaminaGap: 25 }, // `pitcherShare` of the new offers are pitchers; players on offer (journeymen, and now and then a star from another team); `refresh` are replaced after every game
   },
   // What a batter's ratings (0-99, 50 = average) do in a game. Only Season players have ratings; everyone else is average.
   ratings: {

@@ -23,7 +23,7 @@ export function newPitchLine() {
 }
 /** Your pitchers' numbers in a game: the whole staff's line plus one per pitcher (`byPitcher[id]`). */
 export function newPitchStats() {
-  return { ...newPitchLine(), byPitcher: {} };
+  return { ...newPitchLine(), byPitcher: {}, spent: {} }; // (`spent[id]` = the stamina a pitcher has used today)
 }
 
 /** The recap line for a finished plate appearance of the computer's half, from the real result and where the ball went (spray angle,
@@ -160,7 +160,7 @@ const methods = {
     if (!this.pitching || !this.mound) return [];
     const m = this.mound;
     return this.staff
-      .filter((p) => p.role === 'RP' && p.id !== m.pitcher.id && !m.used.includes(p.id))
+      .filter((p) => p.role === 'RP' && !p.unavailable && p.id !== m.pitcher.id && !m.used.includes(p.id))
       .map((p) => ({ pitcher: p, stamina: staminaMax(p, this.cfg) }));
   },
 
@@ -247,7 +247,10 @@ const methods = {
     this.swing = null;
     m.pitches++;
     // the pitch costs stamina (more with a runner in scoring position, at three balls, for the heater)
-    m.left = Math.max(0, m.left - pitchCost({ type: th.type, balls: this.count.balls, risp: !!(this.bases[1] || this.bases[2]) }, cfg));
+    const cost = pitchCost({ type: th.type, balls: this.count.balls, risp: !!(this.bases[1] || this.bases[2]) }, cfg);
+    m.left = Math.max(0, m.left - cost);
+    const spent = (this.pitchStats.spent ||= {});
+    spent[pitcher.id] = (spent[pitcher.id] || 0) + cost;
     this.emit('stamina', { left: m.left, max: m.max });
     this.pitchStats.pitches++; this.pitchLine(pitcher.id).pitches++;
     // runners who broke during the delivery: the catcher's exchange and the throw are rolled now (engine.beginSteal)
