@@ -265,6 +265,40 @@ export const CONFIG = {
   },
 
   // --------------------------------------------------------------------------
+  //  The computer's batter when you pitch (game/cpuBatter.js). Shared numbers; each level's own are in difficulty.<level>.cpuBat.
+  //  All starting values, tuned in Task 22.
+  // --------------------------------------------------------------------------
+  cpuBat: {
+    readTime: 0.22, // s before the swing must start that he judges where the pitch will cross
+    breakRead: 0.6, // his read gets this much worse per foot the pitch breaks (x(1 + this x break in ft))
+    // Share of his read / timing error each grade of YOUR pitch causes (the hang floats over the middle: easy to square up).
+    gradeFactor: { perfect: 1.35, good: 1.15, ok: 1, hang: 0.6, sail: 1 },
+    fadeOut: 1.8, // x his read error on a pitch that starts in the zone and finishes outside it (the slider off the corner)
+    // His chance to swing, by where he THINKS the pitch will cross (zoneRatio bands in `bands`). "Two" = two strikes.
+    swing: {
+      zone: 0.72, zoneTwo: 0.9, // a strike
+      edge: 0.4, edgeTwo: 0.8, // on the corner
+      chase: 0.22, chaseTwo: 0.4, // tempting but out of the zone
+      waste: 0.03, // way out of reach
+      threeOhHeart: 0.3, // 3-0: he takes everything except a pitch he thinks is right down the middle, and only a power hitter...
+      threeOhPower: 70, // ...with at least this Power rating
+      aheadHeart: 1.15, aheadEdge: 0.6, // ahead in the count (2-0, 3-1): more swings at the heart, fewer on the corners
+      aheadBy: 2, // balls minus strikes that counts as "ahead" (3-0 has its own rule)
+      starChase: 0.4, // a Contact 99 star swings this much less (share) on the corner and chase rows (a Contact 1 hitter this much more)
+      bands: { heart: 0.5, zone: 1, edge: 1.3, chase: 1.9 }, // zoneRatio where heart / strike / corner / chase end
+    },
+    changeBias: 9, // ms of timing error per mph the pitch is slower (early) or faster (late) than his last two pitches
+    changeCap: 90, // ms: the most that speed change can throw his timing off
+    edgeTiming: 12, // ms late added when he thinks it is on the edge...
+    edgeFrom: 0.9, // ...meaning a perceived zoneRatio above this
+    protectSd: 0.8, // two strikes: timing spread x this (he just tries to make contact)...
+    protectSpeed: 0.92, // ...and his bat speed x this (more fouls) - the engine uses this
+    under: 0.25, // how far under the middle of the ball he aims (share of his sweet zone: fly balls)
+    strengthSd: 0.12, // a batter with no ratings: errors x(1 - this x team strength k)
+    strengthEv: 2, // ...and exit velocity +this many mph x k
+  },
+
+  // --------------------------------------------------------------------------
   //  Swing timing  (the heart of the game)
   //  errorMs = (when the bat reaches the plate) - (when the ball crosses it)
   //  negative = early, positive = late
@@ -406,6 +440,15 @@ export const CONFIG = {
       // inside the contact window, the bat only gets a piece of the ball (a foul tip, a pop-up, a chopper).
       sweetSpot: { up: 0.58, tip: 1.0, handle: 0.85 },
       aimAssist: 0.85, // share of a badly aimed contact pulled back into the good part of the bat (swing.assist): a thumb a little off still makes good contact
+      // The computer's batter when YOU pitch (game/cpuBatter.js): his own numbers, never your batting help. Starting values, tuned in Task 22.
+      cpuBat: {
+        readSd: 0.2, // ft: how far off his read of where the pitch will cross is (before break, grade and his ratings change it)
+        timingSd: 46, // ms: how far off his swing timing is
+        aimSd: 0.2, // ft: how far off he moves the bat from where he read the pitch
+        window: { up: 0.5, tip: 0.95, handle: 0.8, sweet: { up: 0.42, tip: 0.9, handle: 0.75 } }, // his bat's contact window (same on every level to start)
+        windowScale: 1, // his timing windows (1 = as wide as the level's base)
+        aimAssist: 0, // he gets no aim help
+      },
       batBonus: 5, // mph of extra bat speed (slower pitches come off the bat slower: this keeps the easy level from being the weakest)
       fastball: [62, 72],
       mix: { fastball: 0.62, changeup: 0.12, curveball: 0.13, slider: 0.13, heater: 0 },
@@ -438,6 +481,15 @@ export const CONFIG = {
       contactWindow: { up: 0.53, tip: 0.9, handle: 0.76 },
       sweetSpot: { up: 0.46, tip: 0.82, handle: 0.7 },
       aimAssist: 0.75,
+      // The computer's batter when YOU pitch (game/cpuBatter.js): his own numbers, never your batting help. Starting values, tuned in Task 22.
+      cpuBat: {
+        readSd: 0.15, // ft: how far off his read of where the pitch will cross is (before break, grade and his ratings change it)
+        timingSd: 36, // ms: how far off his swing timing is
+        aimSd: 0.15, // ft: how far off he moves the bat from where he read the pitch
+        window: { up: 0.5, tip: 0.95, handle: 0.8, sweet: { up: 0.42, tip: 0.9, handle: 0.75 } }, // his bat's contact window (same on every level to start)
+        windowScale: 1, // his timing windows (1 = as wide as the level's base)
+        aimAssist: 0, // he gets no aim help
+      },
       batBonus: -0.5,
       fastball: [80, 90],
       mix: { fastball: 0.46, changeup: 0.18, curveball: 0.18, slider: 0.18, heater: 0 },
@@ -464,6 +516,15 @@ export const CONFIG = {
       contactWindow: { up: 0.48, tip: 0.84, handle: 0.72 },
       sweetSpot: { up: 0.41, tip: 0.74, handle: 0.64 },
       aimAssist: 0.6,
+      // The computer's batter when YOU pitch (game/cpuBatter.js): his own numbers, never your batting help. Starting values, tuned in Task 22.
+      cpuBat: {
+        readSd: 0.11, // ft: how far off his read of where the pitch will cross is (before break, grade and his ratings change it)
+        timingSd: 28, // ms: how far off his swing timing is
+        aimSd: 0.11, // ft: how far off he moves the bat from where he read the pitch
+        window: { up: 0.5, tip: 0.95, handle: 0.8, sweet: { up: 0.42, tip: 0.9, handle: 0.75 } }, // his bat's contact window (same on every level to start)
+        windowScale: 1, // his timing windows (1 = as wide as the level's base)
+        aimAssist: 0, // he gets no aim help
+      },
       batBonus: -1.5,
       fastball: [88, 98],
       mix: { fastball: 0.36, changeup: 0.18, curveball: 0.17, slider: 0.19, heater: 0.1 },
