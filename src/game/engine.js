@@ -234,7 +234,7 @@ export class Engine {
       const sm = side.mound;
       const pitcher = this.staff.find((p) => p.id === sm.pitcherId) || sm.pitcher || this.staff[0];
       this.mound = { pitcher, left: sm.left, max: sm.max, pitches: sm.pitches, used: sm.used || [], recent: sm.recent || [] };
-      this.pitchStats = side.pitchStats; this.oppLines = side.oppLines || {}; this.cpuStats = side.cpuStats || newStats();
+      this.pitchStats = { ...newPitchStats(), ...side.pitchStats }; this.oppLines = side.oppLines || {}; this.cpuStats = side.cpuStats || newStats();
       if (side.pitchType && pitcher.pitches.includes(side.pitchType)) this.pitchType = side.pitchType;
       else this.pitchType = pitcher.pitches[0];
     }
@@ -1092,8 +1092,22 @@ export class Engine {
       } : null,
       won: g ? g.winner === this.playerSide : null,
       opponent: this.opponent,
+      pitching: this.pitchingSummary(),
     };
     this.emit('gameOver', payload);
+  }
+
+  // Your pitching in a finished Quick / League game (null when you did not pitch): the line plus the badges earned
+  // ('side' = a half of three strikeouts you got yourself, 'tenK', 'shutout' = no runs and no Sim).
+  pitchingSummary() {
+    const ps = this.pitchStats, g = this.game;
+    if (this.mode !== 'quick' || !g || ps.pitches <= 0) return null;
+    const { outs, h, r, er, bb, k, hr, pitches, simmedOuts } = ps;
+    const badges = [];
+    if (ps.sides > 0) badges.push('side');
+    if (k >= this.cfg.pitching.badges.strikeouts) badges.push('tenK');
+    if (g.score[this.oppSide] === 0 && simmedOuts === 0 && outs > 0) badges.push('shutout');
+    return { outs, h, r, er, bb, k, hr, pitches, simmedOuts, badges };
   }
 
   // ------------------------------------------------------------------ snapshot for UI / tests

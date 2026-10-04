@@ -279,6 +279,7 @@ export const CONFIG = {
       relieverPitches: [2, 3], // a reliever throws between this many
       pool: ['fastball', 'changeup', 'curveball', 'slider'], // what they can throw (the fastball always)
     },
+    badges: { strikeouts: 10 }, // strikeouts in one game for the "10 K" badge
     // Sim (skip an inning): how the pitches are graded when the computer plays them for you.
     sim: {
       grades: { perfect: 0.25, good: 0.4, ok: 0.27, wild: 0.08 }, // chance of each grade

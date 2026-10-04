@@ -16,6 +16,7 @@ export const DEFAULT_SAVE = () => ({
   career: {
     games: 0, wins: 0, pa: 0, ab: 0, hits: 0, hr: 0, longestHR: 0, maxEV: 0, perfects: 0, swings: 0, contacts: 0,
     derbyGames: 0, derbyBestHR: 0, derbyBestStreak: 0, practiceSwings: 0, strikeouts: 0, walks: 0, rbi: 0,
+    pitching: { games: 0, outs: 0, h: 0, r: 0, er: 0, bb: 0, k: 0, hr: 0, pitches: 0, bestK: 0, shutouts: 0 }, // you on the mound (Quick Game and League)
   },
   high: { quick: { rookie: null, pro: null, allstar: null }, derby: { rookie: 0, pro: 0, allstar: 0 } },
   unlocked: { bats: ['ash'], uniforms: ['classic'] },
@@ -41,6 +42,10 @@ export const UNLOCKS = [
   { id: 'carbon', kind: 'bats', name: 'Carbon Elite', hint: 'Hit 40 career home runs', test: (s) => s.career.hr >= 40 },
   { id: 'midnightU', kind: 'uniforms', name: 'Midnight Silver', hint: 'Hit 25 career home runs', test: (s) => s.career.hr >= 25, key: 'midnight' },
 ];
+/** Innings pitched from outs, in thirds: 7 outs -> "2.1". */
+export const inningsText = (outs) => `${Math.floor((outs || 0) / 3)}.${(outs || 0) % 3}`;
+/** Earned runs per nine innings, "-.--" before the first out. */
+export const eraText = (er, outs) => (outs > 0 ? ((er || 0) * 27 / outs).toFixed(2) : '-.--');
 export const unlockKey = (u) => u.key || u.id;
 
 function makeStore() {
@@ -110,6 +115,13 @@ export class Progress {
     c.strikeouts += st.strikeouts || 0; c.walks += st.walks || 0;
     if (st.maxEV > c.maxEV) { if (c.maxEV > 0) records.push(`Exit velo ${Math.round(st.maxEV)} mph`); c.maxEV = st.maxEV; }
     if (st.longestHR > c.longestHR) { if (c.longestHR > 0 || st.longestHR > 0) records.push(`Longest HR ${st.longestHR} ft`); c.longestHR = st.longestHR; }
+    if (res.mode === 'quick' && res.pitching) {
+      const pc = c.pitching, pt = res.pitching;
+      pc.games++;
+      for (const k of ['outs', 'h', 'r', 'er', 'bb', 'k', 'hr', 'pitches']) pc[k] += pt[k] || 0;
+      pc.bestK = Math.max(pc.bestK, pt.k || 0);
+      if ((pt.badges || []).includes('shutout')) pc.shutouts++;
+    }
     if (res.mode === 'quick') {
       c.games++;
       if (res.won) c.wins++;

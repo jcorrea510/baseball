@@ -23,7 +23,9 @@ export function newPitchLine() {
 }
 /** Your pitchers' numbers in a game: the whole staff's line plus one per pitcher (`byPitcher[id]`). */
 export function newPitchStats() {
-  return { ...newPitchLine(), byPitcher: {}, spent: {} }; // (`spent[id]` = the stamina a pitcher has used today)
+  // (`spent[id]` = the stamina a pitcher has used today; `simmedOuts` = outs the computer got for you in a Sim; `halfOuts` / `halfKs` /
+  //  `halfBad` follow the half in progress - three outs that were all your own strikeouts = a side struck out, counted in `sides`)
+  return { ...newPitchLine(), byPitcher: {}, spent: {}, simmedOuts: 0, halfOuts: 0, halfKs: 0, halfBad: false, sides: 0 };
 }
 
 /** The recap line for a finished plate appearance of the computer's half, from the real result and where the ball went (spray angle,
@@ -356,6 +358,15 @@ const methods = {
       if (r.result === 'homer' || r.result === 'insideParkHomer') add.hr = 1;
     }
     for (const [k, v] of Object.entries(add)) { ps[k] += v; line[k] += v; }
+    if (outs > 0) {
+      if (this.simming) ps.simmedOuts += outs;
+      if (this.simming || outs !== 1 || add.k !== 1) ps.halfBad = true; else ps.halfKs++;
+      ps.halfOuts += outs;
+      if (ps.halfOuts >= 3) { // (the half is over)
+        if (!ps.halfBad && ps.halfKs >= 3) ps.sides++;
+        ps.halfOuts = 0; ps.halfKs = 0; ps.halfBad = false;
+      }
+    }
   },
 };
 

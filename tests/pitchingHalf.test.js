@@ -736,3 +736,48 @@ describe('practice pitch', () => {
     expect(e.offense).toBe('player');
   });
 });
+
+describe('pitching badges in the gameOver payload', () => {
+  const whiff = () => ({ swing: true, errorMs: 300, aim: { x: 0, y: 2.4 }, protect: false });
+  const finish = (e) => { let p = null; e.on('gameOver', (x) => { p = x; }); e.finishGame(); return p; };
+
+  it('three strikeouts in a half: Strike Out the Side, and a shutout when nobody scored', () => {
+    const e = make({ seed: 3 });
+    e.start();
+    e.cpuSwingOverride = whiff;
+    for (let k = 0; k < 40 && e.offense === 'cpu' && !e.over; k++) pitchOne(e);
+    expect(e.pitchStats.k).toBe(3);
+    const p = finish(e);
+    expect(p.pitching.k).toBe(3);
+    expect(p.pitching.simmedOuts).toBe(0);
+    expect(p.pitching.badges).toContain('side');
+    expect(p.pitching.badges).toContain('shutout');
+    expect(p.pitching.badges).not.toContain('tenK');
+  });
+
+  it('ten strikeouts earns 10 K', () => {
+    const e = make({ seed: 3 });
+    e.start();
+    e.pitchStats.pitches = 40; e.pitchStats.k = 10; e.pitchStats.outs = 9;
+    expect(finish(e).pitching.badges).toContain('tenK');
+  });
+
+  it('a Sim in the game: no Shutout and no Strike Out the Side', () => {
+    const e = make({ seed: 3 });
+    e.start();
+    e.cpuSwingOverride = whiff;
+    e.simHalf();
+    for (let k = 0; k < 200 && e.simStep(50); k++);
+    expect(e.pitchStats.outs).toBe(3);
+    expect(e.pitchStats.simmedOuts).toBe(3);
+    expect(finish(e).pitching.badges).toEqual([]);
+  });
+
+  it('a run allowed: no Shutout', () => {
+    const e = make({ seed: 3 });
+    e.start();
+    e.game.score.top = 1;
+    e.pitchStats.pitches = 20; e.pitchStats.outs = 3;
+    expect(finish(e).pitching.badges).toEqual([]);
+  });
+});

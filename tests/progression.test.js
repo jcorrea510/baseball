@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Progress, DEFAULT_SAVE, UNLOCKS } from '../src/game/progression.js';
 import { CONFIG } from '../src/config.js';
+import { inningsText, eraText } from '../src/game/progression.js';
 
 const memStore = () => { const m = {}; return { get: (k) => (k in m ? m[k] : null), set: (k, v) => { m[k] = v; }, m }; };
 const stats = (o = {}) => ({ pa: 4, ab: 4, hits: 2, hr: 1, rbi: 2, perfect: 3, swings: 10, contacts: 7, strikeouts: 1, walks: 0, maxEV: 104, longestHR: 401, ...o });
@@ -173,5 +174,33 @@ describe('first visit', () => {
     expect(new Progress(store).fresh).toBe(true);
     new Progress(store).save();
     expect(new Progress(store).fresh).toBe(false);
+  });
+});
+
+describe('career pitching', () => {
+  it('an old save without career.pitching loads with zeros', () => {
+    const store = memStore();
+    store.set(CONFIG.storageKey, JSON.stringify({ career: { hits: 7 } }));
+    const c = new Progress(store).data.career;
+    expect(c.pitching).toEqual({ games: 0, outs: 0, h: 0, r: 0, er: 0, bb: 0, k: 0, hr: 0, pitches: 0, bestK: 0, shutouts: 0 });
+  });
+
+  it('adds a game of pitching (Quick / League), keeps the best strikeout game and counts shutouts', () => {
+    const p = new Progress(memStore());
+    const pitching = (o) => ({ outs: 18, h: 3, r: 0, er: 0, bb: 1, k: 7, hr: 0, pitches: 80, simmedOuts: 0, badges: ['shutout'], ...o });
+    p.recordGame(quickResult({ pitching: pitching() }));
+    p.recordGame(quickResult({ season: true, pitching: pitching({ k: 4, r: 2, er: 1, badges: [] }) }));
+    p.recordGame({ mode: 'derby', difficulty: 'pro', stats: stats(), derby: { hr: 1, bestStreak: 1 }, pitching: pitching() });
+    expect(p.data.career.pitching).toMatchObject({ games: 2, outs: 36, h: 6, r: 2, er: 1, bb: 2, k: 11, pitches: 160, bestK: 7, shutouts: 1 });
+  });
+
+  it('innings use thirds and ERA is earned runs x 9 per nine innings', () => {
+    expect(inningsText(7)).toBe('2.1');
+    expect(inningsText(8)).toBe('2.2');
+    expect(inningsText(9)).toBe('3.0');
+    expect(inningsText(0)).toBe('0.0');
+    expect(eraText(3, 27)).toBe('3.00');
+    expect(eraText(1, 7)).toBe('3.86');
+    expect(eraText(0, 0)).toBe('-.--');
   });
 });

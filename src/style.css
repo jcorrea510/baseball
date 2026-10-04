@@ -946,3 +946,8 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
   .pitchbar[data-n="6"] .pm, .pitchbar[data-n="7"] .pm, .pitchbar[data-n="8"] .pm { font-size: 17px; }
   .pitchbar[data-n="6"] .pm::after, .pitchbar[data-n="7"] .pm::after, .pitchbar[data-n="8"] .pm::after { content: none; }
 }
+
+/* the pitching line on the results screen: six numbers, always one row */
+.over .statgrid.pitchgrid { grid-template-columns: repeat(6, 1fr); }
+@media (max-height: 520px) and (min-aspect-ratio: 3/2) { .over .statgrid.pitchgrid { grid-template-columns: repeat(6, 1fr); } }
+@media (max-width: 400px) { .over .statgrid.pitchgrid { gap: 4px; } .over .statgrid.pitchgrid .stat { padding: 8px 2px 6px; } .over .statgrid.pitchgrid .stat .v { font-size: 22px; } }
