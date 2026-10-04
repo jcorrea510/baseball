@@ -385,6 +385,23 @@ export const CONFIG = {
     reach: { x: 1.9, yMin: 0.85, yMax: 4.5 },
   },
 
+  // The pitching picture (render/pitchAim.js): the target dot, the faint arc of the chosen pitch's break, the shrinking timing ring and
+  // the grade flash. All of it is picture only.
+  pitchAim: {
+    dot: 0.42, // ft: radius of the target dot (the ring shrinks to exactly this size when you should tap)
+    dotColor: 0xffffff, dotOpacity: 0.5, rimColor: 0x0a1020, // the dot is a see-through disc with a ring round it and a dark outline
+    ringWidth: 0.12, // ft: how thick the timing ring is
+    ringColor: 0xffffff, ringOpacity: 0.95,
+    ringPerfect: 0xffd24a, // the ring turns this colour while a tap would be PERFECT
+    arcSteps: 14, arcFrom: 0.6, // the arc: this many points over the last 40% of the flight (from 60% of it onward)
+    arcColor: 0x7fd8ff, arcOpacity: 0.85, arcPointPx: 5,
+    flashTime: 1.1, // seconds the grade stays up
+    flashRise: 0.7, // ft the word floats up while it fades
+    flashSize: [2.6, 0.95], // ft: the word's width and height
+    colors: { perfect: '#ffd24a', good: '#7dffb0', ok: '#ffffff', wild: '#ff6a4a' }, // the word's colour per grade
+    fade: 0.12, // seconds to fade the dot in / out
+  },
+
   // The see-through bat you aim with (render/batAim.js) and how the cursor / keys / a finger move it
   batAim: {
     color: 0xffffff, opacity: 0.4, spotColor: 0xffe08a, spotOpacity: 0.95,

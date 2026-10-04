@@ -9,6 +9,11 @@ const share = (r) => clamp((r - 1) / 98, 0, 1);
 /** A rating mapped linearly onto [a, b] (rating 1 -> a, 99 -> b). */
 const mapRating = (r, [a, b]) => lerp(a, b, share(r));
 
+/** How much this pitcher's pitches break (share of normal) at a PERFECT tap and no fatigue: what the aim arc shows. */
+export function pitcherStuff(pitcher, cfg = CONFIG) {
+  return mapRating(pitcher.stf, cfg.pitching.stuff);
+}
+
 /**
  * How long the ring takes, and when it meets the dot (seconds). Harder pitches, worse Control and a tired arm shrink it faster.
  */

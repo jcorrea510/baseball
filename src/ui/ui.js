@@ -167,7 +167,6 @@ export class UI {
       <button class="ffbtn" data-a="fast" aria-pressed="false" title="Speed up (Space)">${icon('ff')}<span>Fast</span></button>
       <div class="pitchbar" aria-label="Pitches"></div>
       <button class="simbtn" data-a="sim" title="Sim this inning">${icon('ff')}<span>Sim</span></button>
-      <div class="pitchdot" aria-hidden="true"></div>
       <div class="acts"><button class="stealbtn" data-a="steal" aria-pressed="false" title="Steal (S)">${icon('go')}<span>Steal</span></button><button class="buntbtn" data-a="bunt" aria-pressed="false" title="Bunt (B)">${icon('bat')}<span>Bunt</span></button></div>
       <div class="practice panel collapsed">
         <button class="prhead" aria-label="Pitch settings">${icon('sliders')}<span>Pitch</span>${icon('chevDown', 'chev')}</button>
@@ -952,12 +951,6 @@ export class UI {
       this.q.pitchbar.innerHTML = o.pitches.map((p, i) => `<button data-type="${p.type}" tabindex="-1"><b>${i + 1}</b><span>${p.label}</span><small>${Math.round(p.mph)}</small></button>`).join('');
     }
     for (const b of this.q.pitchbar.children) b.classList.toggle('on', b.dataset.type === o.selected);
-  }
-  // the plain aim dot, in screen pixels over the game (null hides it)
-  setPitchDot(p) {
-    const d = this.hud.querySelector('.pitchdot');
-    d.classList.toggle('show', !!p);
-    if (p) { d.style.left = p.x.toFixed(1) + 'px'; d.style.top = p.y.toFixed(1) + 'px'; d.classList.toggle('lit', !!p.lit); }
   }
   // the Swing button shows (phones) while you are up
   setSwingButton(on) { this.q.swingBtn.classList.toggle('show', !!on); }

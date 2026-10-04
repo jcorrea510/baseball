@@ -20,6 +20,7 @@ import { PitchGuide } from './render/pitchGuide.js';
 import { pitchGuide } from './game/pitchGuide.js';
 import { LandingRing } from './render/landingRing.js';
 import { BatAim } from './render/batAim.js';
+import { PitchAim } from './render/pitchAim.js';
 import { landingSpot, landingRing } from './game/landing.js';
 import * as SEA from './game/season.js';
 import { runnerState, runnerProfile } from './game/runnerMotion.js';
@@ -173,6 +174,7 @@ export class App {
     this.landing = null; // where the ball in the air will come down (see onContact)
     this.landRing = new LandingRing(this.S.scene); // ...and the ring on the grass that shows it
     this.batAim = new BatAim(this.S.scene); // the see-through bat you aim with
+    this.pitchAim = new PitchAim(this.S.scene); // the dot, break arc, timing ring and grade word while you pitch
   }
 
   get settings() { return this.prog.settings; }
@@ -398,7 +400,7 @@ export class App {
     const toSeason = this.returnTo === 'season';
     this.gameToken++;
     this.engine = null; this.bot = null; this.paused = false; this.fast = false; this.slowMo = null; this.hitStop = 0;
-    this.simSummary = null; this.pitchSig = null; this.ui.setPitching(null); this.ui.setPitchDot(null); this.dotShown = false;
+    this.simSummary = null; this.pitchSig = null; this.ui.setPitching(null); this.pitchAim.hide();
     if (this.padShown) { this.padShown = false; this.ui.setBasePad(null); }
     this.ui.hideHud(); this.hideOverlays();
     this.cam.title = true;
@@ -564,7 +566,8 @@ export class App {
       const scored = s.runs > 0;
       if (scored) { audio.crowdGroan(0.5); } else audio.crowdSwell(0.3, 1.5);
     });
-    e.on('pitchGrade', ({ grade }) => ui.hint(grade.toUpperCase(), 900)); // (how well the ring was tapped)
+    e.on('ringTap', ({ grade }) => this.pitchAim.flash(grade, e.ring && e.ring.aim)); // (how well the ring was tapped)
+    e.on('pitchGrade', ({ grade }) => { if (!e.ring || !e.ring.tapped) this.pitchAim.flash(grade, e.ring && e.ring.aim); }); // (no tap at all: WILD)
     e.on('simDone', (s) => {
       // the half you simmed: its highlights, with Skip (the engine is already on to your turn at bat, held at Ready)
       ui.hideBanner(); ui.hideCallout();
@@ -1184,24 +1187,17 @@ export class App {
     }
   }
 
-  // The plain aim dot over the plate (a screen position from the engine's aim point), after the camera has moved.
-  updatePitchDot(e) {
-    const show = e && !this.paused && !this.ui.current && this.isPitching(e) && e.phase !== 'pitch';
-    if (!show) { if (this.dotShown) { this.dotShown = false; this.ui.setPitchDot(null); } return; }
-    const a = e.phase === 'delivery' && e.ring ? e.ring.aim : e.pitchAim;
-    const cam = this.S.camera;
-    cam.updateMatrixWorld();
-    const v = new THREE.Vector3(a.x, a.y, CONFIG.pitch.contactZ).project(cam);
-    const r = this.canvas.getBoundingClientRect();
-    this.dotShown = true;
-    this.ui.setPitchDot({ x: (v.x * 0.5 + 0.5) * r.width, y: (-v.y * 0.5 + 0.5) * r.height, lit: e.phase === 'delivery' });
+  // The aim dot, break arc, timing ring and grade word (render/pitchAim.js) while you pitch.
+  updatePitchDot(e, dt) {
+    const show = !!(e && !this.paused && !this.ui.current && !e.simming && this.isPitching(e) && this.screen === 'game');
+    this.pitchAim.update(e || {}, dt, show);
   }
 
   // Sim: the computer pitches the rest of this half (nothing is drawn; the highlights come when it is over).
   pressSim() {
     const e = this.engine;
     if (!e || this.paused || this.bot || !e.pitching || e.simming || e.phase === 'delivery') return;
-    if (e.simHalf()) { this.audio.uiClick(); this.ui.setPitchDot(null); this.dotShown = false; }
+    if (e.simHalf()) { this.audio.uiClick(); this.pitchAim.hide(); }
   }
 
   hideSimSummary() {
@@ -1441,7 +1437,7 @@ export class App {
     if (this.pitchMarker.visible) {
       this.markerT += realDt;
     }
-    this.updatePitchDot(e);
+    this.updatePitchDot(e, realDt);
     if (render) this.S.renderer.render(this.S.scene, cam);
     window.__frames = (window.__frames || 0) + 1;
   }
