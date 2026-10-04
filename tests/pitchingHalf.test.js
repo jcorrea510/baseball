@@ -4,6 +4,7 @@ import { describe, it, expect } from 'vitest';
 import { CONFIG } from '../src/config.js';
 import { Engine } from '../src/game/engine.js';
 import { auditPlan } from '../src/game/playAudit.js';
+import { staminaMax } from '../src/game/pitching.js';
 
 const DT = 1 / 120;
 const OPTS = { mode: 'quick', seed: 11, cpuHalf: 'pitch' };
@@ -505,4 +506,71 @@ describe('Sim', () => {
     }
     expect(tested).toBe(1);
   }, 120000);
+});
+
+describe('stamina', () => {
+  const firstPitch = (e) => {
+    let out = null, ring = null;
+    e.on('release', ({ pitch }) => { if (!out) out = pitch; });
+    e.selectPitch('fastball');
+    e.setPitchAim(0.3, 2.3);
+    e.startDelivery();
+    ring = e.ring;
+    const target = e.ring.tStart + e.ring.hitAt;
+    while (e.time + DT < target) e.update(DT);
+    e.ringTap(target - e.time);
+    until(e, () => out, 10);
+    return { pitch: out, ring };
+  };
+
+  it('every pitch takes stamina and says so', () => {
+    const e = make({ seed: 21 });
+    e.start();
+    const seen = [];
+    e.on('stamina', (s) => seen.push(s));
+    const max = e.mound.max, start = e.mound.left;
+    expect(start).toBe(max);
+    for (let k = 0; k < 4; k++) pitchOne(e, { type: 'fastball' });
+    expect(e.mound.pitches).toBe(4);
+    expect(seen.length).toBe(4);
+    expect(e.mound.left).toBeLessThan(max - 3.9);
+    expect(e.mound.left).toBeGreaterThan(max - 4 * 1.6);
+    expect(seen[3]).toEqual({ left: e.mound.left, max });
+  });
+
+  it('a tired starter throws slower and the ring shrinks faster', () => {
+    const fresh = make({ seed: 9 }); fresh.start();
+    const tired = make({ seed: 9 }); tired.start();
+    tired.mound.left = 90 >= tired.mound.max ? 0 : tired.mound.max - 90; // (as if ninety pitches in)
+    tired.mound.left = Math.max(0, tired.mound.left);
+    const a = firstPitch(fresh), b = firstPitch(tired);
+    expect(b.pitch.speedMph).toBeLessThan(a.pitch.speedMph);
+    expect(b.ring.time).toBeLessThan(a.ring.time);
+  });
+
+  it('a reliever has a small tank and the tank is never negative', () => {
+    const e = make({ seed: 3 });
+    const rp = e.staff.find((p) => p.role === 'RP');
+    expect(rp).toBeTruthy();
+    const max = staminaMax(rp, CONFIG);
+    expect(max).toBeGreaterThanOrEqual(20);
+    expect(max).toBeLessThanOrEqual(35);
+    e.start();
+    e.mound.left = 0.3;
+    pitchOne(e);
+    expect(e.mound.left).toBe(0);
+  });
+
+  it('stamina is saved and restored by resume', () => {
+    const e1 = make({ seed: 31 });
+    let last = null;
+    e1.on('checkpoint', (st) => { last = st; });
+    e1.start();
+    for (let k = 0; k < 5; k++) pitchOne(e1, { type: 'fastball', aim: { x: 0.4, y: 2.2 }, errMs: 20 });
+    const e2 = make({ seed: 31 });
+    e2.resume(JSON.parse(JSON.stringify(last)));
+    expect(e2.mound.left).toBe(e1.mound.left);
+    expect(e2.mound.max).toBe(e1.mound.max);
+    expect(e2.mound.left).toBeLessThan(e2.mound.max);
+  });
 });

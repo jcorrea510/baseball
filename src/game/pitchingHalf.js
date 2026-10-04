@@ -12,7 +12,7 @@ import { clamp } from '../util/math.js';
 import { buildPitch, isStrike, hitsBatter } from '../physics/pitch.js';
 import { alignDefense, tapOptions } from './fielding.js';
 import * as rules from './rules.js';
-import { ringTiming, throwPitch, gradeTap, fatigue } from './pitching.js';
+import { ringTiming, throwPitch, gradeTap, fatigue, pitchCost } from './pitching.js';
 import { decideSwing } from './cpuBatter.js';
 import { chooseSend, stealDecision } from './cpuRunner.js';
 import { choosePitch } from './pitcherAI.js';
@@ -211,6 +211,9 @@ const methods = {
     };
     this.swing = null;
     m.pitches++;
+    // the pitch costs stamina (more with a runner in scoring position, at three balls, for the heater)
+    m.left = Math.max(0, m.left - pitchCost({ type: th.type, balls: this.count.balls, risp: !!(this.bases[1] || this.bases[2]) }, cfg));
+    this.emit('stamina', { left: m.left, max: m.max });
     this.pitchStats.pitches++; this.pitchLine(pitcher.id).pitches++;
     // runners who broke during the delivery: the catcher's exchange and the throw are rolled now (engine.beginSteal)
     if (this.steal && !this.steal.plan) this.beginSteal(this.steal.bases, this.steal.start);
