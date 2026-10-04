@@ -11,7 +11,7 @@ const report = [];
 for (const sz of sizes) {
   const [w, h] = sz.split('x').map(Number);
   const touch = w < 900;
-  for (const [mode, state] of [['quick', 'pitch'], ['derby', 'pitch'], ['practice', 'pitch'], ['quick', 'play'], ['practice', 'play'], ['quick', 'field'], ['quick', 'field5'], ['quick', 'fieldplay']]) {
+  for (const [mode, state] of (process.env.ONLY ? [['quick', process.env.ONLY]] : [['quick', 'pitch'], ['derby', 'pitch'], ['practice', 'pitch'], ['quick', 'play'], ['practice', 'play'], ['quick', 'field'], ['quick', 'field5'], ['quick', 'fieldplay'], ['quick', 'fieldbull']])) {
     const ctx = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: touch, isMobile: touch });
     const page = await ctx.newPage();
     await page.goto(`${process.argv[3] || 'http://localhost:5173/'}?mode=${mode}&seed=4`, { waitUntil: 'load' });
@@ -35,14 +35,15 @@ for (const sz of sizes) {
       if (!state.startsWith('field')) ui.setPitching(null); // (batting states: the pitching controls are away)
       if (state.startsWith('field')) {
         const all = [['fastball', 'Fastball', 94], ['sinker', 'Sinker', 92], ['slider', 'Slider', 86], ['curveball', 'Curveball', 79], ['changeup', 'Changeup', 85]];
-        ui.setPitching({ open: state !== 'fieldplay', selected: 'slider', canSim: true, canBullpen: false, pitches: all.slice(0, state === 'field5' ? 5 : 4).map(([type, label, mph]) => ({ type, label, mph })) });
+        ui.setPitching({ open: state !== 'fieldplay', selected: 'slider', canSim: true, canBullpen: true, pitches: all.slice(0, state === 'field5' ? 5 : 4).map(([type, label, mph]) => ({ type, label, mph })) });
         ui.setPitcherTag({ name: 'R. Castellanos-Ortiz', pitches: 47, stamina: state === 'field5' ? 0.1 : 0.32 });
         ui.setPitchCount('2-1');
+        if (state === 'fieldbull') ui.setFast(false, false), ui.q.callout.classList.remove('show'), ui.showBullpen([{ id: 'a', name: 'A. Hollis-Castellanos', hand: 'L', rating: 61, pitches: ['Fastball', 'Curveball', 'Slider'], stamina: 1 }, { id: 'b', name: 'T. Okafor', hand: 'R', rating: 55, pitches: ['Fastball', 'Changeup'], stamina: 1 }, { id: 'c', name: 'D. Reyes', hand: 'R', rating: 48, pitches: ['Fastball', 'Slider'], stamina: 1 }]); // (the Bullpen panel open)
         ui.setBasePad(null); // (you never send the computer's runners)
         if (state === 'fieldplay') ui.setFast(true, false);
       }
       // overlap check between visible HUD boxes
-      const sel = ['.lineup', '.pitchinfo', '.callout', '.meter', '.batterup', '.bugwrap', '.derbybox', '.practbox', '.practice', '.hudbtns', '.acts', '.swingbtn', '.basepad', '.ffbtn', '.pitchbar', '.pitchside'];
+      const sel = ['.lineup', '.pitchinfo', '.callout', '.meter', '.batterup', '.bugwrap', '.derbybox', '.practbox', '.practice', '.hudbtns', '.acts', '.swingbtn', '.basepad', '.ffbtn', '.pitchbar', '.pitchside', '.bullpanel'];
       const boxes = [];
       for (const s of sel) { const e = document.querySelector('.hud ' + s); if (!e) continue; const cs = getComputedStyle(e); if (cs.display === 'none' || +cs.opacity === 0) continue; const b = e.getBoundingClientRect(); if (b.width && b.height) boxes.push({ s, b }); }
       const hits = [];

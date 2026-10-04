@@ -167,6 +167,7 @@ export class UI {
       </div>
       <button class="ffbtn" data-a="fast" aria-pressed="false" title="Speed up (Space)">${icon('ff')}<span>Fast</span></button>
       <div class="pitchbar" aria-label="Pitches"></div>
+      <div class="bullback" data-bb></div><div class="bullpanel" role="dialog" aria-label="Bullpen"><div class="bphead">${icon('swap')}<span>Bullpen</span></div><div class="bplist"></div></div>
       <div class="pitchside"><button class="btn small ghost bullbtn" data-a="bullpen" disabled title="Bullpen">${icon('swap')}<span>Bullpen</span></button><button class="btn small ghost simbtn" data-a="sim" title="Sim this inning">${icon('ff')}<span>Sim</span></button></div>
       <div class="acts"><button class="stealbtn" data-a="steal" aria-pressed="false" title="Steal (S)">${icon('go')}<span>Steal</span></button><button class="buntbtn" data-a="bunt" aria-pressed="false" title="Bunt (B)">${icon('bat')}<span>Bunt</span></button></div>
       <div class="practice panel collapsed">
@@ -196,7 +197,11 @@ export class UI {
       if (b) { b.classList.add('hit'); setTimeout(() => b.classList.remove('hit'), 220); this.act('base', { base: +b.dataset.base }); }
     });
     hud.addEventListener('click', (e) => {
+      const row = e.target.closest('.bprow[data-id]');
+      if (row) { this.closeBullpen(); this.act('bullpenPick', { id: row.dataset.id }); return; }
+      if (e.target.closest('[data-bb]')) { this.closeBullpen(); return; }
       const b = e.target.closest('[data-a]');
+      if (b && b.dataset.a === 'bullpen' && this.bullpenOpen) { this.closeBullpen(); return; } // (the button again closes it)
       if (b) this.act(b.dataset.a);
     });
     // the Swing button (phones): it swings the moment it is touched (timed from the touch, like a key)
@@ -225,7 +230,7 @@ export class UI {
     // your pitch choice (labels only): a tap picks it; the buttons never count as a click on the field
     this.q.pitchbar = $(hud, '.pitchbar');
     this.q.pitchbar.addEventListener('click', (e) => { const b = e.target.closest('button[data-type]'); if (b) this.act('pitchSel', { type: b.dataset.type }); });
-    for (const el of hud.querySelectorAll('.practice, .hudbtns, .batterup, .acts, .lineup, .ffbtn, .pitchbar, .pitchside')) el.addEventListener('pointerdown', (e) => e.stopPropagation());
+    for (const el of hud.querySelectorAll('.practice, .hudbtns, .batterup, .acts, .lineup, .ffbtn, .pitchbar, .pitchside, .bullpanel, .bullback')) el.addEventListener('pointerdown', (e) => e.stopPropagation());
 
     // ---------------- toast + rotate hint
     this.toastEl = h('div', 'toast');
@@ -955,9 +960,10 @@ export class UI {
     this.hud.classList.toggle('pitching', !!o); // (you are in the field: Bunt / Steal / Swing are gone)
     const on = !!(o && o.open);
     this.hud.classList.toggle('ctl', on);
-    if (!on) { this.hud.classList.remove('canSim'); if (!o) this.pitchKey = null; return; }
+    if (!on) { this.hud.classList.remove('canSim'); this.closeBullpen(); if (!o) this.pitchKey = null; return; }
     this.hud.classList.toggle('canSim', !!o.canSim);
     this.hud.querySelector('.bullbtn').disabled = !o.canBullpen;
+    if (!o.canBullpen) this.closeBullpen();
     const key = o.pitches.map((p) => p.type).join(',');
     if (key !== this.pitchKey) {
       this.pitchKey = key;
@@ -966,6 +972,16 @@ export class UI {
     }
     for (const b of this.q.pitchbar.children) b.classList.toggle('on', b.dataset.type === o.selected);
   }
+  // The bullpen panel: list = [{ id, name, hand, pitches: [labels], rating, stamina (0..1) }], one row each - a tap on a row brings him
+  // in (act 'bullpenPick'). Labels only. An empty list closes it.
+  showBullpen(list) {
+    if (!list || !list.length) { this.closeBullpen(); return; }
+    const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    this.hud.querySelector('.bplist').innerHTML = list.map((p) => `<button class="bprow" data-id="${esc(p.id)}" tabindex="-1"><span class="bpr">${Math.round(p.rating)}</span><span class="bpn">${esc(p.name)}<em>${esc(p.hand || '')}</em></span><span class="bpp">${p.pitches.map(esc).join(' · ')}</span><span class="stam"><i style="width:${Math.round(Math.max(0, Math.min(1, p.stamina)) * 100)}%"></i></span></button>`).join('');
+    this.hud.classList.add('bullopen');
+  }
+  closeBullpen() { if (this.hud) this.hud.classList.remove('bullopen'); }
+  get bullpenOpen() { return !!this.hud && this.hud.classList.contains('bullopen'); }
   // Your pitcher's tag by the score box: o = null hides it, else { name, pitches (thrown so far), stamina (0..1) } - the bar goes green,
   // amber under .4 and red under .15.
   setPitcherTag(o) {

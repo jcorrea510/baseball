@@ -263,6 +263,8 @@ export class App {
       case 'fullscreen': this.toggleFullscreen(); break;
       case 'skipSummary': if (this.engine) this.engine.skipSummary(); this.hideSimSummary(); break;
       case 'sim': this.pressSim(); break;
+      case 'bullpen': this.openBullpen(); break;
+      case 'bullpenPick': this.pickReliever(d.id); break;
       case 'pitchSel': if (this.engine && this.engine.selectPitch(d.type)) this.audio.uiClick(); break;
       case 'batterReady': if (this.engine) this.engine.batterReady(); break;
       case 'bunt': if (this.engine) this.engine.setBunt(!this.engine.buntStance); break;
@@ -1233,7 +1235,8 @@ export class App {
     const open = active && !this.simSummary;
     const g = e.game, m = e.mound;
     const cnt = inField && g ? `${g.balls}-${g.strikes}` : '';
-    const sig = `${inField}|${open}|${open && e.phase !== 'delivery'}|${e.pitchType}|${m ? m.pitcher.id : ''}|${cnt}|${open && e.phase === 'aim'}|${m ? m.pitches + ':' + (m.max > 0 ? Math.round(100 * m.left / m.max) : 100) : ''}`;
+    const canBull = open && e.phase === 'aim' && e.bullpenOptions().length > 0;
+    const sig = `${canBull}|${inField}|${open}|${open && e.phase !== 'delivery'}|${e.pitchType}|${m ? m.pitcher.id : ''}|${cnt}|${open && e.phase === 'aim'}|${m ? m.pitches + ':' + (m.max > 0 ? Math.round(100 * m.left / m.max) : 100) : ''}`;
     if (sig !== this.pitchSig) {
       this.pitchSig = sig;
       if (!inField) { this.ui.pinPitchInfo(null); this.ui.setPitching(null); this.ui.setPitcherTag(null); this.ui.setPitchCount(''); }
@@ -1244,7 +1247,7 @@ export class App {
         const sel = p.pitches.includes(e.pitchType) ? e.pitchType : p.pitches[0];
         if (open && e.phase === 'aim') this.ui.pinPitchInfo({ type: LABEL[sel] || sel, mph: pitchTopMph(p, sel, CONFIG) }); else this.ui.pinPitchInfo(null);
         this.ui.setPitching({
-          open, selected: sel, canSim: open && e.phase !== 'delivery', canBullpen: false, // (Bullpen: Task 15)
+          open, selected: sel, canSim: open && e.phase !== 'delivery', canBullpen: canBull,
           pitches: p.pitches.map((t) => ({ type: t, label: LABEL[t] || t, mph: pitchTopMph(p, t, CONFIG) })),
         });
       }
@@ -1262,6 +1265,22 @@ export class App {
     const e = this.engine;
     if (!e || this.paused || this.bot || !e.pitching || e.simming || e.phase === 'delivery') return;
     if (e.simHalf()) { this.audio.uiClick(); this.audio.crowdSwell(0.15, 1.5); this.pitchAim.hide(); } // (one soft murmur as the Sim starts)
+  }
+
+  // Bullpen: the panel of relievers you can still bring in (labels only), or one tap on a row: he is on the mound at once.
+  openBullpen() {
+    const e = this.engine;
+    if (!e || this.paused || this.bot || !e.pitching || e.simming || e.phase !== 'aim') return;
+    this.audio.uiClick();
+    this.ui.showBullpen(e.bullpenOptions().map(({ pitcher: p, stamina }) => ({
+      id: p.id, name: p.short || p.name, hand: p.hand, rating: (p.vel + p.ctl + p.stf + p.sta) / 4,
+      pitches: p.pitches.map((t) => LABEL[t] || t), stamina: stamina > 0 ? 1 : 0, // (every reliever is fresh: a full bar)
+    })));
+  }
+
+  pickReliever(id) {
+    const e = this.engine;
+    if (e && !this.paused && !this.bot && e.bullpen(id)) { this.audio.uiClick(); this.pitchSig = null; }
   }
 
   hideSimSummary() {

@@ -883,3 +883,21 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
 @media (orientation: portrait) { .hud.pitching .ffbtn { bottom: calc(var(--safe-b) + 126px); } }
 @media (max-width: 400px) { .pitchinfo { padding: 0 9px; gap: 6px; letter-spacing: .04em; font-size: 11px; } .pitchinfo .mph, .pitchinfo .cnt { font-size: 17px; } }
 @media (max-width: 400px) and (orientation: portrait) { .pitchbar button { min-width: 62px; padding: 0 5px 3px; } .pitchbar .pn { font-size: 11px; letter-spacing: .03em; } }
+
+/* the bullpen panel: a small card in the middle of the screen over a dim catch-all (a tap outside closes it); the pitch buttons step aside */
+.bullback, .bullpanel { display: none; }
+.hud.bullopen .bullback { display: block; position: absolute; inset: 0; z-index: 30; pointer-events: auto; background: rgba(4, 10, 24, .45); }
+.hud.bullopen .bullpanel { display: flex; flex-direction: column; gap: 8px; position: absolute; z-index: 31; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(340px, calc(100vw - 2 * (var(--safe-l) + 24px))); max-height: min(70vh, 360px); padding: 12px; border-radius: var(--r-lg, 18px); background: var(--glass); border: 1px solid var(--line-hi); box-shadow: 0 0 0 3px rgba(4, 10, 24, .7), 0 18px 40px rgba(0, 0, 0, .6); pointer-events: auto; }
+.hud.pitching.ctl.bullopen .pitchbar { display: none; }
+.bphead { display: flex; align-items: center; gap: 8px; font: 400 22px/1 var(--display); color: #fff; text-shadow: var(--outline-blue); letter-spacing: .04em; }
+.bphead svg.i { width: 22px; height: 22px; }
+.bplist { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+.bprow { appearance: none; display: grid; grid-template-columns: 44px 1fr; grid-template-areas: "r n" "r p" "r s"; column-gap: 12px; row-gap: 4px; align-items: center; text-align: left; padding: 8px 12px 9px 8px; border: 0; border-radius: 14px; color: var(--ink); cursor: pointer; touch-action: manipulation; background: linear-gradient(180deg, #3566b6, #234c92 55%, #1b3d7a); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .28), 0 4px 0 var(--edge); transition: transform .08s var(--ease), box-shadow .08s; }
+.bprow:active { transform: translateY(3px); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .2), 0 1px 0 var(--edge); }
+.bprow .bpr { grid-area: r; display: flex; align-items: center; justify-content: center; height: 44px; border-radius: 50%; font: 400 22px/1 var(--display); color: #fff; text-shadow: var(--outline); background: linear-gradient(180deg, var(--gold-hi), var(--gold) 55%, var(--gold-lo)); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .5); font-variant-numeric: tabular-nums; }
+.bprow .bpn { grid-area: n; font: 800 15px/1 var(--cond); letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bprow .bpn em { font-style: normal; margin-left: 8px; color: var(--ink-3); font-size: 12px; }
+.bprow .bpp { grid-area: p; font: 800 12px/1 var(--cond); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bprow .stam { grid-area: s; height: 8px; border-radius: 4px; background: rgba(255, 255, 255, .14); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .5); overflow: hidden; }
+.bprow .stam i { display: block; height: 100%; border-radius: 4px; background: linear-gradient(180deg, #7be898, var(--green)); }
+@media (max-height: 520px) and (orientation: landscape), (max-width: 1180px) and (orientation: landscape) { .hud.bullopen .bullpanel { left: auto; right: calc(var(--safe-r) + 16px); top: 64px; transform: none; width: 280px; padding: 8px; gap: 5px; max-height: calc(100% - 64px - 66px - var(--safe-b)); } .bprow { padding: 5px 10px 6px 6px; grid-template-columns: 34px 1fr; row-gap: 3px; } .bprow .bpr { height: 34px; font-size: 18px; } .bphead { font-size: 18px; } .bplist { gap: 5px; } }

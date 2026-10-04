@@ -574,3 +574,113 @@ describe('stamina', () => {
     expect(e2.mound.left).toBeLessThan(e2.mound.max);
   });
 });
+
+describe('bullpen', () => {
+  const rps = (e) => e.staff.filter((p) => p.role === 'RP');
+
+  it('offers only unused relievers; a change keeps the count, resets the tank and says so', () => {
+    const e = make({ seed: 5 });
+    e.start();
+    expect(e.bullpenOptions().map((o) => o.pitcher.id)).toEqual(rps(e).map((p) => p.id)); // (never a starter)
+    e.game.balls = 2; e.game.strikes = 1;
+    const seen = [];
+    e.on('pitchingChange', (c) => seen.push(c));
+    const starter = e.mound.pitcher, rp = rps(e)[0];
+    e.mound.left = 5; e.mound.pitches = 80;
+    expect(e.bullpen(rp.id)).toBe(true);
+    expect(seen).toEqual([{ from: starter, to: rp }]);
+    expect(e.count).toEqual({ balls: 2, strikes: 1 });
+    expect(e.myPitcher).toBe(rp);
+    expect(e.mound.left).toBe(staminaMax(rp, CONFIG));
+    expect(e.mound.max).toBe(staminaMax(rp, CONFIG));
+    expect(e.mound.pitches).toBe(0);
+    expect(e.mound.used).toContain(starter.id);
+    expect(e.phase).toBe('aim');
+    expect(rp.pitches).toContain(e.pitchType); // (the selected pitch is one he throws)
+  });
+
+  it('a removed pitcher never comes back; starters and unknown ids are refused', () => {
+    const e = make({ seed: 5 });
+    e.start();
+    const [a, b] = rps(e), starter = e.mound.pitcher;
+    const other = e.staff.find((p) => p.role === 'SP' && p !== starter);
+    expect(e.bullpen(other.id)).toBe(false);
+    expect(e.bullpen('nobody')).toBe(false);
+    expect(e.bullpen(a.id)).toBe(true);
+    expect(e.bullpen(a.id)).toBe(false); // (he is on the mound)
+    expect(e.bullpen(starter.id)).toBe(false);
+    expect(e.bullpenOptions().map((o) => o.pitcher.id)).toEqual([b.id]);
+    expect(e.bullpen(b.id)).toBe(true);
+    expect(e.bullpen(a.id)).toBe(false); // (used)
+    expect(e.bullpenOptions()).toEqual([]);
+    expect(e.bullpen(starter.id)).toBe(false);
+  });
+
+  it('is refused in delivery, in the air, in a play and while simming', () => {
+    const e = make({ seed: 6 });
+    e.start();
+    const rp = rps(e)[0];
+    e.setPitchAim(0.4, 2.2);
+    e.startDelivery();
+    expect(e.bullpen(rp.id)).toBe(false);
+    until(e, () => e.phase === 'pitch', 10);
+    expect(e.bullpen(rp.id)).toBe(false);
+    until(e, () => e.phase === 'aim' || e.phase === 'play' || e.phase === 'result', 20);
+    if (e.phase !== 'aim') { expect(e.bullpen(rp.id)).toBe(false); until(e, () => e.phase === 'aim' || e.over, 30); }
+    expect(e.mound.pitcher).toBe(e.staff[0]);
+    const s = make({ seed: 6 });
+    s.start();
+    s.simHalf();
+    expect(s.bullpen(rps(s)[0].id)).toBe(false);
+  });
+
+  it('is refused when you are batting', () => {
+    const e = make({ seed: 6, mode: 'derby' });
+    expect(e.bullpenOptions()).toEqual([]);
+    expect(e.bullpen(rps(e)[0].id)).toBe(false);
+  });
+
+  it('Sim pulls a tired starter only for an unused reliever', () => {
+    const e = make({ seed: 8 });
+    e.start();
+    const starter = e.mound.pitcher, [a, b] = rps(e);
+    e.mound.left = 0.5; // (nearly spent)
+    e.simHalf();
+    const changes = [];
+    e.on('pitchingChange', (c) => changes.push(c));
+    for (let i = 0; i < 400 && e.simming && !e.over; i++) e.simStep(3);
+    expect(changes.length).toBeGreaterThanOrEqual(1);
+    expect(changes[0].from).toBe(starter);
+    expect(changes[0].to).toBe(a);
+    for (const c of changes) expect(c.to.role).toBe('RP');
+    expect(new Set(changes.map((c) => c.to.id)).size).toBe(changes.length); // (nobody twice)
+    expect(changes.length).toBeLessThanOrEqual(2);
+    void b;
+  });
+
+  it('Sim with no reliever left keeps the tired pitcher on', () => {
+    const e = make({ seed: 8 });
+    e.start();
+    e.mound.used = rps(e).map((p) => p.id);
+    e.mound.left = 0.5;
+    const starter = e.mound.pitcher;
+    e.simHalf();
+    for (let i = 0; i < 400 && e.simming && !e.over; i++) e.simStep(3);
+    expect(e.mound.pitcher).toBe(starter);
+  });
+
+  it('who is on the mound and who was used survives a save', () => {
+    const e1 = make({ seed: 12 });
+    let last = null;
+    e1.on('checkpoint', (st) => { last = st; });
+    e1.start();
+    const rp = rps(e1)[0], starter = e1.mound.pitcher;
+    expect(e1.bullpen(rp.id)).toBe(true);
+    const e2 = make({ seed: 12 });
+    e2.resume(JSON.parse(JSON.stringify(last)));
+    expect(e2.mound.pitcher.id).toBe(rp.id);
+    expect(e2.mound.used).toEqual([starter.id]);
+    expect(e2.bullpen(starter.id)).toBe(false);
+    expect(e2.bullpenOptions().map((o) => o.pitcher.id)).not.toContain(rp.id);
+  });
+});

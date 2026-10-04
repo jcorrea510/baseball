@@ -12,7 +12,7 @@ import { clamp } from '../util/math.js';
 import { buildPitch, isStrike, hitsBatter } from '../physics/pitch.js';
 import { alignDefense, tapOptions } from './fielding.js';
 import * as rules from './rules.js';
-import { ringTiming, throwPitch, gradeTap, fatigue, pitchCost } from './pitching.js';
+import { ringTiming, throwPitch, gradeTap, fatigue, pitchCost, staminaMax } from './pitching.js';
 import { decideSwing } from './cpuBatter.js';
 import { chooseSend, stealDecision } from './cpuRunner.js';
 import { choosePitch } from './pitcherAI.js';
@@ -153,6 +153,40 @@ const methods = {
     return true;
   },
 
+  // ------------------------------------------------------------------ the bullpen
+  // The relievers you can still bring in: on the staff, never used this game and not on the mound ([{ pitcher, stamina }], stamina =
+  // his full tank). Starters are never offered. Empty outside your pitching half.
+  bullpenOptions() {
+    if (!this.pitching || !this.mound) return [];
+    const m = this.mound;
+    return this.staff
+      .filter((p) => p.role === 'RP' && p.id !== m.pitcher.id && !m.used.includes(p.id))
+      .map((p) => ({ pitcher: p, stamina: staminaMax(p, this.cfg) }));
+  },
+
+  // Bring in a reliever (by id) at once: only on the aiming screen (between pitches, the count stays), not while simming. He starts
+  // with a full tank and no pitches; the man he replaces joins `mound.used` and never comes back. True when done.
+  bullpen(id, { auto = false } = {}) {
+    if (!this.pitching || this.over || this.phase !== 'aim' || (this.simming && !auto)) return false;
+    const opt = this.bullpenOptions().find((o) => o.pitcher.id === id);
+    if (!opt) return false;
+    const m = this.mound, from = m.pitcher, to = opt.pitcher;
+    m.used = [...m.used, from.id];
+    this.mound = { pitcher: to, left: opt.stamina, max: opt.stamina, pitches: 0, used: m.used, recent: [] };
+    if (!to.pitches.includes(this.pitchType)) this.pitchType = to.pitches[0];
+    this.emit('pitchingChange', { from, to });
+    this.checkpoint();
+    return true;
+  },
+
+  // Sim / the auto pitcher: a pitcher nearly spent gives way to the next unused reliever, at the start of a plate appearance.
+  autoRelief() {
+    const m = this.mound, c = this.count;
+    if (c.balls || c.strikes || m.max <= 0 || m.left / m.max >= this.cfg.pitching.sim.pullAt) return;
+    const next = this.bullpenOptions()[0];
+    if (next) this.bullpen(next.pitcher.id, { auto: true });
+  },
+
   // How tired your pitcher is (0 fresh .. 1 spent).
   fatigueF() {
     return fatigue(this.mound.left, this.mound.max, this.cfg);
@@ -173,6 +207,7 @@ const methods = {
   // The computer pitching for you: a pitch from your pitcher's arsenal aimed at the level's locations, and a ring grade drawn from
   // `pitching.sim.grades` (the tap's error drawn inside that grade's window, early or late at random).
   autoPitch() {
+    this.autoRelief();
     const pitcher = this.mound.pitcher, P = this.cfg.pitching, W = P.ring;
     const last = this.mound.recent[this.mound.recent.length - 1];
     const p = choosePitch({
