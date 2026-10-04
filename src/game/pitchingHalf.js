@@ -128,17 +128,19 @@ const methods = {
     if (this.time >= r.tStart + P.delivery) this.releaseCpuPitch();
   },
 
-  // The computer pitching for you: a pitch from your pitcher's arsenal at the level's locations, and a ring grade drawn from
+  // The computer pitching for you: a pitch from your pitcher's arsenal aimed at the level's locations, and a ring grade drawn from
   // `pitching.sim.grades` (the tap's error drawn inside that grade's window, early or late at random).
   autoPitch() {
     const pitcher = this.mound.pitcher, P = this.cfg.pitching, W = P.ring;
     const last = this.mound.recent[this.mound.recent.length - 1];
     const p = choosePitch({
       mode: 'quick', difficulty: this.difficulty, count: this.count, rng: this.rng, batterHand: this.batterHand, pitcherHand: pitcher.hand,
-      lastType: last ? last.type : undefined, arsenal: pitcher.pitches,
+      lastType: last ? last.type : undefined, arsenal: pitcher.pitches, intended: true, // (where he aims: the ring grade makes the miss)
     }, this.cfg);
     this.pitchType = p.type;
-    this.setPitchAim(p.target.x, p.target.y);
+    const inside = this.batterHand === 'L' ? 1 : -1, most = this.cfg.pitch.hitBatter.inner - P.sim.clearBatter; // (toward the batter)
+    const x = inside * p.target.x > most ? inside * most : p.target.x;
+    this.setPitchAim(x, p.target.y);
     const grade = this.rng.weighted(P.sim.grades);
     const band = { perfect: [0, W.perfect], good: [W.perfect, W.good], ok: [W.good, W.ok], wild: [W.ok, P.sim.wildMax] }[grade];
     const mag = this.rng.range(band[0], band[1]);

@@ -179,8 +179,9 @@ describe('a half you pitch', () => {
 
   it('the computer walks off on the road: the game ends at once as a loss', () => {
     const e = make({ playerSide: 'top', innings: 1, seed: 14 });
-    let over = null, aimsAfter = 0;
-    e.on('gameOver', (p) => { over = p; });
+    let over = null, aimsAfter = 0, tWalkOff = null, tOver = null;
+    e.on('gameOver', (p) => { over = p; tOver = e.time; });
+    e.on('result', (r) => { if (r.walkOff && tWalkOff === null) tWalkOff = e.time; });
     e.on('aimStart', () => { if (over) aimsAfter++; });
     e.start();
     expect(e.offense).toBe('player');
@@ -199,10 +200,65 @@ describe('a half you pitch', () => {
     expect(e.game.walkOff).toBe(true);
     expect(e.game.score.bottom).toBe(1);
     expect(e.phase).toBe('gameOver');
+    expect(tOver - tWalkOff).toBeLessThan(1.6); // (as quick as your own walk-off: no wait for the next pitch or the pitcher)
     for (let k = 0; k < 600; k++) e.update(DT);
     expect(aimsAfter).toBe(0);
     expect(e.phase).toBe('gameOver');
   });
+
+  it('you cannot send or call back the computer\'s runners', () => {
+    const e = make({ seed: 9 });
+    e.start();
+    e.game.bases[0] = e.oppLineup[8];
+    e.cpuSwingOverride = swingMiddle;
+    e.contactOverride = () => ({ exitVelocity: 96, launchAngle: 11, sprayAngle: 4, backspin: 1500, hook: 0 }); // (a liner into center)
+    e.setPitchAim(0.3, 2.4);
+    e.startDelivery();
+    expect(until(e, () => e.phase === 'play', 10)).toBe(true);
+    let looked = 0;
+    while (e.phase === 'play') {
+      expect(e.sendOpen).toBe(false);
+      for (const b of [2, 3, 4]) expect(e.tapBase(b)).toBe(false);
+      expect(e.runnerOrder(1, 'back')).toBe(false);
+      expect(e.sendRunner(3)).toBe(false);
+      looked++;
+      e.update(DT);
+    }
+    expect(looked).toBeGreaterThan(60);
+  });
+
+  it('a swing he decided on is a swing, even one so late that the pitch would have hit him', () => {
+    const e = make({ seed: 12 });
+    e.start();
+    const calls = [];
+    e.on('pitchCall', (c) => calls.push(c.call));
+    e.cpuSwingOverride = () => ({ swing: true, errorMs: 160, aim: { x: 0, y: 2.4 }, protect: false }); // (presses after the ball crosses)
+    const inside = e.batterHand === 'L' ? 1 : -1;
+    e.setPitchAim(inside * 1.9, 3);
+    e.startDelivery();
+    const meet = e.ring.tStart + e.ring.hitAt;
+    while (e.time + DT < meet) e.update(DT);
+    e.ringTap(meet - e.time); // (PERFECT: right at him)
+    expect(until(e, () => e.phase === 'pitch', 5)).toBe(true);
+    expect(e.pitch.hitsBatter).toBe(true);
+    expect(e.cpuSwing.tPress).toBeGreaterThan(e.pitch.tCross);
+    expect(until(e, () => e.phase !== 'pitch', 5)).toBe(true);
+    expect(calls).toEqual(['swingingStrike']);
+    expect(e.count.strikes).toBe(1);
+    expect(e.game.bases.some(Boolean)).toBe(false);
+  });
+
+  it('the computer pitching for you seldom hits a batter', () => {
+    let pa = 0, hbp = 0;
+    for (let s = 1; s <= 150; s++) {
+      const e = new Engine({ mode: 'quick', seed: s * 7919, difficulty: 'pro', cpuHalf: 'auto' });
+      e.on('result', (r) => { if (r.kind === 'pa' && e.offense === 'cpu') { pa++; if (r.result === 'hitByPitch') hbp++; } });
+      e.start();
+      for (let t = 0; t < 900 && e.offense === 'cpu' && !e.over; t += 1 / 60) e.update(1 / 60);
+    }
+    expect(pa).toBeGreaterThan(400);
+    expect(hbp / pa).toBeLessThanOrEqual(0.025);
+  }, 240000);
 });
 
 describe('saving in the middle of your half', () => {

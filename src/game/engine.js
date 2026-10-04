@@ -193,7 +193,7 @@ export class Engine {
       // pitching line, and the computer's batting (kept apart from yours)
       side: {
         offense: this.offense, mound: { pitcherId: m.pitcher.id, pitcher: m.pitcher, left: m.left, max: m.max, pitches: m.pitches, used: m.used, recent: m.recent },
-        recent: m.recent, pitchStats: this.pitchStats, oppLines: this.oppLines, cpuStats: this.cpuStats, pitchType: this.pitchType,
+        pitchStats: this.pitchStats, oppLines: this.oppLines, cpuStats: this.cpuStats, pitchType: this.pitchType,
       },
     }));
   }
@@ -222,7 +222,7 @@ export class Engine {
     if (side) {
       const sm = side.mound;
       const pitcher = this.staff.find((p) => p.id === sm.pitcherId) || sm.pitcher || this.staff[0];
-      this.mound = { pitcher, left: sm.left, max: sm.max, pitches: sm.pitches, used: sm.used || [], recent: side.recent || sm.recent || [] };
+      this.mound = { pitcher, left: sm.left, max: sm.max, pitches: sm.pitches, used: sm.used || [], recent: sm.recent || [] };
       this.pitchStats = side.pitchStats; this.oppLines = side.oppLines || {}; this.cpuStats = side.cpuStats || newStats();
       if (side.pitchType && pitcher.pitches.includes(side.pitchType)) this.pitchType = side.pitchType;
       else this.pitchType = pitcher.pitches[0];
@@ -499,14 +499,17 @@ export class Engine {
       this.emit('whiff', { swing: s, pitch, reason: s.contact.reason, errorMs: s.errorMs });
     }
     // a pitch that hits him (he did not swing at it): he takes his base
-    if (pitch.hitsBatter && !s && !pitch.caught && this.time >= pitch.tCross) {
+    if (pitch.hitsBatter && !s && !this.cpuSwing && !pitch.caught && this.time >= pitch.tCross) {
       pitch.caught = true; pitch.hbp = true;
       return this.resolveHitByPitch();
     }
     if (!pitch.caught && this.time >= pitch.tCatch) {
+      // (the computer's batter decided to swing and is still coming round, far too late: it is a swing all the same - a strike)
+      const late = this.cpuSwing;
+      if (late) { this.cpuSwing = null; this.commitSwing(late.tPress, late.aim, false, 0, { protect: late.protect }); }
       pitch.caught = true;
       pitch.wild = this.rollWildPitch(); // (one in the dirt may get past him)
-      if (!pitch.wild) this.emit('catch', { pitch, swung: !!s });
+      if (!pitch.wild) this.emit('catch', { pitch, swung: !!this.swing });
       this.resolvePitchNoContact();
     }
   }
@@ -676,7 +679,7 @@ export class Engine {
     this.setPhase('result');
     this.resultUntil = this.time + pause;
     // you pitch: the next pitch can be aimed `pitching.nextPitch` after the call (and not before the pitcher is back and set)
-    if (this.offense === 'cpu') this.resultUntil = Math.max(this.time + Math.max(pause, this.cfg.pitching.nextPitch), this.fieldersSetAt);
+    if (this.offense === 'cpu' && !halfOver) this.resultUntil = Math.max(this.time + Math.max(pause, this.cfg.pitching.nextPitch), this.fieldersSetAt);
     // a finished plate appearance brings up the next batter; otherwise the same batter sees another pitch
     this.pendingNext = halfOver ? 'half' : paEnded && this.diamond ? 'pa' : 'pitch';
   }
@@ -770,7 +773,7 @@ export class Engine {
   // and the defense throws at whoever it can get.
   get sendOpen() {
     const p = this.play;
-    if (this.phase !== 'play' || !p || p.steal || !p.plan.send || this.paused) return false;
+    if (this.phase !== 'play' || !p || p.steal || !p.plan.send || this.paused || this.offense !== 'player') return false; // (the computer runs its own runners)
     const t = this.time - p.t0;
     return t >= p.plan.send.from && t <= p.plan.send.by && t < (p.plan.send.closeAt ?? Infinity);
   }

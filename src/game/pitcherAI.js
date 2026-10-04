@@ -12,6 +12,7 @@ import { isStrike, zoneRatio, hitsBatter } from '../physics/pitch.js';
  * @param {'R'|'L'} [o.batterHand]
  * @param {object} [o.practice]  { type: key|'mixed', speed: mph, location: 'random'|'center' }
  * @param {string} [o.lastType]
+ * @param {boolean} [o.intended]  quick game: return the spot he aims at (no command scatter, no pitch that gets away at the batter)
  * @param {string[]} [o.arsenal]  the pitches this pitcher throws (quick game): the type is drawn only from them (see arsenalMix)
  */
 export function choosePitch(o, cfg = CONFIG) {
@@ -74,9 +75,12 @@ export function choosePitch(o, cfg = CONFIG) {
   const armSign = (o.pitcherHand || 'R') === 'R' ? -1 : 1;
   const breakDir = Math.sign(armSign * (cfg.pitch.types[type].breakArm || 0)) || away;
   let { x, y } = pickTarget(kind, type, away, cfg, rng, { zoneMidY, hw, halfH }, breakDir);
-  x += rng.gauss(0, d.commandSigma * 0.5);
-  y += rng.gauss(0, d.commandSigma * 0.5);
-  const wild = rng.next() < (d.hitBatter || 0); // (one gets away from him, in at the batter)
+  // (`intended`: the spot he means to hit, before his wildness - your auto pitcher, whose misses come from the ring grade instead)
+  if (!o.intended) {
+    x += rng.gauss(0, d.commandSigma * 0.5);
+    y += rng.gauss(0, d.commandSigma * 0.5);
+  }
+  const wild = !o.intended && rng.next() < (d.hitBatter || 0); // (one gets away from him, in at the batter)
   if (wild) { const H = cfg.pitch.hitBatter; x = -away * rng.range(H.inner + 0.1, H.inner + 0.75); y = rng.range(1.5, 4.2); }
   else if (kind === 'waste') { // never let his wildness bring a wasted pitch back toward the zone
     const r = zoneRatio(x, y, cfg);
@@ -86,6 +90,7 @@ export function choosePitch(o, cfg = CONFIG) {
   x = clamp(x, -3.4, 3.4);
   // (a pitch he means to waste inside stays just off the batter - he leans back from it; only one that gets away hits him)
   if (!wild && hitsBatter(x, y, o.batterHand || 'R', cfg)) x = -away * (cfg.pitch.hitBatter.inner - 0.1);
+  if (o.intended && -away * x > cfg.pitch.hitBatter.inner - 0.1) x = -away * (cfg.pitch.hitBatter.inner - 0.1); // (never aimed closer to him than that)
   const strike = isStrike(x, y, cfg);
 
   let speed;
