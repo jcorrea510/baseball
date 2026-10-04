@@ -956,6 +956,25 @@ export const CONFIG = {
     // (.300 -> 80, .250 -> 57), Power = powBase + HR x powPerHr (30 HR -> 72, 50 -> 98), Speed = spdBase + SB x spdPerSb
     // (30 SB -> 69), each kept between min and max.
     realStats: { conBase: 35, conAvg: 0.2, conPerPoint: 0.45, powBase: 35, powPerHr: 1.25, spdBase: 38, spdPerSb: 1.05, min: 25, max: 99 },
+    // A real pitcher's ratings from his line last season (game/mlb.js pitcherRatings). Each one is a straight line through two
+    // points (`from` -> `to`), carried on past them and kept between min and max: Velocity from his average fastball (92 mph ->
+    // 50, 99 -> 95), Control from walks per 9 innings (1.5 -> 90, 4.5 -> 35), Stuff from strikeouts per 9 (7 -> 40, 12.5 -> 92),
+    // Stamina from his innings - a starter's (60 -> 50, 200 -> 92) and a reliever's (40 -> 20, 80 -> 40) on their own lines, so
+    // even a starter who missed half the year outlasts any reliever.
+    realArms: {
+      velo: { from: [92, 99], to: [50, 95] },
+      bb9: { from: [1.5, 4.5], to: [90, 35] },
+      k9: { from: [7, 12.5], to: [40, 92] },
+      ip: { SP: { from: [60, 200], to: [50, 92] }, RP: { from: [40, 80], to: [20, 40] } },
+      min: 20, max: 99,
+      // A club with fewer than three real starters / two real relievers in the table gets generated arms: each rating drawn
+      // around base + perTier x the club's tier (1-5; tier 3 -> 58, about a real set-up man) with this spread, pitches as
+      // Sandlot's own staff (pitching.staff).
+      // Stamina: as for a real arm with `ip` innings for his role, give or take the same spread. `left`: the share who throw left-handed.
+      filler: { base: 46, perTier: 4, sd: 6, ip: { SP: 140, RP: 60 }, left: 0.25 },
+    },
+    // A pitcher's overall (roster, shop, prices): this share of each rating. (A hitter's: 40% Contact, 40% Power, 20% Speed.)
+    pitcherOverall: { vel: 0.3, ctl: 0.3, stf: 0.3, sta: 0.1 },
     innings: 6, // innings in a season game
     cycles: { short: 1, full: 2 }, // how many times you play every other team (8 opponents: 8 or 16 games)
     // CPU team strength ratings (50 = the level you picked). Shuffled onto the teams each season; the schedule goes from the

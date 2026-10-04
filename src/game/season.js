@@ -12,8 +12,11 @@ export const POSITIONS9 = ['CF', 'SS', '1B', 'LF', 'RF', '3B', 'C', '2B', 'DH'];
 // ---------------------------------------------------------------------------------------------------------------
 // Players
 // ---------------------------------------------------------------------------------------------------------------
-/** Overall rating: contact and power count most, speed a little. */
-export const overall = (p) => Math.round(0.4 * p.con + 0.4 * p.pow + 0.2 * p.spd);
+/** Overall rating: for a hitter contact and power count most, speed a little; for a pitcher (`p.role`) see season.pitcherOverall. */
+export const overall = (p) => {
+  if (p.role) { const W = CONFIG.season.pitcherOverall; return Math.round(W.vel * p.vel + W.ctl * p.ctl + W.stf * p.stf + W.sta * p.sta); }
+  return Math.round(0.4 * p.con + 0.4 * p.pow + 0.2 * p.spd);
+};
 
 /** What a player costs in the shop (and 30% of it back if you let him go). */
 export function price(p, cfg = CONFIG) {
