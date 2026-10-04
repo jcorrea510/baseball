@@ -349,3 +349,101 @@ describe('the referee on the computer\'s balls in play', () => {
     expect(sends).toBeGreaterThan(0); // (the computer sends its own runners)
   }, 240000); // (about 20 s on its own; much slower while every test file runs at once)
 });
+
+describe('Sim', () => {
+  const simDone = (e) => { const out = []; e.on('simDone', (d) => out.push(d)); return out; };
+
+  it('finishes the half at once through simStep: a recap line per plate appearance, the runs, the stamina used', () => {
+    const e = make({ seed: 21 });
+    e.start();
+    const pas = [], done = simDone(e), before = { ...e.game.score };
+    e.on('result', (r) => { if (r.kind === 'pa') pas.push(r); });
+    const inning = e.game.inning, half = e.game.half;
+    expect(e.simHalf()).toBe(true);
+    expect(e.simHalf()).toBe(false); // (twice does nothing extra)
+    expect(e.simming).toBe(true);
+    for (let i = 0; i < 400 && e.simming; i++) e.simStep(3);
+    expect(e.simming).toBe(false);
+    expect(e.simStep(5)).toBe(false); // (no-op when not simming)
+    expect(done.length).toBe(1);
+    const d = done[0];
+    expect(d.inning).toBe(inning); expect(d.half).toBe(half);
+    expect(d.events.length).toBe(pas.length);
+    expect(d.events.length).toBeGreaterThanOrEqual(3);
+    for (const ev of d.events) { expect(typeof ev.text).toBe('string'); expect(ev.text.length).toBeGreaterThan(3); }
+    expect(d.runs).toBe(e.game.score[half] - before[half]);
+    expect(d.events.reduce((s, x) => s + x.runs, 0)).toBeLessThanOrEqual(d.runs);
+    expect(d.score).toEqual({ ...e.game.score });
+    expect(e.offense).toBe('player'); // (the half is over: you bat)
+    expect(e.mound.pitches).toBeGreaterThanOrEqual(3);
+    expect(e.pitchStats.pitches).toBe(e.mound.pitches);
+  });
+
+  it('pressed during the delivery, that pitch is thrown exactly as it would have been, then the computer takes over', () => {
+    const a = make({ seed: 33 }), b = make({ seed: 33 });
+    const calls = (e) => { const out = []; e.on('pitchCall', (c) => out.push(c.call)); e.on('release', ({ pitch }) => out.push([pitch.type, Math.round(pitch.speedMph * 1e4), Math.round(pitch.target.x * 1e4), Math.round(pitch.target.y * 1e4)].join())); return out; };
+    const ca = calls(a), cb = calls(b);
+    a.start(); b.start();
+    for (const e of [a, b]) { e.selectPitch('fastball'); e.setPitchAim(0.2, 2.3); e.startDelivery(); }
+    for (const e of [a, b]) while (e.time < e.ring.tStart + 0.4) e.update(DT);
+    expect(a.phase).toBe('delivery');
+    expect(a.simHalf()).toBe(true);
+    expect(a.phase).toBe('delivery'); // (nothing changed under the ball)
+    until(a, () => a.phase === 'aim' || a.phase === 'result', 20);
+    until(b, () => b.phase === 'aim' || b.phase === 'result', 20);
+    expect(ca.length).toBeGreaterThanOrEqual(2);
+    expect(ca.slice(0, 2)).toEqual(cb.slice(0, 2)); // (the release, then the call)
+    // and the computer goes on pitching
+    const done = simDone(a);
+    for (let i = 0; i < 400 && a.simming; i++) a.simStep(3);
+    expect(done.length).toBe(1);
+  });
+
+  it('pressed during a play, the play finishes first', () => {
+    const run = (sim) => {
+      const e = make({ seed: 5 });
+      e.cpuSwingOverride = swingMiddle;
+      e.start();
+      const results = [];
+      e.on('result', (r) => results.push([r.kind, r.result || r.call, r.runs || 0]));
+      let played = false;
+      for (let i = 0; i < 12 && !played; i++) {
+        e.setPitchAim(0, 2.4); e.startDelivery();
+        until(e, () => e.phase === 'play' || e.phase === 'aim' || e.over, 30);
+        played = e.phase === 'play';
+      }
+      expect(played).toBe(true);
+      const n = results.length;
+      if (sim) expect(e.simHalf()).toBe(true);
+      until(e, () => e.phase === 'result' || e.phase === 'aim' || e.over, 60);
+      expect(e.phase).not.toBe('play');
+      return { first: results.slice(0, n + 1), n, e };
+    };
+    const a = run(true), b = run(false);
+    expect(a.first).toEqual(b.first);
+    expect(a.e.simming).toBe(true);
+  });
+
+  it('a road game that ends on a computer run during a Sim says gameOver and no recap', () => {
+    let tested = 0;
+    for (let seed = 1; seed <= 40 && !tested; seed++) {
+      const e = make({ seed, playerSide: 'top', innings: 1 });
+      e.cpuSwingOverride = swingMiddle; // (their batters swing at everything down the middle)
+      let overs = 0; const done = simDone(e);
+      e.on('gameOver', () => overs++);
+      e.start();
+      // you bat first and take every pitch; then it is the bottom of the last inning of a tie (nothing scored by you)
+      for (let t = 0; t < 600 && e.offense !== 'cpu' && !e.over; t += DT) { if (e.phase === 'ready') e.batterReady(); e.update(DT); }
+      if (e.over || e.offense !== 'cpu' || e.game.score.top !== 0 || e.game.inning !== 1) continue;
+      expect(e.simHalf()).toBe(true);
+      for (let i = 0; i < 400 && e.simming && !e.over; i++) e.simStep(3);
+      if (!e.over) continue; // (it did not score: the game goes to extra innings)
+      tested++;
+      expect(overs).toBe(1);
+      expect(done.length).toBe(0);
+      expect(e.simming).toBe(false);
+      expect(e.game.winner).toBe('bottom');
+    }
+    expect(tested).toBe(1);
+  }, 120000);
+});

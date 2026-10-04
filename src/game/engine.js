@@ -70,6 +70,8 @@ export class Engine {
     this.oppPitcher = o.oppPitcher || makePitcher(this.seed); // (theirs, when you bat; `pitcher` is whoever is on the mound)
     // When the computer bats you are in the field: `cpuHalf` 'pitch' = you pitch, 'auto' = the computer pitches for you (tests, bots)
     this.cpuHalf = o.cpuHalf || 'auto';
+    this.simming = false; // Sim pressed: the computer pitches the rest of this half (pitchingHalf.simHalf)
+    this.simRecap = null;
     this.staff = o.staff || makeStaff(this.seed, cfg);
     const starter = this.staff[0];
     this.mound = { pitcher: starter, left: staminaMax(starter, cfg), max: staminaMax(starter, cfg), pitches: 0, used: [], recent: [] };
@@ -1021,7 +1023,8 @@ export class Engine {
     const g = this.game;
     const res = rules.advanceHalf(g, (half) => this.extraRunner(half));
     this.emit('halfEnd', { game: g });
-    if (res.gameOver) return this.finishGame();
+    if (res.gameOver) { this.simming = false; this.simRecap = null; return this.finishGame(); } // (a game that ends during a Sim: gameOver, no recap)
+    if (this.simming) this.finishSim(); // (Sim: the recap of the half that has just ended)
     this.fieldersSetAt = 0; // (the other team takes the field: its pitcher and catcher are set)
     if (this.offense === 'cpu') return this.beginCpuHalf(true); // (the computer bats: you pitch)
     this.emit('inningChange', { inning: g.inning, half: g.half, newInning: true });

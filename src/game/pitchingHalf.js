@@ -26,6 +26,36 @@ export function newPitchStats() {
   return { ...newPitchLine(), byPitcher: {} };
 }
 
+/** The recap line for a finished plate appearance of the computer's half, from the real result and where the ball went (spray angle,
+ *  degrees: negative = left field). */
+export function recapText(result, batter, runs = 0, spray = 0) {
+  const name = (batter && batter.name) || 'The batter';
+  const side = spray < -25 ? 'to left' : spray > 25 ? 'to right' : 'to center';
+  const line = spray < -25 ? 'down the left-field line' : spray > 25 ? 'down the right-field line' : 'up the middle';
+  const n = runs > 1 ? ` (${runs}-run)` : '';
+  switch (result) {
+    case 'single': return `${name} singles ${side}.`;
+    case 'double': return `${name} doubles ${Math.abs(spray) > 25 ? side : 'into the gap'}.`;
+    case 'triple': return `${name} triples ${side}!`;
+    case 'homer': return `${name} crushes a home run${n}!`;
+    case 'insideParkHomer': return `${name} hits an inside-the-park home run${n}!`;
+    case 'groundout': return `${name} grounds out ${Math.abs(spray) > 25 ? side : line}.`;
+    case 'doublePlay': return `${name} grounds into a double play.`;
+    case 'flyout': return `${name} flies out ${side}.`;
+    case 'lineout': return `${name} lines out ${side}.`;
+    case 'popout': return `${name} pops out.`;
+    case 'foulOut': return `${name} fouls out.`;
+    case 'sacFly': return `${name} hits a sacrifice fly.`;
+    case 'sacBunt': return `${name} lays down a sacrifice bunt.`;
+    case 'fieldersChoice': return `${name} reaches on a fielder's choice.`;
+    case 'error': return `${name} reaches on an error.`;
+    case 'walk': return `${name} works a walk.`;
+    case 'hitByPitch': return `${name} is hit by a pitch.`;
+    case 'strikeoutSwinging': case 'strikeoutLooking': return `${name} strikes out.`;
+    default: return `${name} is out.`;
+  }
+}
+
 const methods = {
   // ------------------------------------------------------------------ the half and its batters
   // The computer comes up to bat: your pitcher is on the mound (the starter, the first time) and its first batter steps in.
@@ -119,7 +149,7 @@ const methods = {
   // ------------------------------------------------------------------ the tick
   updateAim() {
     // the computer pitches for you ('auto'): it picks and starts at once (once the pitcher is back on the rubber)
-    if (this.cpuHalf === 'auto' && this.pitching && this.time >= this.fieldersSetAt) this.autoPitch();
+    if ((this.cpuHalf === 'auto' || this.simming) && this.pitching && this.time >= this.fieldersSetAt) this.autoPitch();
   },
 
   updateDelivery() {
@@ -213,6 +243,34 @@ const methods = {
     }
   },
 
+  // ------------------------------------------------------------------ Sim
+  // The computer pitches the rest of this half for you (the same auto pitcher, the same engine - nothing is drawn). A pitch in the air
+  // or a play in progress finishes exactly as it would have; the computer takes the next pitch. True when accepted (once, while pitching).
+  simHalf() {
+    if (!this.pitching || this.simming) return false;
+    const g = this.game;
+    this.simming = true;
+    this.simRecap = { events: [], inning: g.inning, half: g.half, before: { ...g.score } };
+    return true;
+  },
+
+  // Advance a Sim without drawing: big steps, every play fast-forwarded, until `maxPlays` more plate appearances are done, the half
+  // is over or the game ends. No-op when not simming. True while the Sim is still going.
+  simStep(maxPlays = Infinity) {
+    if (!this.simming) return false;
+    const step = this.cfg.pitching.sim.step, start = this.simRecap.events.length;
+    for (let guard = 0; guard < 20000 && this.simming && !this.over && this.simRecap.events.length - start < maxPlays; guard++) this.update(step);
+    return this.simming && !this.over;
+  },
+
+  // The half has ended during a Sim: the recap (one line per plate appearance, the runs the computer scored, the score).
+  finishSim() {
+    const R = this.simRecap, g = this.game;
+    this.simming = false; this.simRecap = null;
+    const runs = g.score[R.half] - R.before[R.half];
+    this.emit('simDone', { events: R.events, runs, inning: R.inning, half: R.half, score: { ...g.score }, before: R.before });
+  },
+
   // ------------------------------------------------------------------ your pitching line
   pitchLine(id) {
     return this.pitchStats.byPitcher[id] || (this.pitchStats.byPitcher[id] = newPitchLine());
@@ -222,6 +280,10 @@ const methods = {
   // staff's). A run is unearned when the runner who scored reached on an error.
   creditPitching(r) {
     if (!this.game || this.offense !== 'cpu' || !r) return;
+    if (this.simming && this.simRecap && r.kind === 'pa') {
+      const runs = r.runs || 0;
+      this.simRecap.events.push({ text: recapText(r.result, r.batter, runs, r.contact ? r.contact.sprayAngle : 0), kind: r.result, runs });
+    }
     const g = this.game, ps = this.pitchStats, line = this.pitchLine(this.mound.pitcher.id);
     if (r.kind === 'pa' && r.batter && typeof r.batter === 'object') r.batter.roe = r.result === 'error'; // (whenever a batter reaches)
     const outs = Math.max(0, g.outs - this.outsSeen);

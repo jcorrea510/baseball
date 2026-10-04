@@ -270,6 +270,7 @@ export const CONFIG = {
       grades: { perfect: 0.25, good: 0.4, ok: 0.27, wild: 0.08 }, // chance of each grade
       wildMax: 250, // ms: a simulated WILD tap lands between the OK window and this far from the moment (early or late)
       clearBatter: 0.5, // ft: it never aims closer to the batter than this inside the line where a pitch hits him (its misses would hit him far too often)
+      step: 0.25, // s of engine time per step while Sim finishes a half (nothing is drawn; every play is fast-forwarded)
       chunk: 6, // batters played at a time before it checks whether to pull the pitcher
       pullAt: 0.15, // the tank share at which a simmed pitcher is replaced
     },
