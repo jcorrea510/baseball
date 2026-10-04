@@ -1,5 +1,7 @@
 // Original teams, uniforms, players and cosmetic unlockables. All names are invented.
 import { createRng } from '../util/rng.js';
+import { clamp } from '../util/math.js';
+import { CONFIG } from '../config.js';
 
 // Each uniform: colours used by the figure builder.
 export const UNIFORMS = {
@@ -53,4 +55,33 @@ export function makeLineup(seed, prefix = '') {
 export function makePitcher(seed) {
   const rng = createRng(seed ^ 0x9e3779b9);
   return { name: rng.pick(FIRST) + ' ' + rng.pick(LAST), number: rng.int(10, 60), skin: rng.pick(SKINS), scale: 1.05, build: 1.02, hand: rng.chance(0.25) ? 'L' : 'R' };
+}
+
+/**
+ * Sandlot's own pitching staff (your pitchers when you have no League club): the starters first (the best one at [0]), then the
+ * relievers. Each pitcher: { id, name, short, number, hand, role 'SP'|'RP', vel, ctl, stf, sta (ratings 1-99), pitches, skin, scale, build }.
+ */
+export function makeStaff(seed, cfg = CONFIG) {
+  const S = cfg.pitching.staff;
+  const rng = createRng((seed ^ 0x27d4eb2f) >>> 0);
+  const rating = () => Math.round(clamp(rng.gauss(S.mean, S.sd), 1, 99));
+  const used = new Set();
+  const arm = (role, i) => {
+    let name;
+    do { name = rng.pick(FIRST) + ' ' + rng.pick(LAST); } while (used.has(name));
+    used.add(name);
+    const n = role === 'SP' ? S.starterPitches : rng.int(S.relieverPitches[0], S.relieverPitches[1]);
+    const others = S.pool.filter((t) => t !== 'fastball');
+    const pitches = ['fastball'];
+    while (pitches.length < Math.min(n, S.pool.length)) pitches.push(others.splice(rng.int(0, others.length - 1), 1)[0]);
+    return {
+      id: 'sp' + (role === 'SP' ? '' : 'r') + i, name, short: name, number: rng.int(10, 60), hand: rng.chance(0.25) ? 'L' : 'R', role,
+      vel: rating(), ctl: rating(), stf: rating(), sta: rating(), pitches,
+      skin: rng.pick(SKINS), scale: rng.range(1.0, 1.07), build: rng.range(0.98, 1.06),
+    };
+  };
+  const ovr = (p) => p.vel + p.ctl + p.stf + p.sta;
+  const starters = Array.from({ length: S.starters }, (_, i) => arm('SP', i)).sort((a, b) => ovr(b) - ovr(a));
+  const relievers = Array.from({ length: S.relievers }, (_, i) => arm('RP', i));
+  return [...starters, ...relievers];
 }

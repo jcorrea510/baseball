@@ -496,6 +496,7 @@ export function gameConfig(level, rating, cfg = CONFIG) {
     ai,
     errorScale: (d.errorScale ?? 1) * Math.max(0.2, 1 - T.errors * k),
     catcherArm: (d.catcherArm ?? 1) * Math.max(0.6, 1 - T.catcher * k),
+    cpuStrength: k, // (when you pitch: how good their batters are - see cpuBatter)
   };
   return { ...cfg, difficulty: { ...cfg.difficulty, [level]: dd } };
 }

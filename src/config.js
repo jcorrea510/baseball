@@ -257,9 +257,18 @@ export const CONFIG = {
     painted: 0.15, // a pitch this close (feet) to the edge of the zone counts as PAINTED
     catcherArm: { rookie: 0.9, pro: 1, allstar: 1.05 }, // your catcher's throwing, by level
     fieldErrorScale: { rookie: 0.6, pro: 0.8, allstar: 1 }, // how often your fielders boot a ball, by level
+    // Sandlot's own pitchers (teams.makeStaff: the staff when you have no League club): ratings drawn around `mean` (spread `sd`).
+    staff: {
+      starters: 2, relievers: 2,
+      mean: 50, sd: 8,
+      starterPitches: 3, // a starter throws his fastball and this many pitches in all
+      relieverPitches: [2, 3], // a reliever throws between this many
+      pool: ['fastball', 'changeup', 'curveball', 'slider'], // what they can throw (the fastball always)
+    },
     // Sim (skip an inning): how the pitches are graded when the computer plays them for you.
     sim: {
       grades: { perfect: 0.25, good: 0.4, ok: 0.27, wild: 0.08 }, // chance of each grade
+      wildMax: 250, // ms: a simulated WILD tap lands between the OK window and this far from the moment (early or late)
       chunk: 6, // batters played at a time before it checks whether to pull the pitcher
       pullAt: 0.15, // the tank share at which a simmed pitcher is replaced
     },
