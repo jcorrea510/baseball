@@ -30,6 +30,13 @@ export function gradeTap(errMs, cfg = CONFIG) {
   return 'wild';
 }
 
+/** The speed (mph) of a pitch type for this pitcher before the tap's grade and fatigue (what the pitch buttons show). */
+export function pitchTopMph(pitcher, type, cfg = CONFIG) {
+  return type === 'heater'
+    ? mapRating(pitcher.vel, cfg.pitch.heaterSpeed)
+    : mapRating(pitcher.vel, cfg.pitching.velo) + (cfg.pitch.types[type]?.speedDelta ?? 0);
+}
+
 /**
  * The pitch that leaves the hand: speed, where it is headed (before any break), how much it breaks.
  * errMs: tap error in ms (negative = early; null = no tap = wild). fatigueF: 0-1 (see `fatigue`).
@@ -41,9 +48,7 @@ export function throwPitch({ pitcher, type, aim, errMs, fatigueF = 0, rng }, cfg
   const tire = p.stamina;
 
   // Speed: Velocity sets the fastball, the type moves it, the grade and a tired arm take some off.
-  const base = type === 'heater'
-    ? mapRating(pitcher.vel, cfg.pitch.heaterSpeed)
-    : mapRating(pitcher.vel, p.velo) + (cfg.pitch.types[type]?.speedDelta ?? 0);
+  const base = pitchTopMph(pitcher, type, cfg);
   const speedMph = base * g.speed - tire.tireVelo * fatigueF;
   let movementScale = mapRating(pitcher.stf, p.stuff) * g.brk * (1 - tire.tireBreak * fatigueF);
 

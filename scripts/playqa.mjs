@@ -28,6 +28,35 @@ for (const sz of sizes) {
     if (await page.evaluate(() => window.__app.ui.current) === 'howto') { await press('.screen.show [data-a=howtoDone]'); await page.waitForTimeout(400); }
     await press(`.screen.show [data-mode=${mode}]`);
     await page.waitForTimeout(300);
+    // a quick game starts with the computer's half, which you pitch: three real pitches (aim, start, tap the ring), then Sim
+    let pitched = null;
+    if (mode === 'quick') {
+      await page.evaluate(() => {
+        const a = window.__app, e = a.engine;
+        window.__pq = { started: 0, taps: 0, grades: [] };
+        e.on('delivery', () => window.__pq.started++);
+        e.on('ringTap', (t) => { window.__pq.taps++; window.__pq.grades.push(t.grade); });
+        for (let i = 0; i < 2400 && e.phase !== 'aim'; i++) a.tick(1 / 60, false);
+        a.tick(0.001, true);
+      });
+      await page.addStyleTag({ content: '.pitchbar button,.simbtn{transition:none!important}' });
+      const spot = { x: w / 2, y: h * 0.45 };
+      for (let n = 0; n < 3; n++) {
+        await page.evaluate(() => { const a = window.__app, e = a.engine; for (let i = 0; i < 4000 && e.phase !== 'aim'; i++) a.tick(1 / 60, false); a.tick(0.001, true); });
+        if (touch) await page.touchscreen.tap(spot.x, spot.y); else { await page.mouse.move(spot.x, spot.y); await page.waitForTimeout(80); await page.mouse.click(spot.x, spot.y); }
+        // (the ring is shrinking: step to a moment before it meets the target, then tap for real)
+        await page.evaluate(() => { const a = window.__app, e = a.engine, r = e.ring; if (!r) return; for (let i = 0; i < 4000 && e.phase === 'delivery' && e.time < r.tStart + r.hitAt - 0.3; i++) a.tick(1 / 240, false); a.tick(0.001, true); });
+        if (touch) await page.touchscreen.tap(spot.x, spot.y); else await page.mouse.click(spot.x, spot.y);
+      }
+      await page.evaluate(() => { const a = window.__app, e = a.engine; for (let i = 0; i < 4000 && e.phase !== 'aim'; i++) a.tick(1 / 60, false); a.tick(0.001, true); });
+      pitched = await page.evaluate(() => window.__pq);
+      // Sim for real, then skip the highlights
+      await press('.hud .simbtn');
+      await page.evaluate(() => { const a = window.__app, e = a.engine; for (let i = 0; i < 4000 && e.simming; i++) a.tick(1 / 60, false); a.tick(0.001, true); });
+      await page.waitForSelector('#ui .screen.show [data-a=skipSummary]', { timeout: 8000 });
+      await press('#ui .screen.show [data-a=skipSummary]');
+      await page.waitForTimeout(300);
+    }
     // a quick game waits for the Ready button before the first pitch: press it for real
     if (mode === 'quick') {
       await page.evaluate(() => { const a = window.__app; for (let i = 0; i < 2400 && !a.engine.awaitingBatter; i++) a.tick(1 / 60, false); a.tick(0.001, true); });
@@ -62,7 +91,7 @@ for (const sz of sizes) {
     await page.evaluate(() => window.__app.tick(0.001, true));
     res.screen = await page.evaluate(() => window.__app.ui.current);
     await page.screenshot({ path: `qa-output/play-${sz}-${mode}.png` });
-    out.push(`${sz} ${mode}: real ${touch ? 'tap' : 'key'} swung=${swung}; over=${res.over} screen=${res.screen} t=${res.time}s ${res.score ? 'score ' + res.score[res.side] + '-' + res.score[res.side === 'top' ? 'bottom' : 'top'] : ''}${res.derby ? 'derby ' + res.derby.hr + ' HR' : ''} results=${JSON.stringify(res.seen)} errors=${errors.length ? errors.join(' | ') : 'none'}`);
+    out.push(`${sz} ${mode}: ${pitched ? `pitched ${pitched.started} started / ${pitched.taps} ring taps ${JSON.stringify(pitched.grades)}; ` : ''}real ${touch ? 'tap' : 'key'} swung=${swung}; over=${res.over} screen=${res.screen} t=${res.time}s ${res.score ? 'score ' + res.score[res.side] + '-' + res.score[res.side === 'top' ? 'bottom' : 'top'] : ''}${res.derby ? 'derby ' + res.derby.hr + ' HR' : ''} results=${JSON.stringify(res.seen)} errors=${errors.length ? errors.join(' | ') : 'none'}`);
     await ctx.close();
   }
 }

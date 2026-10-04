@@ -24,11 +24,12 @@ import { landingSpot, landingRing } from './game/landing.js';
 import * as SEA from './game/season.js';
 import { runnerState, runnerProfile } from './game/runnerMotion.js';
 import { currentPark } from './physics/field.js';
+import { pitchTopMph } from './game/pitching.js';
 const parkName = () => currentPark().name.toUpperCase();
 
 // scorekeeping numbers for the error banner (E6 = an error by the shortstop)
 const POSITION_NUMBER = { P: 1, C: 2, '1B': 3, '2B': 4, '3B': 5, SS: 6, LF: 7, CF: 8, RF: 9 };
-const LABEL = { fastball: 'Fastball', changeup: 'Changeup', curveball: 'Curveball', slider: 'Slider', heater: 'Heater' };
+const LABEL = { fastball: 'Fastball', changeup: 'Changeup', curveball: 'Curveball', slider: 'Slider', heater: 'Heater', sinker: 'Sinker', cutter: 'Cutter', splitter: 'Splitter' };
 
 export class App {
   // The constructor only remembers where to draw; init() builds everything, in stages, reporting progress to the loading splash
@@ -258,7 +259,9 @@ export class App {
       case 'quit': this.audio.uiBack(); this.quitToMenu(); break;
       case 'mute': this.toggleMute(); break;
       case 'fullscreen': this.toggleFullscreen(); break;
-      case 'skipSummary': if (this.engine) this.engine.skipSummary(); break;
+      case 'skipSummary': if (this.engine) this.engine.skipSummary(); this.hideSimSummary(); break;
+      case 'sim': this.pressSim(); break;
+      case 'pitchSel': if (this.engine && this.engine.selectPitch(d.type)) this.audio.uiClick(); break;
       case 'batterReady': if (this.engine) this.engine.batterReady(); break;
       case 'bunt': if (this.engine) this.engine.setBunt(!this.engine.buntStance); break;
       case 'steal': if (this.engine) this.engine.setSteal(!this.engine.stealArmed); break;
@@ -395,6 +398,7 @@ export class App {
     const toSeason = this.returnTo === 'season';
     this.gameToken++;
     this.engine = null; this.bot = null; this.paused = false; this.fast = false; this.slowMo = null; this.hitStop = 0;
+    this.simSummary = null; this.pitchSig = null; this.ui.setPitching(null); this.ui.setPitchDot(null); this.dotShown = false;
     if (this.padShown) { this.padShown = false; this.ui.setBasePad(null); }
     this.ui.hideHud(); this.hideOverlays();
     this.cam.title = true;
@@ -439,6 +443,8 @@ export class App {
       mode, difficulty: this.quickSave ? this.quickSave.difficulty : st.difficulty,
       hand: st.hand, inputDelayMs: st.inputDelayMs,
       waitForBatter: mode === 'quick' && !this.params.get('bot'), // the pitcher waits for Ready before each new batter
+      // you pitch the computer's half (aim, start, tap the ring); a bot-run game lets the computer pitch for you
+      cpuHalf: mode === 'quick' && !this.params.get('bot') ? 'pitch' : 'auto',
       practice: this.engine && this.engine.mode === 'practice' ? { ...this.engine.practice } : undefined,
       seed: this.params.get('seed') ? +this.params.get('seed') : this.quickSave ? this.quickSave.seed : undefined,
       ...(club ? { playerTeam: club.playerTeam, lineup: club.lineup } : {}),
@@ -449,6 +455,7 @@ export class App {
     this.engine.setAim(0);
     this.pitchesThisGame = 0;
     this.paused = false; this.fast = false; this.slowMo = null; this.hitStop = 0;
+    this.simSummary = null; this.pitchSig = null;
     this.screen = 'game';
     this.cam.title = false;
     this.cam.snapToBatter();
@@ -557,8 +564,17 @@ export class App {
       const scored = s.runs > 0;
       if (scored) { audio.crowdGroan(0.5); } else audio.crowdSwell(0.3, 1.5);
     });
+    e.on('pitchGrade', ({ grade }) => ui.hint(grade.toUpperCase(), 900)); // (how well the ring was tapped)
+    e.on('simDone', (s) => {
+      // the half you simmed: its highlights, with Skip (the engine is already on to your turn at bat, held at Ready)
+      ui.hideBanner(); ui.hideCallout();
+      ui.showSummary(s, e.opponent.name, CONFIG.pace.aiSummaryLine);
+      this.simSummary = { until: this.time + Math.max(1.6, Math.max(1, s.events.length) * CONFIG.pace.aiSummaryLine + 0.9) };
+      this.updateScoreboard();
+      if (s.runs > 0) audio.crowdGroan(0.5); else audio.crowdSwell(0.3, 1.5);
+    });
     e.on('inningChange', ({ inning, half, newInning }) => {
-      ui.hideSummary();
+      if (!this.simSummary) ui.hideSummary(); // (a Sim's highlights stay up until they are skipped or have been read)
       if (e.game) ui.setGameState(e.game);
       this.updateScoreboard();
       if (newInning && e.game && !e.over) ui.banner(`INNING ${inning}`, e.game.inning > e.game.innings ? 'Extra innings' : '', 'neutral');
@@ -987,6 +1003,12 @@ export class App {
         case 'Digit1': case 'Digit2': case 'Digit3': case 'Digit4': case 'Digit5': case 'Digit6':
           // while a hit is being played: 1 / 2 / 3 / 4 = tap that base on the diamond (4 = home); with Shift, call back the runner
           // you sent there
+          // while you pitch: 1 / 2 / 3 / 4 = that pitch on the buttons
+          if (inGame && this.isPitching(this.engine)) {
+            const p = this.engine.mound.pitcher.pitches[+e.code.slice(5) - 1];
+            if (p && this.engine.selectPitch(p)) this.audio.uiClick();
+            break;
+          }
           if (inGame && this.engine.sendOpen) { const b = +e.code.slice(5); if (b <= 4) { if (e.shiftKey) this.backKey(b); else this.baseKey(b); } break; }
           if (inGame && this.engine.mode === 'practice') {
             const types = ['fastball', 'changeup', 'curveball', 'slider', 'heater', 'mixed'];
@@ -1027,6 +1049,16 @@ export class App {
       e.preventDefault();
       if (e.pointerType === 'touch') {
         this.aimMode = 'touch';
+        // Pitching: a finger drags the aim dot and starts the delivery when it lifts; a tap while the ring shrinks taps the ring
+        if (this.engine && this.isPitching(this.engine) && !this.simSummary) {
+          if (this.engine.phase === 'delivery') swing(e);
+          else if (this.engine.phase === 'aim' && !this.touchAim) {
+            this.aimTarget.x = this.engine.pitchAim.x; this.aimTarget.y = this.engine.pitchAim.y; // (the dot starts where it is)
+            this.touchAim = { id: e.pointerId, x0: e.clientX, y0: e.clientY, lx: e.clientX, ly: e.clientY, t0: e.timeStamp, moved: false, pitch: true };
+            try { this.canvas.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+          }
+          return;
+        }
         // While you are batting a finger drags the bat. A finger coming down while the pitch is on its way - or a second finger while one
         // is dragging - swings, at that very moment (the Swing button does too). Anywhere else (a play, the summary) a tap does what it
         // always did.
@@ -1044,7 +1076,14 @@ export class App {
       this.mouse = toNorm(e); this.aimMode = 'mouse';
       swing(e);
     });
-    this.canvas.addEventListener('pointerup', (e) => { if (this.touchAim && this.touchAim.id === e.pointerId) this.touchAim = null; });
+    this.canvas.addEventListener('pointerup', (e) => {
+      if (this.touchAim && this.touchAim.id === e.pointerId) {
+        const was = this.touchAim;
+        this.touchAim = null;
+        const en = this.engine;
+        if (was.pitch && en && en.phase === 'aim' && !this.paused && this.isPitching(en)) { en.setPitchAim(this.aimTarget.x, this.aimTarget.y); en.startDelivery(); } // (lift = start)
+      }
+    });
     this.canvas.addEventListener('pointercancel', (e) => { if (this.touchAim && this.touchAim.id === e.pointerId) this.touchAim = null; });
     for (const ev of ['pointerdown', 'touchend', 'click', 'keydown']) window.addEventListener(ev, () => { if (this.audio.hidden && document.hasFocus()) this.audio.setHidden(false); this.audio.unlock(); }, { passive: true });
     this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -1081,7 +1120,7 @@ export class App {
   // Are you up? (the catcher's view): from Ready (or the first pitch of a Derby / practice) through the pitches of the at-bat; not
   // while waiting for Ready, during a play, the computer's half-inning or between innings.
   isBatting(e) {
-    if (!e || this.screen !== 'game' || e.over) return false;
+    if (!e || this.screen !== 'game' || e.over || e.offense !== 'player') return false;
     if (e.phase === 'ready') return !e.awaitingBatter && e.time - e.phaseSince > (e.pitchCount ? 0 : CONFIG.camera.catcher.firstDelay);
     if (e.phase === 'windup' || e.phase === 'pitch') return true;
     if (e.phase === 'result') return !e.play && !e.paEnded; // (a ball or a strike: the at-bat goes on)
@@ -1101,6 +1140,76 @@ export class App {
     this.aimTarget.y = clamp(this.aimTarget.y, R.yMin, R.yMax);
   }
 
+  // The cursor's ray onto the plane over the front of the plate -> aimTarget (used by the bat and by the pitch aim).
+  aimOnCursor() {
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2(this.mouse.nx, this.mouse.ny), this.S.camera);
+    const o = ray.ray.origin, d = ray.ray.direction;
+    if (Math.abs(d.z) > 1e-6) {
+      const t = (CONFIG.pitch.contactZ - o.z) / d.z;
+      if (t > 0) { this.aimTarget.x = o.x + d.x * t; this.aimTarget.y = o.y + d.y * t; }
+    }
+  }
+
+  // ---------------------------------------------------------------- pitching (plain controls; the computer is at bat)
+  // Are you pitching right now? From the aiming screen through the flight of the ball (a play, the result and a Sim are not).
+  isPitching(e) {
+    if (!e || this.screen !== 'game' || e.over || !e.pitching || e.simming) return false;
+    return e.phase === 'aim' || e.phase === 'delivery' || (e.phase === 'pitch' && !e.play);
+  }
+
+  // Every frame: the pitch buttons, the Sim button, the aim (cursor on the plane over the plate, keys, a finger) handed to the
+  // engine while you are aiming, and the plain aim dot.
+  updatePitching(e) {
+    const active = this.isPitching(e) && !this.paused && !this.ui.current;
+    if (active && e.phase === 'aim' && !this.bot) {
+      if (this.aimMode === 'mouse' && this.mouse) this.aimOnCursor();
+      this.clampAimTarget();
+      e.setPitchAim(this.aimTarget.x, this.aimTarget.y);
+    }
+    const inField = !!(e.pitching && !e.over && this.screen === 'game');
+    const open = active && !this.simSummary;
+    const sig = `${inField}|${open}|${open && e.phase === 'aim'}|${e.pitchType}|${e.mound ? e.mound.pitcher.id : ''}`;
+    if (sig !== this.pitchSig) {
+      this.pitchSig = sig;
+      if (!inField) this.ui.setPitching(null);
+      else {
+        const p = e.mound.pitcher;
+        const sel = p.pitches.includes(e.pitchType) ? e.pitchType : p.pitches[0];
+        this.ui.setPitching({
+          open, selected: sel, canSim: open && !e.simming,
+          pitches: p.pitches.map((t) => ({ type: t, label: LABEL[t] || t, mph: pitchTopMph(p, t, CONFIG) })),
+        });
+      }
+    }
+  }
+
+  // The plain aim dot over the plate (a screen position from the engine's aim point), after the camera has moved.
+  updatePitchDot(e) {
+    const show = e && !this.paused && !this.ui.current && this.isPitching(e) && e.phase !== 'pitch';
+    if (!show) { if (this.dotShown) { this.dotShown = false; this.ui.setPitchDot(null); } return; }
+    const a = e.phase === 'delivery' && e.ring ? e.ring.aim : e.pitchAim;
+    const cam = this.S.camera;
+    cam.updateMatrixWorld();
+    const v = new THREE.Vector3(a.x, a.y, CONFIG.pitch.contactZ).project(cam);
+    const r = this.canvas.getBoundingClientRect();
+    this.dotShown = true;
+    this.ui.setPitchDot({ x: (v.x * 0.5 + 0.5) * r.width, y: (-v.y * 0.5 + 0.5) * r.height, lit: e.phase === 'delivery' });
+  }
+
+  // Sim: the computer pitches the rest of this half (nothing is drawn; the highlights come when it is over).
+  pressSim() {
+    const e = this.engine;
+    if (!e || this.paused || this.bot || !e.pitching || e.simming) return;
+    if (e.simHalf()) { this.audio.uiClick(); this.ui.setPitchDot(null); this.dotShown = false; }
+  }
+
+  hideSimSummary() {
+    if (!this.simSummary) return;
+    this.simSummary = null;
+    this.ui.hideSummary();
+  }
+
   // Every frame: where the bat is aimed (the cursor on the plane over the plate, the arrow keys, a finger), the bat drawn there and
   // handed to the engine, the camera told whether you are batting, and the mouse pointer hidden while the bat is the cursor.
   updateBatting(e, dt) {
@@ -1109,16 +1218,7 @@ export class App {
     this.actors.cameraCatcherDist = this.cam.catcherDist;
     this.actors.cameraPos = this.S.camera.position;
     const A = CONFIG.batAim;
-    if (this.aimMode === 'mouse' && this.mouse && batting) {
-      // the cursor's ray onto the plane over the front of the plate
-      const ray = new THREE.Raycaster();
-      ray.setFromCamera(new THREE.Vector2(this.mouse.nx, this.mouse.ny), this.S.camera);
-      const o = ray.ray.origin, d = ray.ray.direction;
-      if (Math.abs(d.z) > 1e-6) {
-        const t = (CONFIG.pitch.contactZ - o.z) / d.z;
-        if (t > 0) { this.aimTarget.x = o.x + d.x * t; this.aimTarget.y = o.y + d.y * t; }
-      }
-    }
+    if (this.aimMode === 'mouse' && this.mouse && batting) this.aimOnCursor();
     if (this.aimMode === 'keys') {
       const k = A.keySpeed * dt;
       this.aimTarget.x += ((this.aimKeys.right ? 1 : 0) - (this.aimKeys.left ? 1 : 0)) * k;
@@ -1194,15 +1294,22 @@ export class App {
     const e = this.engine;
     if (!e || this.paused || e.over) return;
     if (this.ui.current && this.ui.current !== 'game') return;
+    // (a Sim's highlights are up: a click or Space skips them, nothing else)
+    if (this.simSummary) { this.hideSimSummary(); return; }
+    const sinceTap = () => {
+      let stamp = ev && ev.timeStamp;
+      if (!stamp || stamp > 1e12) stamp = performance.now();
+      return this.hitStop > 0 ? 0 : clamp((stamp - this.lastFrameStamp) / 1000, -0.02, 0.05);
+    };
     switch (e.phase) {
       case 'ready': if (e.awaitingBatter) e.batterReady(); break;
-      case 'pitch': {
-        let stamp = ev && ev.timeStamp;
-        if (!stamp || stamp > 1e12) stamp = performance.now();
-        const since = this.hitStop > 0 ? 0 : clamp((stamp - this.lastFrameStamp) / 1000, -0.02, 0.05);
-        e.swingPressed(since);
+      case 'pitch': if (e.offense === 'player') e.swingPressed(sinceTap()); break; // (while you pitch, a click in flight does nothing)
+      case 'aim': // (you pitch: the aim is where the cursor is right now, then the delivery starts)
+        if (!e.pitching || this.bot) break;
+        if (this.aimMode === 'mouse' && this.mouse) { this.aimOnCursor(); this.clampAimTarget(); e.setPitchAim(this.aimTarget.x, this.aimTarget.y); }
+        e.startDelivery();
         break;
-      }
+      case 'delivery': if (e.pitching && !this.bot) e.ringTap(sinceTap()); break; // (graded against the engine's own clock)
       case 'play': if (ev && ev.type === 'keydown') this.fast = true; break; // (only the Space bar speeds a play up: a stray click or tap never does)
       case 'aiSummary': e.skipSummary(); break;
       case 'result': if (e.time - e.phaseSince > 0.12) { e.resultUntil = Math.min(e.resultUntil, e.time); } break;
@@ -1244,7 +1351,9 @@ export class App {
     let simDt = 0;
     // aim
     if (e) {
+      if (this.simSummary && this.time >= this.simSummary.until) this.hideSimSummary();
       this.updateBatting(e, realDt);
+      this.updatePitching(e);
       this.updateBasePad(e);
       // the Steal button is only there while a runner could go
       const can = e.canSteal && !this.paused, on = e.stealArmed || !!(e.steal && (e.phase === 'windup' || e.phase === 'pitch'));
@@ -1254,7 +1363,8 @@ export class App {
       if (ff !== this.ffShown || this.fast !== this.ffOn) { this.ffShown = ff; this.ffOn = this.fast; this.ui.setFast(ff, this.fast); }
     }
     if (e && !this.paused && !e.over || (e && e.phase === 'gameOver')) {
-      if (this.hitStop > 0) { this.hitStop -= realDt; simDt = 0; }
+      if (e.simming) e.simStep(CONFIG.pitching.sim.chunk); // (Sim: the half is played without drawing, a few batters a frame)
+      else if (this.hitStop > 0) { this.hitStop -= realDt; simDt = 0; }
       else {
         let scale = 1;
         if (this.slowMo) {
@@ -1328,6 +1438,7 @@ export class App {
     if (this.pitchMarker.visible) {
       this.markerT += realDt;
     }
+    this.updatePitchDot(e);
     if (render) this.S.renderer.render(this.S.scene, cam);
     window.__frames = (window.__frames || 0) + 1;
   }

@@ -149,7 +149,9 @@ const scenarios = [
       await waitFor(page, () => document.querySelector('.hud')?.dataset.mode === 'quick' && document.querySelector('.hud').classList.contains('show'), 20000, 'the game HUD');
       if (!(await visible('.hud .bug'))) throw new Error('the score bug is not showing in Quick Game');
       if (await visible('.hud .derbybox')) throw new Error('the Derby scoreboard is showing in Quick Game');
-      // you are the home team: the computer bats first, and its highlights cover the screen until they are skipped
+      // you are the home team: the computer bats first and you pitch it - press Sim, and its highlights cover the screen until they are skipped
+      await page.waitForSelector('.hud .simbtn', { state: 'visible', timeout: 20000 });
+      await click('.hud .simbtn');
       if (await page.waitForSelector('#ui .screen.show button[data-a="skipSummary"]', { timeout: 8000 }).catch(() => null)) await click('#ui .screen.show button[data-a="skipSummary"]');
       await waitFor(page, () => !document.querySelector('#ui .screen.show'), 8000, 'the computer\'s highlights to go');
       await click('.hud .hudbtns [data-a="pause"]');

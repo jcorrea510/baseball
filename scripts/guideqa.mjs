@@ -26,8 +26,8 @@ async function session(query, fn) {
 const sample = (page, fractions, shots = null) => page.evaluate(({ fractions, shots }) => {
   const a = window.__app, e = a.engine, out = [];
   e.swingPressed = () => false; // (never swing: we only look)
-  // (a game starts with the computer's half and the Ready card: skip the one, press the other)
-  for (let i = 0; i < 8000 && e.phase !== 'windup'; i++) { if (e.phase === 'aiSummary') e.skipSummary(); if (e.awaitingBatter) e.batterReady(); a.tick(1 / 60, false); }
+  // (a game starts with the computer's half, which you pitch - Sim it - and the Ready card: press that)
+  for (let i = 0; i < 8000 && e.phase !== 'windup'; i++) { if (e.pitching && !e.simming && !a.bot) e.simHalf(); if (e.phase === 'aiSummary') e.skipSummary(); if (e.awaitingBatter) e.batterReady(); a.tick(1 / 60, false); }
   for (let i = 0; i < 4000 && e.phase !== 'pitch'; i++) a.tick(1 / 120, false);
   const p = e.pitch;
   for (const f of fractions) {

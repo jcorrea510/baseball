@@ -165,6 +165,9 @@ export class UI {
         <svg class="bpfield bphits" viewBox="0 0 160 160" aria-hidden="true"><g class="hits"></g></svg>
       </div>
       <button class="ffbtn" data-a="fast" aria-pressed="false" title="Speed up (Space)">${icon('ff')}<span>Fast</span></button>
+      <div class="pitchbar" aria-label="Pitches"></div>
+      <button class="simbtn" data-a="sim" title="Sim this inning">${icon('ff')}<span>Sim</span></button>
+      <div class="pitchdot" aria-hidden="true"></div>
       <div class="acts"><button class="stealbtn" data-a="steal" aria-pressed="false" title="Steal (S)">${icon('go')}<span>Steal</span></button><button class="buntbtn" data-a="bunt" aria-pressed="false" title="Bunt (B)">${icon('bat')}<span>Bunt</span></button></div>
       <div class="practice panel collapsed">
         <button class="prhead" aria-label="Pitch settings">${icon('sliders')}<span>Pitch</span>${icon('chevDown', 'chev')}</button>
@@ -219,7 +222,10 @@ export class UI {
       this.act('practice', { location: b.dataset.loc });
     });
     $(hud, '.practice .prhead').addEventListener('click', () => this.q.practice.classList.toggle('collapsed'));
-    for (const el of hud.querySelectorAll('.practice, .hudbtns, .batterup, .acts, .lineup, .ffbtn')) el.addEventListener('pointerdown', (e) => e.stopPropagation());
+    // your pitch choice (labels only): a tap picks it; the buttons never count as a click on the field
+    this.q.pitchbar = $(hud, '.pitchbar');
+    this.q.pitchbar.addEventListener('click', (e) => { const b = e.target.closest('button[data-type]'); if (b) this.act('pitchSel', { type: b.dataset.type }); });
+    for (const el of hud.querySelectorAll('.practice, .hudbtns, .batterup, .acts, .lineup, .ffbtn, .pitchbar, .simbtn')) el.addEventListener('pointerdown', (e) => e.stopPropagation());
 
     // ---------------- toast + rotate hint
     this.toastEl = h('div', 'toast');
@@ -931,6 +937,27 @@ export class UI {
     b.classList.toggle('show', !!show);
     b.classList.toggle('on', !!on);
     b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
+  // Pitching (you pitch the computer's half): o = null hides it all, else { open: boolean (the pitch buttons + Sim are up), pitches:
+  // [{ type, label, mph }], selected: type, canSim }. Plain controls: Task 12 replaces them.
+  setPitching(o) {
+    this.hud.classList.toggle('pitching', !!o); // (you are in the field: Bunt / Steal / Swing are gone)
+    const on = !!(o && o.open);
+    this.hud.classList.toggle('ctl', on);
+    if (!on) { this.hud.classList.remove('canSim'); return; }
+    this.hud.classList.toggle('canSim', !!o.canSim);
+    const key = o.pitches.map((p) => p.type).join(',');
+    if (key !== this.pitchKey) {
+      this.pitchKey = key;
+      this.q.pitchbar.innerHTML = o.pitches.map((p, i) => `<button data-type="${p.type}" tabindex="-1"><b>${i + 1}</b><span>${p.label}</span><small>${Math.round(p.mph)}</small></button>`).join('');
+    }
+    for (const b of this.q.pitchbar.children) b.classList.toggle('on', b.dataset.type === o.selected);
+  }
+  // the plain aim dot, in screen pixels over the game (null hides it)
+  setPitchDot(p) {
+    const d = this.hud.querySelector('.pitchdot');
+    d.classList.toggle('show', !!p);
+    if (p) { d.style.left = p.x.toFixed(1) + 'px'; d.style.top = p.y.toFixed(1) + 'px'; d.classList.toggle('lit', !!p.lit); }
   }
   // the Swing button shows (phones) while you are up
   setSwingButton(on) { this.q.swingBtn.classList.toggle('show', !!on); }
