@@ -706,6 +706,16 @@ export const CONFIG = {
     readFoul: 0.3, // s after contact a runner going with the pitch sees it is foul and pulls up
     readFly: 0.8, // s after contact he has read a fly ball (a line drive he only sees caught)
   },
+  // The computer's base running when YOU pitch (game/cpuRunner.js; the test bot's send judgement uses the same code).
+  cpuRun: {
+    gamble: 0.015, // chance (per look) it sends a runner it should not have - people misjudge too
+    look: [0.15, 0.6], // s after the ball is down before it first looks at sending a runner (a random moment in this range)
+    every: 0.4, // s between looks after that
+    steal: 0.06, // chance a runner with a free base ahead goes on a pitch (an average runner, an even count)
+    stealFast: 2, // times as often for the fastest runner (Speed 99)
+    stealSlow: 0.3, // times as often for the slowest runner (Speed 1)
+    stealCount: 1.5, // times as often on a count that favours the runner (1-0, 2-1)
+  },
   runner: {
     speed: 30.2, // ft/s top running speed
     accelTime: 0.42, // s a runner takes to get up to speed from a standstill

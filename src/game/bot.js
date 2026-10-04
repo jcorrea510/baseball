@@ -6,7 +6,7 @@
 import { createRng } from '../util/rng.js';
 import { zoneRatio } from '../physics/pitch.js';
 import { pitchGuide } from './pitchGuide.js';
-import { planPlay } from './fielding.js';
+import { chooseSend } from './cpuRunner.js';
 
 export function createBot(engine, o = {}) {
   const rng = o.rng || createRng(o.seed ?? 99);
@@ -47,11 +47,8 @@ export function createBot(engine, o = {}) {
         // person's to use, and looking all through every play would multiply its misjudgements)
         if (engine.time >= sendAt && !(res !== undefined && t < res) && t <= (p.plan.send.main ?? Infinity)) {
           sendAt = engine.time + 0.4;
-          for (const tg of engine.baseTargets().reverse()) {
-            const hyp = planPlay({ ...p.planIn, orders: [...p.planIn.orders, { base: tg.base, t, from: tg.from }] }, engine.cfg);
-            const goes = hyp.moves.some((m) => m.from === tg.from && m.sent && !m.out && m.to === tg.base);
-            if ((goes && !hyp.sentOut) || (hyp.sentOut && rng.chance(sendGamble))) { engine.tapBase(tg.base); break; }
-          }
+          const base = chooseSend({ planIn: p.planIn, t, targets: engine.baseTargets(), rng, gamble: sendGamble }, engine.cfg);
+          if (base !== null) engine.tapBase(base);
         }
         return;
       }
