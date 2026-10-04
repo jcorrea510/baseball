@@ -130,4 +130,23 @@ describe('the live play', () => {
     expect(chains).toBeGreaterThan(100);
     expect(late).toBeGreaterThan(100); // (plenty of the taps come after the old send window closed)
   }, 180000);
+
+  it('a catcher who caught a foul pop up the line does not throw home to himself when the runner on third tags up', () => {
+    const rng = createRng(5);
+    const problems = [];
+    let cases = 0;
+    for (let k = 0; k < 4000 && cases < 30; k++) {
+      const c = C(rng.range(50, 80), rng.range(60, 80), (rng.chance(0.5) ? -1 : 1) * rng.range(50, 110));
+      const i = setup(c, [null, 2, 3], 1);
+      const p = planPlay(i, CONFIG);
+      const caught = p.events.find((e) => e.type === 'catch');
+      if (p.result !== 'foulOut' || !caught || caught.pos !== 'C') continue;
+      cases++;
+      const next = order(i, p, { base: 4, t: caught.t + 0.05, from: 3 }); // (sent home as it is caught)
+      problems.push(...auditPlan(next, i.defense));
+      if (next.throws.some((t) => t.from === t.to)) problems.push('a throw to himself');
+    }
+    expect(cases).toBeGreaterThan(10);
+    expect([...new Set(problems)].slice(0, 10)).toEqual([]);
+  });
 });

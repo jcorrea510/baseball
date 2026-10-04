@@ -1240,8 +1240,8 @@ function caughtRunners(plan, i, f, air, type, bases, outs, defense, cfg) {
           planOut(plan, way, base, f, at, tReady, cfg, 'cover', true);
           tagRunner(plan, r, base, way, cfg);
           plan.result = 'doublePlay';
-        } else if (base === 4) {
-          // the throw home is late
+        } else if (base === 4 && f.pos !== 'C') {
+          // the throw home is late (a catcher who caught a foul pop up the line has nobody at home to throw to: he just holds it)
           const t1 = tReady + throwTime(dist(at.x, at.z, BASE_XZ[4][0], BASE_XZ[4][1]), f, cfg);
           plan.throws.push({ from: f.pos, to: 'C', t0: tReady, t1, ax: at.x, az: at.z, bx: BASE_XZ[4][0], bz: BASE_XZ[4][1], toBase: 4 });
           plan.events.push({ t: t1 + F.tagTime, type: 'throwLate' });
@@ -1403,12 +1403,14 @@ function planWildPitchCore(i, cfg) {
     if (to[b] > b) { m.tStart = W.react; end = Math.max(end, finishAt(cfg, b, to[b], W.react)); }
     plan.moves.push(m);
   }
-  // the pitcher covers the plate; with a runner coming home the catcher throws him the ball (late)
-  addMove(plan, Pp, 0.8, 2.5, Math.max(Pp.react + 0.4, tReady), { role: 'cover', minEffort: 0.9 }, cfg);
+  // the pitcher covers the plate (on it, a step to the first-base side - out of the runner's way); with a runner coming home the
+  // catcher throws him the ball (late)
+  const [px, pz] = W.coverAt;
+  addMove(plan, Pp, px, pz, Math.max(Pp.react + 0.4, tReady), { role: 'cover', minEffort: 0.9 }, cfg);
   if (to[3] === 4) {
-    const t1 = tReady + throwTime(dist(bx, bz, 0.8, 2.5), C, cfg);
+    const t1 = tReady + throwTime(dist(bx, bz, px, pz), C, cfg);
     plan.carries.push({ pos: 'C', t0: tPick, t1: tReady });
-    plan.throws.push({ from: 'C', to: 'P', t0: tReady, t1, ax: bx, az: bz, bx: 0.8, bz: 2.5, toBase: 4 });
+    plan.throws.push({ from: 'C', to: 'P', t0: tReady, t1, ax: bx, az: bz, bx: px, bz: pz, toBase: 4 });
     plan.carries.push({ pos: 'P', t0: t1, t1: t1 + 99 });
     end = Math.max(end, t1);
   } else plan.carries.push({ pos: 'C', t0: tPick, t1: tPick + 99 });

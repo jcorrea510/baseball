@@ -72,7 +72,7 @@ export function auditPlan(plan, defense, cfg = CONFIG) {
     }
   }
   const outMoves = plan.moves.filter((m) => m.out).length;
-  const byCatch = plan.caught ? 1 : 0; // (the batter caught out is not a runner)
+  const byCatch = plan.caught || (plan.infieldFly && plan.dropped) ? 1 : 0; // (the batter caught out - or out on a dropped infield fly - is not a runner)
   if (outMoves + byCatch !== plan.outsMade) problems.push(`${outMoves} runners are out but outsMade is ${plan.outsMade}`);
   return problems;
 }

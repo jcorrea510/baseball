@@ -144,8 +144,10 @@ describe('the infield fly rule', () => {
       const caught = planPlay({ sim, contact: c, bases: ['a', 'b', null], outs: 0, defense: createDefense() }, CONFIG);
       if (!caught.infieldFly) continue;
       checked++;
-      const dropped = planPlay({ sim, contact: c, bases: ['a', 'b', null], outs: 0, defense: createDefense(), errorRoll: 0, errorScale: 1 }, CONFIG);
+      const defense = createDefense();
+      const dropped = planPlay({ sim, contact: c, bases: ['a', 'b', null], outs: 0, defense, errorRoll: 0, errorScale: 1 }, CONFIG);
       expect(dropped.dropped).toBe(true);
+      expect(auditPlan(dropped, defense)).toEqual([]); // (the referee counts the batter out on the rule, though nobody caught it)
       expect(dropped.result).toBe('popout');
       expect(dropped.outsMade).toBe(1);
       expect(dropped.batterDest).toBe(0);

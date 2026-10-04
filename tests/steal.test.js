@@ -216,6 +216,23 @@ describe('wild pitches', () => {
     expect(r.runs).toBe(m3.to === 4 ? 1 : 0);
     expect(g.score.top).toBe(r.runs);
   });
+  it('the referee finds nothing wrong on any wild pitch (the throw home goes to the pitcher on the plate)', async () => {
+    const { planWildPitch, createDefense: cd } = await import('../src/game/fielding.js');
+    const { auditPlan } = await import('../src/game/playAudit.js');
+    const problems = [];
+    let home = 0;
+    for (const bases of [[null, null, 'c'], ['a', null, 'c'], ['a', 'b', 'c'], [null, 'b', 'c']]) {
+      for (let k = 0; k <= 40; k++) {
+        const defense = cd();
+        const p = planWildPitch({ bases, defense, roll: k / 40 }, CONFIG);
+        if (!p) continue;
+        if (p.throws.length) home++;
+        problems.push(...auditPlan(p, defense));
+      }
+    }
+    expect(home).toBeGreaterThan(10);
+    expect([...new Set(problems)]).toEqual([]);
+  });
   it('in a game: now and then a pitch in the dirt with runners on is a wild pitch (never one that ends the at-bat)', () => {
     const e = new Engine({ mode: 'quick', playerSide: 'top', seed: 12 });
     e.pitchOverride = () => ({ type: 'curveball', speedMph: 76, target: { x: 0.2, y: 0.3 }, intendedStrike: false, tell: { slot: 0, lag: 0 } });
