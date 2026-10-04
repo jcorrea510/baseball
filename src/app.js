@@ -1175,15 +1175,16 @@ export class App {
     const open = active && !this.simSummary;
     const g = e.game, m = e.mound;
     const cnt = inField && g ? `${g.balls}-${g.strikes}` : '';
-    const sig = `${inField}|${open}|${open && e.phase !== 'delivery'}|${e.pitchType}|${m ? m.pitcher.id : ''}|${cnt}|${m ? m.pitches + ':' + Math.round(100 * m.left / m.max) : ''}`;
+    const sig = `${inField}|${open}|${open && e.phase !== 'delivery'}|${e.pitchType}|${m ? m.pitcher.id : ''}|${cnt}|${open && e.phase === 'aim'}|${m ? m.pitches + ':' + (m.max > 0 ? Math.round(100 * m.left / m.max) : 100) : ''}`;
     if (sig !== this.pitchSig) {
       this.pitchSig = sig;
-      if (!inField) { this.ui.setPitching(null); this.ui.setPitcherTag(null); this.ui.setPitchCount(''); }
+      if (!inField) { this.ui.pinPitchInfo(null); this.ui.setPitching(null); this.ui.setPitcherTag(null); this.ui.setPitchCount(''); }
       else {
         const p = e.mound.pitcher;
         this.ui.setPitcherTag({ name: p.short || p.name, pitches: m.pitches, stamina: m.max > 0 ? m.left / m.max : 1 });
         this.ui.setPitchCount(cnt);
         const sel = p.pitches.includes(e.pitchType) ? e.pitchType : p.pitches[0];
+        if (open && e.phase === 'aim') this.ui.pinPitchInfo({ type: LABEL[sel] || sel, mph: pitchTopMph(p, sel, CONFIG) }); else this.ui.pinPitchInfo(null);
         this.ui.setPitching({
           open, selected: sel, canSim: open && e.phase !== 'delivery', canBullpen: false, // (Bullpen: Task 15)
           pitches: p.pitches.map((t) => ({ type: t, label: LABEL[t] || t, mph: pitchTopMph(p, t, CONFIG) })),

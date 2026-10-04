@@ -877,10 +877,21 @@ export class UI {
     el.querySelector('.type').textContent = type;
     el.querySelector('.mph').textContent = announceOnly ? '' : `${Math.round(mph)} mph`;
     el.classList.add('show');
+    this.pitchPinned = false;
     clearTimeout(this.pitchTimer);
     this.pitchTimer = setTimeout(() => el.classList.remove('show'), ms);
   }
-  hidePitchInfo() { this.q.pitchinfo.classList.remove('show'); }
+  hidePitchInfo() { this.q.pitchinfo.classList.remove('show'); this.pitchPinned = false; }
+  // While you aim: the pill stays up with the selected pitch's name and top speed (and the count); null lets it go.
+  pinPitchInfo(o) {
+    const el = this.q.pitchinfo;
+    if (!o) { if (this.pitchPinned) { this.pitchPinned = false; el.classList.remove('show'); } return; }
+    clearTimeout(this.pitchTimer);
+    this.pitchPinned = true;
+    el.querySelector('.type').textContent = o.type;
+    el.querySelector('.mph').textContent = `${Math.round(o.mph)} mph`;
+    el.classList.add('show');
+  }
   banner(big, sub = '', cls = 'neutral', hold = false) {
     const el = this.q.banner;
     el.className = 'banner ' + cls + (hold ? ' hold' : '');
