@@ -25,7 +25,7 @@ import { landingSpot, landingRing } from './game/landing.js';
 import * as SEA from './game/season.js';
 import { runnerState, runnerProfile } from './game/runnerMotion.js';
 import { currentPark } from './physics/field.js';
-import { pitchTopMph } from './game/pitching.js';
+import { pitchTopMph, isPainted } from './game/pitching.js';
 const parkName = () => currentPark().name.toUpperCase();
 
 // scorekeeping numbers for the error banner (E6 = an error by the shortstop)
@@ -495,7 +495,11 @@ export class App {
   bindEngine(e) {
     const ui = this.ui, audio = this.audio, cam = this.cam, fx = this.fx;
     const F = CONFIG.feel;
-    e.on('paStart', ({ batter, waiting }) => {
+    // While the computer plays your half (Sim) the engine runs whole plate appearances per frame: none of the per-pitch presentation
+    // (umpire, crowd, bat and glove sounds, banners, effects, slow motion) plays - the recap panel tells the story.
+    const QUIET = new Set(['stealGo', 'windup', 'release', 'swing', 'whiff', 'catch', 'pitchCall', 'contact', 'playEvent', 'ringTap', 'pitchGrade']);
+    const on = (name, fn) => e.on(name, QUIET.has(name) ? (...a) => { if (!e.simming) fn(...a); } : fn);
+    on('paStart', ({ batter, waiting }) => {
       ui.setBatter(batter);
       this.refreshLineup();
       if (waiting) ui.showBatterUp(batter, e.lineOf(batter), this.batterChips(batter)); else ui.hideBatterUp();
@@ -506,28 +510,28 @@ export class App {
       if (e.game) ui.setGameState(e.game);
       this.updateScoreboard();
     });
-    e.on('count', (c) => { ui.setCount(c.balls, c.strikes, c.outs); this.updateScoreboard(); });
-    e.on('batterReady', () => ui.hideBatterUp());
-    e.on('checkpoint', (st) => this.saveSeasonGame(st));
-    e.on('buntStance', ({ on }) => ui.setBunt(on));
-    e.on('practice', (st) => { ui.setPracticeState(st); this.updateScoreboard(); });
-    e.on('stealArmed', ({ on }) => ui.setSteal(e.canSteal, on));
-    e.on('stealGo', () => audio.crowdSwell(0.3, 1.4)); // the crowd sees him go
-    e.on('stealPlay', () => { this.landing = null; this.landRing.hide(); this.playOuts = 0; this.groaned = false; });
-    e.on('windup', ({ pitch }) => {
+    on('count', (c) => { ui.setCount(c.balls, c.strikes, c.outs); this.updateScoreboard(); });
+    on('batterReady', () => ui.hideBatterUp());
+    on('checkpoint', (st) => this.saveSeasonGame(st));
+    on('buntStance', ({ on }) => ui.setBunt(on));
+    on('practice', (st) => { ui.setPracticeState(st); this.updateScoreboard(); });
+    on('stealArmed', ({ on }) => ui.setSteal(e.canSteal, on));
+    on('stealGo', () => audio.crowdSwell(0.3, 1.4)); // the crowd sees him go
+    on('stealPlay', () => { this.landing = null; this.landRing.hide(); this.playOuts = 0; this.groaned = false; });
+    on('windup', ({ pitch }) => {
       this.hrShown = false;
       this.pitchMarker.visible = false;
       ui.hideBanner();
       ui.hideCallout();
       if (pitch.announce && e.mode !== 'derby') ui.showPitchInfo(LABEL[pitch.type], 0, true, 1500);
     });
-    e.on('release', ({ pitch }) => {
+    on('release', ({ pitch }) => {
       this.actors.fielders.P.root.updateMatrixWorld(true);
       const rh = this.actors.fielders.P.handWorld('R');
       this.fx.releaseGlint(rh.x, rh.y, rh.z);
       ui.showPitchInfo(pitch.announce || (e.d.typeAtRelease && e.mode !== 'derby') ? LABEL[pitch.type] : '', pitch.speedMph, false, 1900);
     });
-    e.on('swing', ({ swing, pitch, errorText }) => {
+    on('swing', ({ swing, pitch, errorText }) => {
       if (swing.bunt) { ui.hideHint(); return; } // (a bunt is squared up and pushed by itself: no swing, no timing meter)
       audio.swingWhoosh();
       const txtGrade = { perfect: 'PERFECT', good: 'GOOD', early: 'EARLY', late: 'LATE', miss: swing.errorMs < 0 ? 'TOO EARLY' : 'TOO LATE' }[swing.grade];
@@ -538,12 +542,12 @@ export class App {
       ui.hideHint();
       void pitch;
     });
-    e.on('whiff', ({ reason }) => {
+    on('whiff', ({ reason }) => {
       // where the bat missed it (the ring on the plate shows where the ball was)
       const say = { under: 'Under it', over: 'Over it', end: 'Off the end', hands: 'Jammed' }[reason];
       if (say) ui.hint(say, 1500);
     });
-    e.on('catch', ({ pitch, swung }) => {
+    on('catch', ({ pitch, swung }) => {
       audio.glovePop(clamp((pitch.speedMph - 40) / 60, 0.3, 1.2));
       ui.showPitchInfo(LABEL[pitch.type], pitch.speedMph, false, 1500);
       // mark where it crossed the plate
@@ -554,21 +558,21 @@ export class App {
       if (this.settings.shake) cam.shake(0.05);
       void swung;
     });
-    e.on('pitchCall', (p) => this.onPitchCall(p));
-    e.on('contact', (c) => this.onContact(c));
-    e.on('playEvent', (ev) => this.onPlayEvent(ev));
-    e.on('result', (r) => { this.onResult(r); this.groaned = false; });
-    e.on('derby', (d) => { ui.setDerby(d); this.updateScoreboard(); });
-    e.on('aiHalf', (s) => {
+    on('pitchCall', (p) => this.onPitchCall(p));
+    on('contact', (c) => this.onContact(c));
+    on('playEvent', (ev) => this.onPlayEvent(ev));
+    on('result', (r) => { this.onResult(r); this.groaned = false; });
+    on('derby', (d) => { ui.setDerby(d); this.updateScoreboard(); });
+    on('aiHalf', (s) => {
       ui.hideBanner(); ui.hideCallout();
       ui.showSummary(s, e.opponent.name, CONFIG.pace.aiSummaryLine);
       this.updateScoreboard();
       const scored = s.runs > 0;
       if (scored) { audio.crowdGroan(0.5); } else audio.crowdSwell(0.3, 1.5);
     });
-    e.on('ringTap', ({ grade }) => this.pitchAim.flash(grade, e.ring && e.ring.aim)); // (how well the ring was tapped)
-    e.on('pitchGrade', ({ grade }) => { if (!e.ring || !e.ring.tapped) this.pitchAim.flash(grade, e.ring && e.ring.aim); }); // (no tap at all: WILD)
-    e.on('simDone', (s) => {
+    on('ringTap', ({ grade }) => this.pitchAim.flash(grade, e.ring && e.ring.aim)); // (how well the ring was tapped)
+    on('pitchGrade', ({ grade }) => { if (!e.ring || !e.ring.tapped) this.pitchAim.flash(grade, e.ring && e.ring.aim); }); // (no tap at all: WILD)
+    on('simDone', (s) => {
       // the half you simmed: its highlights, with Skip (the engine is already on to your turn at bat, held at Ready)
       ui.hideBanner(); ui.hideCallout();
       ui.showSummary(s, e.opponent.name, CONFIG.pace.aiSummaryLine);
@@ -576,13 +580,13 @@ export class App {
       this.updateScoreboard();
       if (s.runs > 0) audio.crowdGroan(0.5); else audio.crowdSwell(0.3, 1.5);
     });
-    e.on('inningChange', ({ inning, half, newInning }) => {
+    on('inningChange', ({ inning, half, newInning }) => {
       if (!this.simSummary) ui.hideSummary(); // (a Sim's highlights stay up until they are skipped or have been read)
       if (e.game) ui.setGameState(e.game);
       this.updateScoreboard();
-      if (newInning && e.game && !e.over) ui.banner(`INNING ${inning}`, e.game.inning > e.game.innings ? 'Extra innings' : '', 'neutral');
+      if (newInning && e.game && !e.over && !e.simming) ui.banner(`INNING ${inning}`, e.game.inning > e.game.innings ? 'Extra innings' : '', 'neutral');
     });
-    e.on('gameOver', (p) => this.onGameOver(p));
+    on('gameOver', (p) => this.onGameOver(p));
   }
 
   onContact(c) {
@@ -842,6 +846,7 @@ export class App {
   onResult(r) {
     const e = this.engine, ui = this.ui, audio = this.audio;
     if (e.game) { ui.setGameState(e.game); this.updateScoreboard(); }
+    if (e.simming) { if (r.kind !== 'pitch') this.refreshLineup(); return; } // (Sim: the state above is kept up, nothing is shown or heard)
     const runsText = r.runs > 0 ? ` · ${r.runs} run${r.runs > 1 ? 's' : ''}` : '';
     const count = e.game ? `${e.game.balls}-${e.game.strikes}` : '';
     if (r.kind === 'pitch') {
@@ -945,13 +950,7 @@ export class App {
     if (r.runs > 0 && res !== 'homer' && !mine) audio.applause(1.6, 0.8);
   }
 
-  // A perfect pitch of yours that was a strike on the very edge of the zone (the pitch carries mine / grade).
-  isPainted(r) {
-    const p = r && r.pitch;
-    if (!p || !p.mine || p.grade !== 'perfect') return false;
-    if (r.call !== 'calledStrike' && r.call !== 'swingingStrike' && !(r.kind === 'pa' && /^strikeout/.test(r.result || ''))) return false;
-    return Math.abs(zoneEdgeDistance(p.target.x, p.target.y)) <= CONFIG.pitching.painted;
-  }
+  isPainted(r) { return !!r && isPainted(r.pitch, r.kind === 'pa' ? r.result : r.call, CONFIG); }
 
   // Their out and your cheer: once a play.
   cheerOut() {
@@ -1262,7 +1261,7 @@ export class App {
   pressSim() {
     const e = this.engine;
     if (!e || this.paused || this.bot || !e.pitching || e.simming || e.phase === 'delivery') return;
-    if (e.simHalf()) { this.audio.uiClick(); this.pitchAim.hide(); }
+    if (e.simHalf()) { this.audio.uiClick(); this.audio.crowdSwell(0.15, 1.5); this.pitchAim.hide(); } // (one soft murmur as the Sim starts)
   }
 
   hideSimSummary() {

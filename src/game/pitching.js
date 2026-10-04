@@ -3,6 +3,7 @@
 // with the ratings 1-99. Coordinates: feet, x as the catcher sees it from behind the plate (+x = right-field side).
 import { CONFIG } from '../config.js';
 import { clamp, lerp } from '../util/math.js';
+import { zoneEdgeDistance } from '../physics/pitch.js';
 
 /** Share (0-1) of a 1-99 rating. */
 const share = (r) => clamp((r - 1) / 98, 0, 1);
@@ -104,4 +105,14 @@ export function pitchCost({ type, balls = 0, risp = false }, cfg = CONFIG) {
 export function staminaMax(pitcher, cfg = CONFIG) {
   const s = cfg.pitching.stamina;
   return mapRating(pitcher.sta, pitcher.role === 'RP' ? s.reliever : s.starter);
+}
+
+/**
+ * PAINTED: a perfect pitch of yours that was called (or swung at) as a strike on the very edge of the zone. `call` is the pitch call
+ * ('calledStrike' / 'swingingStrike') or, for a plate appearance's last pitch, its result ('strikeoutLooking' ...).
+ */
+export function isPainted(pitch, call, cfg = CONFIG) {
+  if (!pitch || !pitch.mine || pitch.grade !== 'perfect') return false;
+  if (call !== 'calledStrike' && call !== 'swingingStrike' && !/^strikeout/.test(call || '')) return false;
+  return Math.abs(zoneEdgeDistance(pitch.target.x, pitch.target.y, cfg)) <= cfg.pitching.painted;
 }
