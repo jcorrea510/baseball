@@ -11,7 +11,7 @@ const report = [];
 for (const sz of sizes) {
   const [w, h] = sz.split('x').map(Number);
   const touch = w < 900;
-  for (const [mode, state] of [['quick', 'pitch'], ['derby', 'pitch'], ['practice', 'pitch'], ['quick', 'play'], ['practice', 'play']]) {
+  for (const [mode, state] of [['quick', 'pitch'], ['derby', 'pitch'], ['practice', 'pitch'], ['quick', 'play'], ['practice', 'play'], ['quick', 'field'], ['quick', 'field5'], ['quick', 'fieldplay']]) {
     const ctx = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: touch, isMobile: touch });
     const page = await ctx.newPage();
     await page.goto(`${process.argv[3] || 'http://localhost:5173/'}?mode=${mode}&seed=4`, { waitUntil: 'load' });
@@ -27,12 +27,22 @@ for (const sz of sizes) {
       ui.banner('DOUBLE', '98 mph · 2 runs', 'good');
       if (a.engine.mode === 'quick' && state === 'pitch') ui.showBatterUp({ number: 12, name: 'J. Delgado-Whitfield', pos: 'SS' }, { pa: 2, ab: 2, h: 1, hr: 1, rbi: 2, bb: 0 }, ['.312 AVG', '14 HR', 'Contact 62 · Power 70 · Speed 55']);
       if (a.engine.mode === 'quick') { ui.setSteal(true, true); a.refreshLineup(); }
-      if (state === 'pitch') ui.setSwingButton(true); // (the Steal button next to Bunt)
+      if (state === 'pitch' || state === 'field' || state === 'field5') ui.setSwingButton(true); // (the Steal button next to Bunt)
       else ui.setBasePad({ open: [3, 4], dots: [{ x: 0, z: 0, from: 0 }, { x: 60, z: -60, sent: true, from: 1 }] }), ui.setFast(true, false); // (during a play: the base diamond and the fast-forward button, no Swing button)
       ui.q.banner.style.opacity = '1';
       a.tick(0.001, true);
+      // you pitch (the computer is up): the pitch buttons (4, or 5 for the crowded case), Bullpen + Sim, your pitcher's tag, their order, the count
+      if (!state.startsWith('field')) ui.setPitching(null); // (batting states: the pitching controls are away)
+      if (state.startsWith('field')) {
+        const all = [['fastball', 'Fastball', 94], ['sinker', 'Sinker', 92], ['slider', 'Slider', 86], ['curveball', 'Curveball', 79], ['changeup', 'Changeup', 85]];
+        ui.setPitching({ open: state !== 'fieldplay', selected: 'slider', canSim: true, canBullpen: false, pitches: all.slice(0, state === 'field5' ? 5 : 4).map(([type, label, mph]) => ({ type, label, mph })) });
+        ui.setPitcherTag({ name: 'R. Castellanos-Ortiz', pitches: 47, stamina: state === 'field5' ? 0.1 : 0.32 });
+        ui.setPitchCount('2-1');
+        ui.setBasePad(null); // (you never send the computer's runners)
+        if (state === 'fieldplay') ui.setFast(true, false);
+      }
       // overlap check between visible HUD boxes
-      const sel = ['.lineup', '.pitchinfo', '.callout', '.meter', '.batterup', '.bugwrap', '.derbybox', '.practbox', '.practice', '.hudbtns', '.acts', '.swingbtn', '.basepad', '.ffbtn'];
+      const sel = ['.lineup', '.pitchinfo', '.callout', '.meter', '.batterup', '.bugwrap', '.derbybox', '.practbox', '.practice', '.hudbtns', '.acts', '.swingbtn', '.basepad', '.ffbtn', '.pitchbar', '.pitchside'];
       const boxes = [];
       for (const s of sel) { const e = document.querySelector('.hud ' + s); if (!e) continue; const cs = getComputedStyle(e); if (cs.display === 'none' || +cs.opacity === 0) continue; const b = e.getBoundingClientRect(); if (b.width && b.height) boxes.push({ s, b }); }
       const hits = [];
@@ -44,8 +54,8 @@ for (const sz of sizes) {
       const off = boxes.filter(({ b }) => b.left < -1 || b.top < -1 || b.right > innerWidth + 1 || b.bottom > innerHeight + 1).map(({ s }) => s + ' off-screen');
       return hits.concat(off);
     }, state);
-    report.push(`${sz} ${mode}${state === 'play' ? ' (play)' : ''}: ${r.length ? r.join('; ') : 'no overlaps'}`);
-    await page.screenshot({ path: `qa-output/hud-${sz}-${mode}${state === 'play' ? '-play' : ''}.png` });
+    report.push(`${sz} ${mode}${state === 'play' ? ' (play)' : state === 'pitch' ? '' : ' (' + state + ')'}: ${r.length ? r.join('; ') : 'no overlaps'}`);
+    await page.screenshot({ path: `qa-output/hud-${sz}-${mode}${state === 'play' ? '-play' : state === 'pitch' ? '' : '-' + state}.png` });
     await ctx.close();
   }
 }

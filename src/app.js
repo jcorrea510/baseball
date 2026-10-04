@@ -759,6 +759,7 @@ export class App {
   refreshLineup() {
     const e = this.engine;
     if (!e || e.mode !== 'quick' || !e.lineup) { this.ui.setLineup(null); return; }
+    if (e.pitching && e.oppLineup) { this.ui.setLineup(e.oppLineup, e.batterIndex ?? 0, null); return; } // (you pitch: THEIR order, the man at bat lit)
     const today = {};
     for (const b of e.lineup) today[b.id] = e.lineOf(b);
     this.ui.setLineup(e.lineup, e.batterIndex ?? 0, today);
@@ -1172,15 +1173,19 @@ export class App {
     }
     const inField = !!(e.pitching && !e.over && this.screen === 'game');
     const open = active && !this.simSummary;
-    const sig = `${inField}|${open}|${open && e.phase !== 'delivery'}|${e.pitchType}|${e.mound ? e.mound.pitcher.id : ''}`;
+    const g = e.game, m = e.mound;
+    const cnt = inField && g ? `${g.balls}-${g.strikes}` : '';
+    const sig = `${inField}|${open}|${open && e.phase !== 'delivery'}|${e.pitchType}|${m ? m.pitcher.id : ''}|${cnt}|${m ? m.pitches + ':' + Math.round(100 * m.left / m.max) : ''}`;
     if (sig !== this.pitchSig) {
       this.pitchSig = sig;
-      if (!inField) this.ui.setPitching(null);
+      if (!inField) { this.ui.setPitching(null); this.ui.setPitcherTag(null); this.ui.setPitchCount(''); }
       else {
         const p = e.mound.pitcher;
+        this.ui.setPitcherTag({ name: p.short || p.name, pitches: m.pitches, stamina: m.max > 0 ? m.left / m.max : 1 });
+        this.ui.setPitchCount(cnt);
         const sel = p.pitches.includes(e.pitchType) ? e.pitchType : p.pitches[0];
         this.ui.setPitching({
-          open, selected: sel, canSim: open && e.phase !== 'delivery',
+          open, selected: sel, canSim: open && e.phase !== 'delivery', canBullpen: false, // (Bullpen: Task 15)
           pitches: p.pitches.map((t) => ({ type: t, label: LABEL[t] || t, mph: pitchTopMph(p, t, CONFIG) })),
         });
       }
@@ -1266,7 +1271,7 @@ export class App {
   // Every frame: the base diamond is up while you can send runners - the bases you can send someone to light up, and a dot shows
   // every runner where he is right now.
   updateBasePad(e) {
-    const open = !this.paused && !this.ui.current && e.sendOpen;
+    const open = !this.paused && !this.ui.current && e.sendOpen && !e.pitching; // (you never send the computer's runners)
     if (!open) { if (this.padShown) { this.padShown = false; this.ui.setBasePad(null); } return; }
     this.padShown = true;
     const p = e.play, t = e.time - p.t0;

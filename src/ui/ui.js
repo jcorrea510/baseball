@@ -121,12 +121,13 @@ export class UI {
       <div class="vignette"></div>
       <div class="hudbtns"><button class="iconbtn" data-a="pause" aria-label="Pause" title="Pause (Esc)">${icon('pause')}</button><button class="iconbtn" data-a="mute" aria-label="Sound" title="Mute (M)">${icon('soundOn')}</button><button class="iconbtn" data-a="fullscreen" data-fs aria-label="Full screen" title="Full screen (F)">${icon('full')}</button></div>
       <div class="lineup"><div class="lh"><span>Batting order</span></div><ol></ol></div>
-      <div class="pitchinfo"><span class="type"></span><span class="mph"></span></div>
+      <div class="pitchinfo"><span class="cnt"></span><span class="type"></span><span class="mph"></span></div>
       <div class="banner"><div class="big"></div><div class="sub"></div></div>
       <div class="callout"></div>
       <div class="hint"></div>
       <div class="bugwrap">
         <div class="batter-tag"></div>
+        <div class="pitchtag"><div class="pt1"><b class="pn"></b><span class="pc"></span></div><div class="stam"><i></i></div></div>
         <div class="bug">
           <div class="teams">
             <div class="team away"><i></i><span class="abbr">AWY</span><span class="runs">0</span></div>
@@ -166,7 +167,7 @@ export class UI {
       </div>
       <button class="ffbtn" data-a="fast" aria-pressed="false" title="Speed up (Space)">${icon('ff')}<span>Fast</span></button>
       <div class="pitchbar" aria-label="Pitches"></div>
-      <button class="simbtn" data-a="sim" title="Sim this inning">${icon('ff')}<span>Sim</span></button>
+      <div class="pitchside"><button class="btn small ghost bullbtn" data-a="bullpen" disabled title="Bullpen">${icon('swap')}<span>Bullpen</span></button><button class="btn small ghost simbtn" data-a="sim" title="Sim this inning">${icon('ff')}<span>Sim</span></button></div>
       <div class="acts"><button class="stealbtn" data-a="steal" aria-pressed="false" title="Steal (S)">${icon('go')}<span>Steal</span></button><button class="buntbtn" data-a="bunt" aria-pressed="false" title="Bunt (B)">${icon('bat')}<span>Bunt</span></button></div>
       <div class="practice panel collapsed">
         <button class="prhead" aria-label="Pitch settings">${icon('sliders')}<span>Pitch</span>${icon('chevDown', 'chev')}</button>
@@ -224,7 +225,7 @@ export class UI {
     // your pitch choice (labels only): a tap picks it; the buttons never count as a click on the field
     this.q.pitchbar = $(hud, '.pitchbar');
     this.q.pitchbar.addEventListener('click', (e) => { const b = e.target.closest('button[data-type]'); if (b) this.act('pitchSel', { type: b.dataset.type }); });
-    for (const el of hud.querySelectorAll('.practice, .hudbtns, .batterup, .acts, .lineup, .ffbtn, .pitchbar, .simbtn')) el.addEventListener('pointerdown', (e) => e.stopPropagation());
+    for (const el of hud.querySelectorAll('.practice, .hudbtns, .batterup, .acts, .lineup, .ffbtn, .pitchbar, .pitchside')) el.addEventListener('pointerdown', (e) => e.stopPropagation());
 
     // ---------------- toast + rotate hint
     this.toastEl = h('div', 'toast');
@@ -937,21 +938,38 @@ export class UI {
     b.classList.toggle('on', !!on);
     b.setAttribute('aria-pressed', on ? 'true' : 'false');
   }
-  // Pitching (you pitch the computer's half): o = null hides it all, else { open: boolean (the pitch buttons + Sim are up), pitches:
-  // [{ type, label, mph }], selected: type, canSim }. Plain controls: Task 12 replaces them.
+  // Pitching (you pitch the computer's half): o = null hides it all, else { open: boolean (the pitch buttons, Bullpen and Sim are up),
+  // pitches: [{ type, label, mph }], selected: type, canSim, canBullpen }. Labels only.
   setPitching(o) {
     this.hud.classList.toggle('pitching', !!o); // (you are in the field: Bunt / Steal / Swing are gone)
     const on = !!(o && o.open);
     this.hud.classList.toggle('ctl', on);
-    if (!on) { this.hud.classList.remove('canSim'); return; }
+    if (!on) { this.hud.classList.remove('canSim'); if (!o) this.pitchKey = null; return; }
     this.hud.classList.toggle('canSim', !!o.canSim);
+    this.hud.querySelector('.bullbtn').disabled = !o.canBullpen;
     const key = o.pitches.map((p) => p.type).join(',');
     if (key !== this.pitchKey) {
       this.pitchKey = key;
-      this.q.pitchbar.innerHTML = o.pitches.map((p, i) => `<button data-type="${p.type}" tabindex="-1"><b>${i + 1}</b><span>${p.label}</span><small>${Math.round(p.mph)}</small></button>`).join('');
+      this.q.pitchbar.dataset.n = o.pitches.length;
+      this.q.pitchbar.innerHTML = o.pitches.map((p) => `<button data-type="${p.type}" tabindex="-1"><span class="pn">${p.label}</span><span class="pm">${Math.round(p.mph)}</span></button>`).join('');
     }
     for (const b of this.q.pitchbar.children) b.classList.toggle('on', b.dataset.type === o.selected);
   }
+  // Your pitcher's tag by the score box: o = null hides it, else { name, pitches (thrown so far), stamina (0..1) } - the bar goes green,
+  // amber under .4 and red under .15.
+  setPitcherTag(o) {
+    const el = this.hud.querySelector('.pitchtag');
+    el.classList.toggle('show', !!o);
+    if (!o) return;
+    el.querySelector('.pn').textContent = o.name;
+    el.querySelector('.pc').textContent = `${o.pitches} P`;
+    const st = Math.max(0, Math.min(1, o.stamina));
+    el.querySelector('.stam i').style.width = `${Math.round(st * 100)}%`;
+    el.classList.toggle('mid', st < 0.4 && st >= 0.15);
+    el.classList.toggle('low', st < 0.15);
+  }
+  // The count by the zone while you pitch (it rides on the pitch pill): '' removes it.
+  setPitchCount(text) { this.q.pitchinfo.querySelector('.cnt').textContent = text || ''; }
   // the Swing button shows (phones) while you are up
   setSwingButton(on) { this.q.swingBtn.classList.toggle('show', !!on); }
   // The base diamond while you can send runners: o = null hides it, else { open: [bases that light up], dots: [{ x, z, sent, from,

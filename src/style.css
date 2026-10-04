@@ -379,16 +379,40 @@ body.touch .swingbtn.show { display: flex; }
 .ffbtn.on { background: linear-gradient(180deg, var(--gold-hi), var(--gold)); color: var(--gold-ink); }
 .hud.sending .acts, .hud.sending .swingbtn, .hud.sending .meter { display: none !important; } /* (while a hit is played the diamond has the corner) */
 
-/* pitching (plain version): pitch buttons bottom-centre, Sim bottom-right, an aim dot over the plate; Bunt / Steal / Swing step aside */
-.pitchbar { position: absolute; left: 50%; bottom: calc(var(--safe-b) + 14px); transform: translateX(-50%); display: none; gap: 8px; pointer-events: auto; }
+/* pitching: your pitch buttons bottom-centre (name + speed), Bullpen / Sim bottom-right, your pitcher's tag with a stamina bar above the
+   score box, the count riding on the pitch pill; Bunt / Steal / Swing step aside */
+.pitchbar { position: absolute; left: 50%; bottom: calc(var(--safe-b) + 14px); transform: translateX(-50%); display: none; gap: 8px; pointer-events: auto; max-width: calc(100vw - 2 * (var(--safe-l) + 14px)); }
 .hud.pitching.ctl .pitchbar { display: flex; }
-.pitchbar button { appearance: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 76px; height: 52px; padding: 0 12px; border: 0; border-radius: 10px; background: var(--glass); box-shadow: inset 0 0 0 1px var(--line-hi); color: var(--ink-2); font: 800 13px/1 var(--cond); letter-spacing: .05em; text-transform: uppercase; cursor: pointer; touch-action: manipulation; }
-.pitchbar button b { display: none; }
-.pitchbar button small { font: 700 11px/1 var(--cond); opacity: .75; }
-.pitchbar button.on { background: linear-gradient(180deg, var(--gold-hi), var(--gold)); color: var(--gold-ink); }
-.simbtn { appearance: none; position: absolute; right: calc(var(--safe-r) + 16px); bottom: calc(var(--safe-b) + 14px); display: none; align-items: center; gap: 8px; height: 46px; padding: 0 20px; border: 0; border-radius: 10px; background: var(--glass); box-shadow: inset 0 0 0 1px var(--line-hi); color: var(--ink); font: 800 14px/1 var(--cond); letter-spacing: .05em; text-transform: uppercase; cursor: pointer; pointer-events: auto; touch-action: manipulation; }
-.simbtn svg.i { width: 20px; height: 20px; }
-.hud.pitching.ctl.canSim .simbtn { display: inline-flex; }
+.pitchbar button { appearance: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 88px; height: 62px; padding: 0 12px 4px; border: 0; border-radius: 14px; color: var(--ink); cursor: pointer; touch-action: manipulation; background: linear-gradient(180deg, #3566b6, #234c92 55%, #1b3d7a); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .28), 0 5px 0 var(--edge), 0 10px 18px rgba(0, 0, 0, .42); transition: transform .08s var(--ease), box-shadow .08s; }
+.pitchbar button:active { transform: translateY(4px); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .2), 0 1px 0 var(--edge), 0 4px 8px rgba(0, 0, 0, .4); }
+.pitchbar[data-n="5"] { gap: 6px; } .pitchbar[data-n="5"] button { min-width: 78px; padding: 0 8px 4px; }
+.pitchbar .pn { font: 800 13px/1 var(--cond); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); white-space: nowrap; }
+.pitchbar .pm { font: 400 24px/1 var(--display); letter-spacing: .02em; text-shadow: var(--outline-blue); font-variant-numeric: tabular-nums; }
+.pitchbar .pm::after { content: " mph"; font: 800 10px/1 var(--cond); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); text-shadow: none; }
+.pitchbar button.on { background: linear-gradient(180deg, var(--gold-hi), var(--gold) 55%, var(--gold-lo)); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .55), inset 0 -2px 0 rgba(150, 60, 0, .3), 0 5px 0 var(--gold-edge), 0 10px 18px rgba(0, 0, 0, .42); }
+.pitchbar button.on:active { box-shadow: inset 0 2px 0 rgba(255, 255, 255, .45), 0 1px 0 var(--gold-edge), 0 4px 8px rgba(0, 0, 0, .4); }
+.pitchbar button.on .pn { color: var(--gold-ink); }
+.pitchbar button.on .pm { color: #fff; text-shadow: var(--outline); }
+.pitchbar button.on .pm::after { color: var(--gold-ink); }
+.pitchside { position: absolute; right: calc(var(--safe-r) + 16px); bottom: calc(var(--safe-b) + 14px); display: none; flex-direction: column; gap: 10px; align-items: stretch; pointer-events: auto; }
+.hud.pitching.ctl .pitchside { display: flex; }
+.pitchside .btn { min-width: 128px; }
+.pitchside .btn svg.i { width: 20px; height: 20px; }
+.pitchside .btn[disabled] { opacity: .45; cursor: default; }
+.pitchside .simbtn { display: none; }
+.hud.pitching.ctl.canSim .pitchside .simbtn { display: inline-flex; }
+.pitchtag { display: none; flex-direction: column; gap: 5px; width: 100%; min-width: 156px; padding: 7px 12px 8px; border-radius: var(--r-md); border-left: 4px solid var(--gold); background: var(--glass); border-top: 1px solid var(--line-hi); border-right: 1px solid var(--line-hi); border-bottom: 1px solid var(--line-hi); box-shadow: 0 10px 28px rgba(0, 0, 0, .5); }
+.hud.pitching .pitchtag.show { display: flex; }
+.pitchtag .pt1 { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; white-space: nowrap; }
+.pitchtag .pn { font: 800 15px/1 var(--cond); letter-spacing: .08em; text-transform: uppercase; color: var(--ink); overflow: hidden; text-overflow: ellipsis; }
+.pitchtag .pc { font: 800 12px/1 var(--cond); letter-spacing: .06em; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.pitchtag .stam { height: 9px; border-radius: 5px; background: rgba(255, 255, 255, .12); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .5); overflow: hidden; }
+.pitchtag .stam i { display: block; height: 100%; width: 100%; border-radius: 5px; background: linear-gradient(180deg, #7be898, var(--green)); transition: width .3s var(--ease); }
+.pitchtag.mid .stam i { background: linear-gradient(180deg, var(--gold-hi), var(--gold-lo)); }
+.pitchtag.low .stam i { background: linear-gradient(180deg, #ff8a80, var(--red)); }
+.hud.pitching .batter-tag { display: none !important; }
+.pitchinfo .cnt { font: 400 22px/1 var(--display); color: var(--ink); letter-spacing: .06em; font-variant-numeric: tabular-nums; }
+.pitchinfo .cnt:empty { display: none; }
 .hud.pitching .acts, .hud.pitching .swingbtn, .hud.pitching .meter { display: none !important; }
 
 /* bunt and steal: toggles above the aim control (lit while the batter is squared around / the runners are going) */
@@ -834,12 +858,28 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
   .over .overacts .btn { min-height: 40px; }
 }
 
-/* pitching controls on small screens: the pitch buttons leave the score box alone */
-@media (max-height: 520px) and (orientation: landscape) {
-  .pitchbar { left: auto; right: calc(var(--safe-r) + 16px); bottom: calc(var(--safe-b) + 68px); transform: none; flex-direction: column; align-items: stretch; gap: 6px; }
-  .pitchbar button { flex-direction: row; justify-content: space-between; gap: 10px; height: 38px; min-width: 112px; }
+/* pitching controls on small screens: the pitch buttons leave the score box and the corner buttons alone */
+@media (max-height: 520px) and (orientation: landscape), (max-width: 1180px) and (orientation: landscape) {
+  /* a column down the right edge (the score box has the bottom-left, the corner buttons the bottom-right) */
+  .pitchbar, .pitchbar[data-n="5"] { left: auto; right: calc(var(--safe-r) + 16px); bottom: calc(var(--safe-b) + 64px); transform: none; flex-direction: column; align-items: stretch; gap: 5px; }
+  .pitchbar button, .pitchbar[data-n="5"] button { flex-direction: row; justify-content: space-between; gap: 10px; min-width: 124px; height: 36px; padding: 0 10px; border-radius: 11px; box-shadow: inset 0 2px 0 rgba(255, 255, 255, .28), 0 3px 0 var(--edge), 0 6px 12px rgba(0, 0, 0, .4); }
+  .pitchbar button.on { box-shadow: inset 0 2px 0 rgba(255, 255, 255, .55), inset 0 -2px 0 rgba(150, 60, 0, .3), 0 3px 0 var(--gold-edge), 0 6px 12px rgba(0, 0, 0, .4); }
+  .pitchbar .pn { font-size: 12px; } .pitchbar .pm { font-size: 19px; } .pitchbar .pm::after { content: none; }
+  .pitchside { flex-direction: row; gap: 8px; }
+  .pitchside .btn { min-width: 0; min-height: 40px; padding: 0 12px; font-size: 14px; }
+  .pitchside .btn span { display: none; } /* (just the icons on a phone on its side) */
+  .pitchtag { min-width: 138px; padding: 5px 10px 6px; }
 }
+@media (max-height: 360px) and (orientation: landscape) { .pitchbar, .pitchbar[data-n="5"] { bottom: calc(var(--safe-b) + 58px); gap: 4px; } .pitchbar button, .pitchbar[data-n="5"] button { height: 31px; } .pitchbar .pm { font-size: 17px; } }
 @media (orientation: portrait) {
-  .pitchbar { bottom: calc(var(--safe-b) + 100px); }
-  .simbtn { bottom: auto; top: calc(var(--safe-t) + 10px); }
+  .pitchbar { bottom: calc(var(--safe-b) + 120px); gap: 6px; }
+  .pitchbar button { min-width: 70px; height: 54px; padding: 0 8px 3px; }
+  .pitchbar .pm { font-size: 20px; }
+  .pitchside { flex-direction: row; bottom: calc(var(--safe-b) + 186px); } /* above the pitch buttons, which sit above the pitcher tag and score box */
+  .pitchside .btn { min-width: 0; }
+  .pitchtag { min-width: 140px; }
 }
+@media (min-width: 761px) and (orientation: portrait) { .pitchbar { bottom: calc(var(--safe-b) + 150px); } .pitchside { bottom: calc(var(--safe-b) + 14px); } }
+@media (orientation: portrait) { .hud.pitching .ffbtn { bottom: calc(var(--safe-b) + 126px); } }
+@media (max-width: 400px) { .pitchinfo { padding: 0 9px; gap: 6px; letter-spacing: .04em; font-size: 11px; } .pitchinfo .mph, .pitchinfo .cnt { font-size: 17px; } }
+@media (max-width: 400px) and (orientation: portrait) { .pitchbar button { min-width: 62px; padding: 0 5px 3px; } .pitchbar .pn { font-size: 11px; letter-spacing: .03em; } }
