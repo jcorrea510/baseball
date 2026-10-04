@@ -15,7 +15,7 @@ import { createBot } from './game/bot.js';
 import { describeError, classifyTiming } from './game/timing.js';
 import { lineScore, isHitResult } from './game/rules.js';
 import { clamp, lerp, smoothstep } from './util/math.js';
-import { zoneRatio } from './physics/pitch.js';
+import { zoneRatio, zoneEdgeDistance } from './physics/pitch.js';
 import { PitchGuide } from './render/pitchGuide.js';
 import { pitchGuide } from './game/pitchGuide.js';
 import { LandingRing } from './render/landingRing.js';
@@ -606,15 +606,16 @@ export class App {
     const dirN = new THREE.Vector3(Math.sin(c.sprayAngle * Math.PI / 180), 0.3, -Math.cos(c.sprayAngle * Math.PI / 180));
     this.fx.contactSparks(start.x, start.y, start.z, q, [dirN.x, dirN.y, dirN.z]);
     const foul = c.plan.result === 'foul';
-    if (grade === 'perfect' && !foul) ui.flash(0.22, 90);
+    if (grade === 'perfect' && !foul && !e.pitching) ui.flash(0.22, 90);
     if (foul) audio.tick(); // (a foul ball gets no contact banner: the FOUL call says it)
+    else if (e.pitching) { /* (their contact: no cheering banner - the result says what it is) */ }
     else if (grade === 'perfect') ui.banner('PERFECT!', `${Math.round(c.exitVelocity)} mph`, 'great');
     else if (grade === 'good') ui.banner('SOLID CONTACT', `${Math.round(c.exitVelocity)} mph`, 'good'); // (the timing was good - what becomes of the ball is the play's to say)
     if (c.homer) { this.slowMo = { t: 0, dur: F.slowMoDuration, delay: this.hitStop + 0.02 }; }
     if (e.mode === 'practice') ui.callout([{ v: Math.round(c.exitVelocity), u: 'mph', l: 'Exit velo' }, { v: Math.round(c.launchAngle), u: '°', l: 'Launch' }], 2400);
     // The crowd is always on your side: every fair ball gets a cheer a beat after the crack (once they see it fly), and the
     // deeper it is going the louder and longer it builds (a catch or an out turns it into a groan)
-    if (!foul) {
+    if (!foul && !e.pitching) { // (their ball: no cheer for it - they groan when it falls in)
       const deep = clamp((c.distance - 180) / 220, 0, 1);
       this.audio.crowdSwell(0.22 + 0.55 * Math.max(deep, c.big ? 0.6 : 0), 1.6 + 1.8 * deep, CONFIG.audio.crowdReact);
     }
@@ -631,6 +632,10 @@ export class App {
     else if (call === 'swingingStrike') kind = struckOut ? 'strike3Swing' : 'strikeSwing';
     if (!kind) return;
     this.actors.strikeCall(e.time, kind); // (he always signals, even with the voice off)
+    if (struckOut && e.pitching && !e.simming) { // (your strikeout: a short slow-motion beat on the punch-out)
+      const M = CONFIG.pitching.moments;
+      this.slowMo = { t: 0, dur: M.punchOutDuration, delay: M.punchOutDelay, scale: M.punchOutScale };
+    }
     if (e.mode === 'derby') return; // batting practice: no calls
     // "Strike one!" / "Strike two!" when there is a count (the recordings for them are pooled with the plain "Strike!")
     if ((kind === 'strike' || kind === 'strikeSwing') && (strikes === 1 || strikes === 2)) kind = strikes === 1 ? 'strike1' : 'strike2';
@@ -663,13 +668,13 @@ export class App {
         this.umpireCall('out', 0);
         break;
       case 'wildPitch':
-        ui.banner('WILD PITCH', '', 'good');
-        audio.crowdSwell(0.35, 1.4);
+        ui.banner('WILD PITCH', '', e.pitching ? 'bad' : 'good');
+        if (e.pitching) audio.crowdGroan(0.35); else audio.crowdSwell(0.35, 1.4);
         break;
       case 'groundRule':
         // it bounced over the wall: two bases for everybody
-        ui.banner('GROUND-RULE DOUBLE', '', 'good');
-        audio.crowdSwell(0.6, 2);
+        ui.banner('GROUND-RULE DOUBLE', '', e.pitching ? 'bad' : 'good');
+        if (e.pitching) audio.crowdGroan(0.45); else audio.crowdSwell(0.6, 2);
         break;
       case 'wall':
         this.fx.dustPuff(ev.x, ev.z, 0.6);
@@ -679,14 +684,16 @@ export class App {
         break;
       case 'fence': {
         const dist = Math.round(c ? c.projected.distance : 400);
-        audio.homeRun(dist);
-        this.S.stadium.crowd.cheer(1);
-        if (e.playerSide === 'bottom' || e.mode !== 'quick') this.S.stadium.celebrate(); // (the home team's home run: Citi Field's apple)
-        this.celebrateHomer(ev, dist);
+        const theirs = e.pitching; // (their home run while you pitch: the crowd groans, no fireworks)
+        if (theirs) audio.crowdGroan(Math.min(1, CONFIG.pitching.moments.groanHit * 1.6));
+        else { audio.homeRun(dist); this.S.stadium.crowd.cheer(1); }
+        // (the home team's home run: Citi Field's apple - yours when you bat at home, theirs when they bat at home)
+        if (theirs ? e.playerSide === 'top' : (e.playerSide === 'bottom' || e.mode !== 'quick')) this.S.stadium.celebrate();
+        if (!theirs) this.celebrateHomer(ev, dist);
         this.showDistanceCallout(c, true);
         // say what it is worth right away (a grand slam, a 3-run homer): everybody on base scores on a ball over the fence
         const on = e.mode === 'derby' || !e.diamond ? 0 : e.diamond.bases.filter(Boolean).length;
-        ui.banner(on === 3 ? 'GRAND SLAM' : on > 0 ? `${on + 1}-RUN HOMER` : 'HOME RUN!', `${dist} ft`, 'hr', true);
+        ui.banner(on === 3 ? 'GRAND SLAM' : on > 0 ? `${on + 1}-RUN HOMER` : 'HOME RUN!', `${dist} ft`, theirs ? 'bad' : 'hr', true);
         this.hrShown = true; // (the result banner at the end of the play only updates this one - the celebration never plays twice)
         if (this.settings.shake) this.cam.shake(F_HR());
         break;
@@ -699,6 +706,12 @@ export class App {
         // a caught ball that is an out: the umpire calls it (at a base the 'outCall' event does it)
         if (e.mode !== 'derby' && c && !c.homer && c.plan.caught && c.plan.outsMade > 0 && !c.plan.infieldFly) this.later(() => this.umpireCall('out', 0), 160); // (an infield fly was called already)
         // your ball caught: the cheer turns into an "awww" - bigger the further it went (and for a diving catch)
+        if (e.pitching) {
+          // your fielder caught THEIR ball: the crowd cheers (bigger for a deep one or a dive)
+          if (c && !c.homer && c.plan.outsMade > 0) { this.groaned = true; audio.crowdSwell(ev.dive ? 0.9 : 0.4 + 0.4 * Math.max(clamp((c.distance - 180) / 220, 0, 1), c.big ? 0.6 : 0), 2); audio.applause(1.2, 0.5); }
+          if (ev.dive) { ui.banner('DIVING CATCH!', '', 'good'); this.later(() => ui.hideBanner(), 1400); }
+          break;
+        }
         if (c && !c.homer && c.plan.outsMade > 0) this.groaned = true;
         if (c && !c.homer) audio.crowdGroan(ev.dive ? 0.9 : 0.4 + 0.45 * Math.max(clamp((c.distance - 180) / 220, 0, 1), c.big ? 0.6 : 0));
         if (ev.dive) {
@@ -728,16 +741,20 @@ export class App {
         // a runner tagged (or doubled off): the umpire's call and the banner come with the tag, not when the whole play is over
         const pl = (e.play && e.play.plan) || (c && c.plan); // (the plan as it is now: you may have sent a runner since the hit)
         if (pl && e.mode !== 'derby' && (pl.events.some((q) => q.type === 'out' && q.tag && q.base === ev.base && Math.abs(q.t - ev.t) < 0.05) || (pl.outNote && pl.outNote.base === ev.base))) {
-          ui.banner('OUT', `at ${['', '1st', '2nd', '3rd', 'home'][ev.base] || ''}`, 'bad');
+          ui.banner('OUT', `at ${['', '1st', '2nd', '3rd', 'home'][ev.base] || ''}`, e.pitching ? 'good' : 'bad');
         }
-        // the crowd groans the moment one of yours is out (once a play: the second out of a double play needs no second groan)
-        if (!this.groaned) { this.groaned = true; audio.crowdGroan(0.45); }
+        // the crowd groans the moment one of yours is out (once a play: the second out of a double play needs no second groan);
+        // when it is one of THEIRS it cheers
+        if (!this.groaned) {
+          this.groaned = true;
+          if (e.pitching) { const C = CONFIG.pitching.moments.cheer; audio.crowdSwell(C.level, C.seconds); } else audio.crowdGroan(0.45);
+        }
         break;
       case 'safe': this.umpireCall('safe', ev.base); break;
       case 'error':
         // a misplay: the crowd reacts, the ball is loose (the result banner names it when the play is over)
         audio.glovePop(ev.drop ? 0.7 : 0.4);
-        audio.crowdSwell(0.6, 1.8);
+        if (e.pitching) audio.crowdGroan(0.5); else audio.crowdSwell(0.6, 1.8); // (your fielder's error)
         break;
       default: break;
     }
@@ -828,45 +845,59 @@ export class App {
     const runsText = r.runs > 0 ? ` · ${r.runs} run${r.runs > 1 ? 's' : ''}` : '';
     const count = e.game ? `${e.game.balls}-${e.game.strikes}` : '';
     if (r.kind === 'pitch') {
-      const map = { ball: ['BALL', count, 'neutral'], calledStrike: ['STRIKE', count, 'bad'], swingingStrike: ['STRIKE', 'Swinging', 'bad'], foul: ['FOUL', count, 'neutral'], take: ['', '', ''], hitByPitch: ['HIT BY PITCH', runsText.replace(' · ', '') || 'Take your base', 'neutral'] };
+      const mine = e.pitching; // (you pitch: a strike is good news)
+      const map = { ball: ['BALL', count, 'neutral'], calledStrike: ['STRIKE', count, mine ? 'good' : 'bad'], swingingStrike: ['STRIKE', 'Swinging', mine ? 'good' : 'bad'], foul: ['FOUL', count, 'neutral'], take: ['', '', ''], hitByPitch: ['HIT BY PITCH', runsText.replace(' · ', '') || 'Take your base', 'neutral'] };
       if (r.call === 'hitByPitch') { audio.glovePop(0.4); audio.crowdGroan(0.45); }
       const m = r.foulTip ? ['FOUL TIP', count, 'neutral'] : map[r.call] || [r.text || '', '', 'neutral'];
       if (r.foulTip) audio.glovePop(0.9);
       if (r.call === 'ball' || r.call === 'take') { /* subtle */ }
+      if (mine && this.isPainted(r)) { ui.banner('PAINTED', count, 'great'); return; } // (a perfect pitch on the edge of the zone)
       if (m[0]) ui.banner(m[0], e.mode === 'quick' ? m[1] : (r.call === 'swingingStrike' ? 'Swinging' : ''), m[2]);
       if (r.call === 'ball' && e.game && e.game.balls === 3) audio.crowdSwell(0.2, 1.2);
       return;
     }
     if (r.kind !== 'pitch') this.refreshLineup();
     if (r.kind === 'steal' && r.result === 'wildPitch') {
-      ui.banner('WILD PITCH', r.walkOff ? 'WALK-OFF!' : r.runs ? `${r.runs} run${r.runs > 1 ? 's' : ''} score${r.runs > 1 ? '' : 's'}` : 'Runners move up', 'good');
-      audio.crowdSwell(r.runs ? 0.6 : 0.4, 2);
-      if (r.runs) audio.applause(1.2, 0.5);
+      ui.banner('WILD PITCH', r.walkOff ? 'WALK-OFF!' : r.runs ? `${r.runs} run${r.runs > 1 ? 's' : ''} score${r.runs > 1 ? '' : 's'}` : 'Runners move up', e.pitching ? 'bad' : 'good');
+      if (e.pitching) audio.crowdGroan(r.runs ? 0.6 : 0.4);
+      else { audio.crowdSwell(r.runs ? 0.6 : 0.4, 2); if (r.runs) audio.applause(1.2, 0.5); }
       if (e.game) this.updateScoreboard();
       return;
     }
     if (r.kind === 'steal') {
       const safe = r.result !== 'caughtStealing';
       const where = { 2: 'Second', 3: 'Third' }[r.base] || '';
-      ui.banner(r.text, safe ? where : (r.halfOver ? 'Inning over' : where), safe ? 'good' : 'bad');
-      if (safe) { audio.crowdSwell(0.55, 2); audio.applause(1.1, 0.45); } else audio.crowdGroan(0.5);
+      const good = safe !== !!e.pitching; // (their runner: safe is bad news for you)
+      ui.banner(r.text, safe ? where : (r.halfOver ? 'Inning over' : where), good ? 'good' : 'bad');
+      if (good) { audio.crowdSwell(0.55, 2); audio.applause(1.1, 0.45); } else audio.crowdGroan(0.5);
       return;
     }
     // plate appearance / play ended
     const res = r.result;
+    const mine = e.pitching; // (you pitch: their hits are bad news, your outs and strikeouts good)
+    const GH = CONFIG.pitching.moments.groanHit;
     let big = r.text, sub = '', cls = 'neutral';
-    if (res === 'homer' || res === 'insideParkHomer') { cls = 'hr'; sub = `${Math.round(r.distanceFt || r.distance || 0)} ft${runsText}`; if (r.walkOff) sub = 'WALK-OFF!'; }
-    else if (['single', 'double', 'triple'].includes(res)) { cls = 'good'; sub = `${Math.round(r.exitVelocity)} mph${runsText}`; audio.crowdSwell(res === 'single' ? 0.4 : 0.65, 2.2); audio.applause(1.2, 0.5); }
-    else if (res === 'error') { cls = 'good'; sub = `E${POSITION_NUMBER[r.plan && r.plan.error ? r.plan.error.pos : ''] || ''}${runsText}`.replace(/^E · /, ''); audio.applause(1, 0.4); }
-    else if (res === 'walk') { cls = 'neutral'; sub = runsText.replace(' · ', ''); audio.crowdSwell(0.2, 1.2); }
+    if (res === 'homer' || res === 'insideParkHomer') { cls = mine ? 'bad' : 'hr'; sub = `${Math.round(r.distanceFt || r.distance || 0)} ft${runsText}`; if (r.walkOff) sub = 'WALK-OFF!'; }
+    else if (['single', 'double', 'triple'].includes(res)) {
+      sub = `${Math.round(r.exitVelocity)} mph${runsText}`;
+      if (mine) { cls = 'bad'; audio.crowdGroan(GH * (res === 'single' ? 0.8 : 1.1)); } else { cls = 'good'; audio.crowdSwell(res === 'single' ? 0.4 : 0.65, 2.2); audio.applause(1.2, 0.5); }
+    }
+    else if (res === 'error') { cls = mine ? 'bad' : 'good'; sub = `E${POSITION_NUMBER[r.plan && r.plan.error ? r.plan.error.pos : ''] || ''}${runsText}`.replace(/^E · /, ''); if (mine) audio.crowdGroan(GH); else audio.applause(1, 0.4); }
+    else if (res === 'walk') { cls = 'neutral'; sub = runsText.replace(' · ', ''); if (mine) audio.crowdGroan(GH * 0.4); else audio.crowdSwell(0.2, 1.2); }
     else if (res === 'hitByPitch') { cls = 'neutral'; sub = runsText.replace(' · ', '') || 'Take your base'; audio.glovePop(0.4); audio.crowdGroan(0.45); }
-    else if (res === 'strikeoutSwinging' || res === 'strikeoutLooking') { cls = 'bad'; sub = r.detail || (res === 'strikeoutLooking' ? 'Looking' : 'Swinging'); audio.crowdGroan(0.7); if (r.detail === 'Foul tip') audio.glovePop(0.9); }
-    else if (res === 'out') { cls = 'bad'; sub = r.detail ? r.detail : ''; if (!this.groaned) audio.crowdGroan(0.4); }
+    else if (res === 'strikeoutSwinging' || res === 'strikeoutLooking') {
+      cls = mine ? 'good' : 'bad'; sub = r.detail || (res === 'strikeoutLooking' ? 'Looking' : 'Swinging');
+      if (mine) this.strikeoutMoment(r); else audio.crowdGroan(0.7);
+      if (r.detail === 'Foul tip') audio.glovePop(0.9);
+      if (mine && this.isPainted(r)) sub = `Painted · ${sub}`;
+    }
+    else if (res === 'out') { cls = mine ? 'good' : 'bad'; sub = r.detail ? r.detail : ''; if (!this.groaned) { if (mine) this.cheerOut(); else audio.crowdGroan(0.4); } }
     else if (['groundout', 'flyout', 'lineout', 'popout', 'foulOut', 'doublePlay', 'fieldersChoice', 'sacFly', 'sacBunt'].includes(res)) {
       const sac = res === 'sacFly' || res === 'sacBunt';
-      cls = sac ? 'good' : 'bad'; sub = res === 'sacFly' ? `1 run` : res === 'sacBunt' ? (r.runs > 0 ? '' : 'Runner up') : (r.text && res === 'doublePlay' ? '2 outs' : `${Math.round(r.exitVelocity || 0)} mph`);
+      cls = sac !== mine ? 'good' : 'bad'; sub = res === 'sacFly' ? `1 run` : res === 'sacBunt' ? (r.runs > 0 ? '' : 'Runner up') : (r.text && res === 'doublePlay' ? '2 outs' : `${Math.round(r.exitVelocity || 0)} mph`);
       if (r.plan && r.plan.infieldFly) sub = 'Batter is out';
-      if (!sac && !this.groaned) audio.crowdGroan(0.35); // (already groaned at the out itself)
+      if (!sac && !this.groaned) { if (mine) this.cheerOut(); else audio.crowdGroan(0.35); } // (already reacted at the out itself)
+      if (sac && mine) audio.crowdGroan(GH * 0.6);
       if (runsText) sub += runsText;
     }
     // a runner you sent was tagged out (or doubled off): the banner says so - the batter thrown out stretching a hit is an out, not a hit
@@ -875,7 +906,7 @@ export class App {
     if (note) {
       const where = ['', '1st', '2nd', '3rd', 'home'][note.base] || '';
       const hitName = r.text ? r.text.charAt(0) + r.text.slice(1).toLowerCase() : '';
-      if (note.from === 0 && isHitResult(res)) { big = `OUT AT ${where.toUpperCase()}`; sub = `${hitName} · tagged out${runsText}`; cls = 'bad'; noteText = `out at ${where}`; audio.crowdGroan(0.45); }
+      if (note.from === 0 && isHitResult(res)) { big = `OUT AT ${where.toUpperCase()}`; sub = `${hitName} · tagged out${runsText}`; cls = mine ? 'good' : 'bad'; noteText = `out at ${where}`; if (mine) this.cheerOut(); else audio.crowdGroan(0.45); }
       else if (res === 'doublePlay') { sub = `${r.plan.doubledOff ? 'Doubled off' : 'Out at'} ${where}${runsText}`; noteText = sub; }
       else { noteText = `runner out at ${where}`; sub = `Runner out at ${where}${runsText}`; }
     }
@@ -906,12 +937,40 @@ export class App {
         const mph = r.exitVelocity ? `${Math.round(r.exitVelocity)} mph` : '';
         big = r.walkOff ? 'WALK-OFF!' : `${r.runs} RUN${r.runs > 1 ? 'S' : ''}`;
         sub = r.walkOff ? [hit, `${r.runs} run${r.runs > 1 ? 's' : ''}`].filter(Boolean).join(' · ') : [hit, noteText || mph].filter(Boolean).join(' · ');
-        cls = r.walkOff ? 'hr' : 'good';
-        if (r.walkOff) { audio.crowdSwell(1, 3); this.S.stadium.crowd.cheer(1); }
+        cls = mine ? 'bad' : r.walkOff ? 'hr' : 'good';
+        if (r.walkOff) { if (mine) audio.crowdGroan(1); else { audio.crowdSwell(1, 3); this.S.stadium.crowd.cheer(1); } }
       }
       ui.banner(big, sub, cls);
     }
-    if (r.runs > 0 && res !== 'homer') audio.applause(1.6, 0.8);
+    if (r.runs > 0 && res !== 'homer' && !mine) audio.applause(1.6, 0.8);
+  }
+
+  // A perfect pitch of yours that was a strike on the very edge of the zone (the pitch carries mine / grade).
+  isPainted(r) {
+    const p = r && r.pitch;
+    if (!p || !p.mine || p.grade !== 'perfect') return false;
+    if (r.call !== 'calledStrike' && r.call !== 'swingingStrike' && !(r.kind === 'pa' && /^strikeout/.test(r.result || ''))) return false;
+    return Math.abs(zoneEdgeDistance(p.target.x, p.target.y)) <= CONFIG.pitching.painted;
+  }
+
+  // Their out and your cheer: once a play.
+  cheerOut() {
+    if (this.groaned) return;
+    this.groaned = true;
+    const C = CONFIG.pitching.moments.cheer;
+    this.audio.crowdSwell(C.level, C.seconds);
+  }
+
+  // Your strikeout: the crowd roars, and an inning-ending one is celebrated (the stands cheer, the home crowd's apple).
+  strikeoutMoment(r) {
+    const e = this.engine, M = CONFIG.pitching.moments;
+    this.groaned = true;
+    this.audio.crowdSwell(M.roar.level, M.roar.seconds);
+    this.audio.applause(1.6, 0.7);
+    if (r.halfOver) {
+      this.S.stadium.crowd.cheer(1);
+      if (e.playerSide === 'bottom') this.S.stadium.celebrate(); // (the home team's moment: Citi Field's apple)
+    }
   }
 
   onGameOver(p) {

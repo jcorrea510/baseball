@@ -114,3 +114,11 @@ export function zoneRatio(x, y, cfg = CONFIG) {
   const ny = (y - t.zoneCenterY) / t.zoneHalfHeight;
   return Math.hypot(nx, ny);
 }
+
+/** How far (ft) a pitch crossing at (x, y) is from the EDGE of the strike zone: 0 on the edge, positive inside, negative outside. */
+export function zoneEdgeDistance(x, y, cfg = CONFIG) {
+  const P = cfg.pitch;
+  const dx = P.zoneHalfWidth - Math.abs(x), dy = Math.min(y - P.zoneBottom, P.zoneTop - y);
+  if (dx >= 0 && dy >= 0) return Math.min(dx, dy);
+  return -Math.hypot(Math.min(dx, 0), Math.min(dy, 0));
+}

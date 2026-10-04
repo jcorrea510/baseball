@@ -32,6 +32,7 @@ export class Actors {
     this.group = new THREE.Group();
     scene.add(this.group);
     this.fielders = {};
+    this.defSets = { opp: null, mine: null }; this.coachSets = { opp: null, mine: null }; this.defSide = 'opp'; this.coachSide = 'mine';
     this.players = new Map();
     this.coaches = [];
     this.tmpV = V(); this.tmpV2 = V(); this.tmpV3 = V();
@@ -57,38 +58,35 @@ export class Actors {
 
   // ---------------------------------------------------------------- setup
   configure({ engine, playerUniformKey = 'classic', batStyle = 'ash' }) {
-    const key = [engine.opponent.id, engine.playerTeam.id, engine.pitcher.hand, engine.seed, playerUniformKey, batStyle, engine.lineup.map((b) => b.hand + b.id + (b.skin || '')).join(',')].join('|');
+    const key = [engine.opponent.id, engine.playerTeam.id, engine.playerSide, engine.pitcher.hand, engine.seed, playerUniformKey, batStyle, engine.lineup.map((b) => b.hand + b.id + (b.skin || '')).join(',')].join('|');
     this.batStyle = batStyle;
     this.walkers = []; this.walkPlan = null; this.playRunnerP = {};
     if (key === this.cfgKey) return;
     this.cfgKey = key;
     // take the old figures off the field and free their graphics memory (every game builds new teams)
     const old = [...Object.values(this.fielders), ...this.players.values(), ...this.coaches];
+    for (const s of Object.values(this.defSets)) if (s) old.push(...Object.values(s.people));
+    for (const c of Object.values(this.coachSets)) if (c) old.push(...c);
     if (this.umpire) old.push(this.umpire);
-    for (const p of old) { this.group.remove(p.root); p.dispose(); }
+    for (const p of new Set(old)) { this.group.remove(p.root); p.dispose(); }
     this.fielders = {}; this.players.clear(); this.coaches = []; this.umpire = null;
+    this.defSets = { opp: null, mine: null }; this.coachSets = { opp: null, mine: null }; this.defSide = 'opp';
     if (this.looseBat) { this.group.remove(this.looseBat); disposeBat(this.looseBat); this.looseBat = null; }
 
     const opp = engine.opponent.uniform;
     this.playerUniform = engine.playerTeam.uniform || UNIFORMS[playerUniformKey] || UNIFORMS.classic;
     this.defenseUniform = opp;
-    const skins = ['#f2c9a0', '#e0ac82', '#c68642', '#a3683b', '#7b4a2a', '#f7d7b5', '#5d3a22', '#d9a066'];
-    const opts = (pos, i) => ({
-      role: pos === 'P' ? 'pitcher' : pos === 'C' ? 'catcher' : 'fielder',
-      uniform: { ...opp, number: pos === 'P' ? engine.pitcher.number : 10 + i * 4 },
-      glove: true, detail: (pos === 'P' || pos === 'C' ? 1 : 0.62) * this.detailScale, skin: pos === 'P' ? engine.pitcher.skin : skins[(i * 3 + 1) % skins.length],
-      scale: pos === 'P' ? engine.pitcher.scale : 0.97 + ((i * 7) % 6) * 0.012,
-      build: 0.97 + ((i * 5) % 5) * 0.02,
-      mirror: pos === 'P' ? engine.pitcher.hand === 'L' : false,
-      helmet: false,
-    });
-    POSITIONS.forEach((pos, i) => {
-      const person = new Person(opts(pos, i));
-      person.pos = pos;
-      this.fielders[pos] = person;
-      this.group.add(person.root);
-      this.state.set(person, { phase: Math.random() * TAU, x: 0, z: 0, yaw: 0, init: false });
-    });
+    this.oppUniform = opp;
+    this.cfgPlayerKey = playerUniformKey;
+    // the team in the field this half: theirs while you bat (as always); yours is built the first time you pitch (see useSide)
+    this.defSets.opp = this.buildDefense('opp', engine);
+    this.fielders = this.defSets.opp.people;
+    // the base coaches wear the BATTING team's colours: yours while you bat
+    this.coachSets.opp = this.buildCoaches(opp);
+    this.coachSets.mine = this.buildCoaches(this.playerUniform);
+    for (const c of this.coachSets.opp) c.root.visible = false;
+    this.coachSide = 'mine';
+    this.coaches = this.coachSets.mine;
     // plate umpire (dark uniform), crouched behind the catcher
     this.umpire = new Person({ role: 'umpire', detail: this.detailScale, uniform: { primary: '#22262e', secondary: '#c9d1dc', trim: '#c9d1dc', pants: '#5c6473', cap: '#171a20', capBill: '#171a20', socks: '#171a20', gear: '#1a1d24', text: '', number: 23 }, skin: '#e0ac82', scale: 1.02 });
     this.umpire.place(1.95, 0, 6.6, Math.PI);
@@ -97,16 +95,6 @@ export class Actors {
     this.umpCall = { t: -10, kind: 'strike' };
     // batters / runners (player's team)
     for (const b of engine.lineup) this.getPlayer(b, engine);
-    // base coaches
-    for (const [i, base] of [[1, 1], [3, 3]]) {
-      const c = new Person({ role: 'runner', detail: 0.62 * this.detailScale, uniform: { ...this.playerUniform, number: 60 + i }, helmet: true, skin: skins[i], scale: 1 });
-      const bx = BASE_XZ[base][0], bz = BASE_XZ[base][1];
-      const side = base === 1 ? 1 : -1;
-      c.place(bx + side * 9, 0, bz - 9, Math.atan2(-side, 0.6));
-      c.coach = true;
-      this.coaches.push(c);
-      this.group.add(c.root);
-    }
     const lb = makeBat(batStyle);
     lb.visible = false;
     this.looseBat = lb;
@@ -114,12 +102,84 @@ export class Actors {
     this.loose = { active: false, pos: V(), vel: V(), rot: V(), t: 0 };
   }
 
+  // One defender (the pitcher comes from the team's own pitcher: `kind` 'opp' = theirs, 'mine' = yours).
+  makeFielder(kind, pos, i, engine) {
+    const skins = ['#f2c9a0', '#e0ac82', '#c68642', '#a3683b', '#7b4a2a', '#f7d7b5', '#5d3a22', '#d9a066'];
+    const uni = kind === 'opp' ? this.oppUniform : this.playerUniform;
+    const pit = kind === 'opp' ? (engine.oppPitcher || engine.pitcher) : (engine.myPitcher || engine.pitcher);
+    const person = new Person({
+      role: pos === 'P' ? 'pitcher' : pos === 'C' ? 'catcher' : 'fielder',
+      uniform: { ...uni, number: pos === 'P' ? pit.number : 10 + i * 4 },
+      glove: true, detail: (pos === 'P' || pos === 'C' ? 1 : 0.62) * this.detailScale, skin: pos === 'P' ? pit.skin : skins[(i * 3 + 1 + (kind === 'mine' ? 2 : 0)) % skins.length],
+      scale: pos === 'P' ? pit.scale : 0.97 + ((i * 7) % 6) * 0.012,
+      build: 0.97 + ((i * 5) % 5) * 0.02,
+      mirror: pos === 'P' ? pit.hand === 'L' : false,
+      helmet: false,
+    });
+    person.pos = pos;
+    if (pos === 'P') person.pitcherId = pit.id;
+    this.group.add(person.root);
+    this.state.set(person, { phase: Math.random() * TAU, x: 0, z: 0, yaw: 0, init: false });
+    return person;
+  }
+
+  buildDefense(kind, engine) {
+    const people = {};
+    POSITIONS.forEach((pos, i) => { people[pos] = this.makeFielder(kind, pos, i, engine); });
+    return { people };
+  }
+
+  buildCoaches(uniform) {
+    const skins = { 1: '#e0ac82', 3: '#a3683b' };
+    const out = [];
+    for (const [i, base] of [[1, 1], [3, 3]]) {
+      const c = new Person({ role: 'runner', detail: 0.62 * this.detailScale, uniform: { ...uniform, number: 60 + i }, helmet: true, skin: skins[base], scale: 1 });
+      const bx = BASE_XZ[base][0], bz = BASE_XZ[base][1];
+      const side = base === 1 ? 1 : -1;
+      c.place(bx + side * 9, 0, bz - 9, Math.atan2(-side, 0.6));
+      c.coach = true;
+      out.push(c);
+      this.group.add(c.root);
+    }
+    return out;
+  }
+
+  // Each half the team in the field wears its own colours (yours while you pitch, theirs while you bat) and the base coaches wear the
+  // batting team's. Both sets stay built once they exist (no new meshes per half); the unused one is hidden and starts over when it returns.
+  useSide(E) {
+    if (!this.defSets.opp) return;
+    const side = E.pitching ? 'mine' : 'opp';
+    if (side === 'mine') {
+      const set = this.defSets.mine || (this.defSets.mine = this.buildDefense('mine', E));
+      const pit = E.myPitcher;
+      if (pit && set.people.P.pitcherId !== pit.id) { // (a new pitcher from the bullpen)
+        const old = set.people.P;
+        this.group.remove(old.root); old.dispose();
+        set.people.P = this.makeFielder('mine', 'P', 0, E);
+      }
+    }
+    if (side !== this.defSide) {
+      for (const p of Object.values(this.fielders)) { p.root.visible = false; this.state.set(p, { phase: Math.random() * TAU, x: 0, z: 0, yaw: 0, init: false }); }
+      this.defSide = side;
+      this.fielders = this.defSets[side].people;
+      for (const p of Object.values(this.fielders)) { p.root.visible = true; this.state.set(p, { phase: Math.random() * TAU, x: 0, z: 0, yaw: 0, init: false }); }
+    }
+    const cside = E.pitching ? 'opp' : 'mine'; // (coaches: the batting team's)
+    if (cside !== this.coachSide) {
+      for (const c of this.coaches) c.root.visible = false;
+      this.coachSide = cside;
+      this.coaches = this.coachSets[cside];
+      for (const c of this.coaches) c.root.visible = true;
+    }
+  }
+
   getPlayer(entry, engine) {
     const id = entry && entry.id !== undefined ? entry.id : 'ghost';
     let p = this.players.get(id);
     if (!p) {
       const ghost = !entry || entry.ghost;
-      const u = { ...this.playerUniform, number: ghost ? 0 : entry.number };
+      const theirs = !ghost && !!engine && !!engine.oppLineup && engine.oppLineup.some((b) => b === entry || b.id === entry.id) && !(engine.lineup || []).some((b) => b.id === entry.id);
+      const u = { ...(theirs ? this.oppUniform : this.playerUniform), number: ghost ? 0 : entry.number };
       p = new Person({
         role: 'batter', detail: this.detailScale, uniform: u, helmet: true, skin: ghost ? '#d9a066' : entry.skin, scale: ghost ? 1 : entry.scale, build: ghost ? 1 : entry.build,
         mirror: !ghost && entry.hand === 'L', batStyle: this.batStyle,
@@ -130,7 +190,6 @@ export class Actors {
       this.group.add(p.root);
       this.state.set(p, { phase: Math.random() * TAU, x: 0, z: 0, yaw: 0, init: false });
     }
-    void engine;
     return p;
   }
 
@@ -153,6 +212,7 @@ export class Actors {
     const inPlay = phase === 'play' && play;
     const playT = inPlay ? time - play.t0 : -1;
     const plan = inPlay ? play.plan : null;
+    this.useSide(E); // (the team in the field wears its own colours this half)
 
     // ---- hide everybody who is not needed, then show the ones that are
     for (const p of this.players.values()) p.active = false;

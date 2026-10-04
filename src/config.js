@@ -255,6 +255,15 @@ export const CONFIG = {
       tireMiss: 0.3, // fully tired: misses this much further
     },
     painted: 0.15, // a pitch this close (feet) to the edge of the zone counts as PAINTED
+    // The big moments of pitching (app.js): your strikeout gets a short slow-motion beat, the crowd roars and an inning-ending one is celebrated.
+    moments: {
+      punchOutScale: 0.3, // speed of that slow motion (1 = normal)
+      punchOutDuration: 0.35, // real seconds it lasts (it eases back to normal speed)
+      punchOutDelay: 0.05, // real seconds after the called strike before it starts
+      roar: { level: 0.85, seconds: 3 }, // the crowd's roar for your strikeout
+      cheer: { level: 0.45, seconds: 2 }, // the cheer for any other out you make
+      groanHit: 0.5, // how loud the groan is for one of their hits (a homer: x 1.6)
+    },
     catcherArm: { rookie: 0.9, pro: 1, allstar: 1.05 }, // your catcher's throwing, by level
     fieldErrorScale: { rookie: 0.6, pro: 0.8, allstar: 1 }, // how often your fielders boot a ball, by level
     // Sandlot's own pitchers (teams.makeStaff: the staff when you have no League club): ratings drawn around `mean` (spread `sd`).
