@@ -28,6 +28,8 @@ export class CameraRig {
     this.override = null; // { pos:[x,y,z], look:[x,y,z], fov } - used by automated screenshots
     this.batting = false; // the batting (catcher's) view: set by the app while you are up
     this.catcherDist = Infinity;
+    this.pitching = false; // the pitcher's view: set by the app while you pitch
+    this.pitcherHand = 'R';
   }
 
   shake(amount) { this.shakeAmt = Math.min(1.6, Math.max(this.shakeAmt, amount)); }
@@ -79,6 +81,12 @@ export class CameraRig {
       tPos = _tmp.set(C.pos[0], C.pos[1], C.pos[2]).clone();
       look.set(C.look[0], C.look[1], C.look[2]);
       tFov = C.fov; posL = C.zoom; lookL = C.zoom * 1.4; fovL = C.zoom;
+    } else if (this.pitching && E && !this.title) {
+      // pitching: behind and above the throwing shoulder (mirrored for a left-hander)
+      const P = cfg.pitcher, m = this.pitcherHand === 'L' ? -1 : 1;
+      tPos = _tmp.set(P.pos[0] * m, P.pos[1], P.pos[2]).clone();
+      look.set(P.look[0], P.look[1], P.look[2]);
+      tFov = P.fov; posL = P.ease; lookL = P.ease * 1.4; fovL = P.ease;
     } else if (this.title) {
       // slow orbit around the ballpark for the title screen
       this.titleT += dt;

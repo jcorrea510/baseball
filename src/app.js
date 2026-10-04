@@ -1215,6 +1215,8 @@ export class App {
   updateBatting(e, dt) {
     const batting = this.isBatting(e) && !this.paused;
     this.cam.batting = batting;
+    this.cam.pitching = !!e && !this.paused && this.isPitching(e);
+    this.cam.pitcherHand = (e && e.mound && e.mound.pitcher && e.mound.pitcher.hand) || 'R';
     this.actors.cameraCatcherDist = this.cam.catcherDist;
     this.actors.cameraPos = this.S.camera.position;
     const A = CONFIG.batAim;
