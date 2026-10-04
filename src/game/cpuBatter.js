@@ -10,7 +10,7 @@
 //      ratings uses the team's strength k instead.
 import { CONFIG } from '../config.js';
 import { clamp } from '../util/math.js';
-import { isStrike, zoneRatio } from '../physics/pitch.js';
+import { isStrike } from '../physics/pitch.js';
 import { pitchGuide } from './pitchGuide.js';
 import { ratingEffects } from './season.js';
 
@@ -42,11 +42,13 @@ function gradeFactor(pitch, cfg) {
 /**
  * Where he thinks the pitch will cross (ft, in the plane over the plate): the pitch guide's guess `readTime` before his swing must
  * start, plus a gaussian error of `sd` (his base read error) x (1 + breakRead x the pitch's break in ft) x the grade factor x `fadeOut`
- * when the pitch starts in the zone and finishes outside it.
+ * when the pitch starts in the zone and finishes outside it. The guess is the pitch guide of `cpuBat.readGuide` on every level: the
+ * level's own guide is YOUR batting help (harder on All-Star), and reading with it made his eye worst on the level where he should
+ * hit best - his level only shows in `sd`.
  */
-export function perceivedSpot(pitch, sd, level, rng, cfg = CONFIG) {
+export function perceivedSpot(pitch, sd, rng, cfg = CONFIG) {
   const C = cfg.cpuBat;
-  const g = pitchGuide(pitch, pitch.tCross - C.readTime - (pitch.tRelease || 0), cfg, level);
+  const g = pitchGuide(pitch, pitch.tCross - C.readTime - (pitch.tRelease || 0), cfg, C.readGuide);
   const s0 = startSpot(pitch.flight, cfg);
   const breakFt = Math.hypot(pitch.target.x - s0.x, pitch.target.y - s0.y);
   const grade = gradeFactor(pitch, cfg);
@@ -62,7 +64,18 @@ export function perceivedSpot(pitch, sd, level, rng, cfg = CONFIG) {
   return { x: gx + rng.gauss(0, sdFt), y: gy + rng.gauss(0, sdFt) };
 }
 
-/** His chance to swing at a pitch he thinks is at `ratio` (zoneRatio), for this count and batter. */
+/**
+ * How far from the middle of the strike zone a spot is, as the umpire's zone sees it: 1 = on its edge (the same box `isStrike` calls -
+ * the plate plus a ball's width, from the knees to the letters), under 1 = a strike, 1.3 = a bit further out than that again. (The
+ * oval `zoneRatio` called the corners of the zone and the low strike "on the edge": he took corner strikes like balls.)
+ */
+export function zoneBoxRatio(x, y, cfg = CONFIG) {
+  const P = cfg.pitch, r = cfg.physics.ballRadius;
+  const mid = (P.zoneBottom + P.zoneTop) / 2, half = (P.zoneTop - P.zoneBottom) / 2 + r;
+  return Math.max(Math.abs(x) / P.zoneHalfWidth, Math.abs(y - mid) / half);
+}
+
+/** His chance to swing at a pitch he thinks is at `ratio` (zoneBoxRatio), for this count and batter. */
 function swingChance(ratio, count, batter, cfg) {
   const W = cfg.cpuBat.swing, B = W.bands;
   const { balls, strikes } = count;
@@ -86,8 +99,8 @@ function swingChance(ratio, count, batter, cfg) {
 export function decideSwing(i, cfg = CONFIG) {
   const C = cfg.cpuBat, L = levelOf(i.level, cfg), rng = i.rng, pitch = i.pitch;
   const scale = errorScale(i.batter, i.strength, cfg);
-  const seen = perceivedSpot(pitch, L.readSd * scale, i.level, rng, cfg);
-  const ratio = zoneRatio(seen.x, seen.y, cfg);
+  const seen = perceivedSpot(pitch, L.readSd * scale, rng, cfg);
+  const ratio = zoneBoxRatio(seen.x, seen.y, cfg);
   if (!rng.chance(swingChance(ratio, i.count, i.batter, cfg))) return { swing: false };
   const protect = i.count.strikes === 2;
   // timing: a gaussian (wider on a pitch you threw well, narrower when he just protects the plate) and the speed change from your

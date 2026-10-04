@@ -92,8 +92,28 @@ describe('the computer batter', () => {
       }
       return good / swings;
     };
-    expect(squaredShare(perfect)).toBeLessThan(0.6 * squaredShare(hang));
+    expect(squaredShare(perfect)).toBeLessThan(0.7 * squaredShare(hang)); // (was 0.6 before the first balance pass: his read and aim are much sharper now - measured .57 vs .91)
   }, 120000);
+
+  it('a strike on the corner of the zone is swung at like a strike (his zone is the umpire box, not an oval)', () => {
+    const P = CONFIG.pitch;
+    const corner = makePitch('fastball', { x: P.zoneHalfWidth - 0.08, y: P.zoneBottom + 0.05 }); // (a strike: inside the box)
+    const middle = makePitch('fastball', { x: 0, y: CONFIG.timing.zoneCenterY - 0.5 });
+    const off = makePitch('fastball', outRight(1.6));
+    expect(rate(run(corner))).toBeGreaterThan(0.85 * rate(run(middle)));
+    expect(rate(run(corner))).toBeGreaterThan(2 * rate(run(off)));
+  }, 60000);
+
+  it('his read is the same on every level (the pitch guide of the level is your batting help, not his)', () => {
+    const same = { readSd: 0.1, timingSd: 30, aimSd: 0.05 };
+    const cfg = { ...CONFIG, difficulty: Object.fromEntries(Object.entries(CONFIG.difficulty).map(([k, d]) => [k, { ...d, cpuBat: { ...d.cpuBat, ...same } }])) };
+    const p = makePitch('slider', outRight(1.1));
+    for (let s = 1; s <= 200; s++) {
+      const r = decideSwing({ ...base, level: 'rookie', pitch: p, rng: createRng(s) }, cfg);
+      const a = decideSwing({ ...base, level: 'allstar', pitch: p, rng: createRng(s) }, cfg);
+      expect(a).toEqual(r);
+    }
+  });
 
   it('stars chase less', () => {
     const chase = makePitch('fastball', outRight(1.6));
@@ -115,7 +135,7 @@ describe('the computer batter', () => {
     const s0 = startSpot(p.flight, CONFIG);
     expect(s0.y).toBeGreaterThan(p.target.y); // a curve drops: it starts higher than it ends
     const spots = [];
-    for (let s = 1; s <= 500; s++) spots.push(perceivedSpot(p, 0.2, 'pro', createRng(s), CONFIG));
+    for (let s = 1; s <= 500; s++) spots.push(perceivedSpot(p, 0.2, createRng(s), CONFIG));
     const mx = spots.reduce((a, b) => a + b.x, 0) / spots.length, my = spots.reduce((a, b) => a + b.y, 0) / spots.length;
     expect(Math.hypot(mx - p.target.x, my - p.target.y)).toBeLessThan(0.1);
     const star = cpuSwingInputs('pro', { con: 90, pow: 90, spd: 50 }, 0, CONFIG);
