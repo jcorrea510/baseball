@@ -129,6 +129,10 @@ const MISS = {
   curveball: { chase: [[-1.9, -1.2, 0.7], [-1.0, -0.3, 0.3]], waste: [[-1.85, -1.3, 0.85], [-1.0, -0.4, 0.15]] },
   slider: { chase: [[-0.5, 0.4, 0.75], [-1.1, -0.5, 0.25]], waste: [[-0.4, 0.35, 0.7], [-1.1, -0.5, 0.3]] },
   changeup: { chase: [[-1.9, -1.2, 0.5], [-1.2, -0.4, 0.5]], waste: [[-1.9, -1.3, 0.6], [-1.2, -0.5, 0.4]] },
+  // sinker: a fastball that misses down and away (arm side) instead of up; cutter: like a slider; splitter: like a changeup (down)
+  sinker: { chase: [[-1.57, -1.2, 0.5], [-1.0, -0.2, 0.35], [-0.5, -0.05, 0.15]], waste: [[-1.57, -1.3, 0.55], [-1.0, -0.3, 0.35], [-0.5, -0.05, 0.1]] },
+  cutter: { chase: [[-0.5, 0.4, 0.75], [-1.1, -0.5, 0.25]], waste: [[-0.4, 0.35, 0.7], [-1.1, -0.5, 0.3]] },
+  splitter: { chase: [[-1.9, -1.2, 0.55], [-1.2, -0.4, 0.45]], waste: [[-1.9, -1.3, 0.65], [-1.2, -0.5, 0.35]] },
 };
 const BREAKS_SIDEWAYS = { curveball: true, slider: true, changeup: true, cutter: true, splitter: true };
 

@@ -154,3 +154,35 @@ describe('Home Run Derby pitches', () => {
     }
   });
 });
+
+describe('sinker, cutter and splitter miss the way they move', () => {
+  const g = { zoneMidY: cfg.timing.zoneCenterY, hw: cfg.pitch.zoneHalfWidth, halfH: cfg.timing.zoneHalfHeight };
+  const targets = (kind, type, breakDir = 1) => { const rng = createRng(5); return Array.from({ length: 3000 }, () => pickTarget(kind, type, 1, cfg, rng, g, breakDir)); };
+  const share = (ts, f) => ts.filter(f).length / ts.length;
+  const above = (t) => t.y > g.zoneMidY + g.halfH * 0.5;
+  const below = (t) => t.y < g.zoneMidY - g.halfH * 0.5;
+  it('a splitter that is off the zone is mostly below it, like a changeup, and never up', () => {
+    for (const kind of ['chase', 'waste']) {
+      const ts = targets(kind, 'splitter');
+      expect(share(ts, below)).toBeGreaterThan(0.6);
+      expect(share(ts, above)).toBe(0);
+      expect(share(targets(kind, 'fastball'), above)).toBeGreaterThan(0.3); // (a fastball goes up: not the fallback any more)
+    }
+  });
+  it('a sinker that is off the zone is down and away, rarely up', () => {
+    for (const kind of ['chase', 'waste']) {
+      const ts = targets(kind, 'sinker');
+      expect(share(ts, above)).toBeLessThan(0.02);
+      expect(share(ts, below)).toBeGreaterThan(0.5);
+      expect(share(ts, (t) => t.x > 0)).toBeGreaterThan(0.9); // away from the batter (away = 1)
+    }
+  });
+  it('a cutter goes the slider\'s way: out to its break side, level', () => {
+    for (const kind of ['chase', 'waste']) for (const dir of [1, -1]) {
+      const ts = targets(kind, 'cutter', dir);
+      expect(share(ts, (t) => t.x * dir > 0)).toBe(1);
+      expect(share(ts, above)).toBeLessThan(0.15); // (the slider's row reaches only a little above the belt)
+      expect(share(ts, (t) => Math.abs(t.y - g.zoneMidY) < g.halfH * 1.5)).toBeGreaterThan(0.6);
+    }
+  });
+});
