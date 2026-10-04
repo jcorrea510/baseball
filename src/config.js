@@ -980,6 +980,7 @@ export const CONFIG = {
     // game every arm's rest falls by the share of his stamina he used, then recovers `restPerGame` (by role), up to 1.
     staff: { size: 5, starters: 3 },
     startMin: 0.8,
+    relieverMin: 0.5, // a reliever whose rest is under this has thrown too much lately: he cannot be brought in today (shown as Rest on the roster)
     restPerGame: { SP: 0.34, RP: 0.6 },
     innings: 6, // innings in a season game
     cycles: { short: 1, full: 2 }, // how many times you play every other team (8 opponents: 8 or 16 games)

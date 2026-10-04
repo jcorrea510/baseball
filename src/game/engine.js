@@ -13,7 +13,7 @@ import { createDefense, alignDefense, planPlay, sendOptions, runnerOptions, tapO
 import * as rules from './rules.js';
 import { simulateHalf } from './aiHalf.js';
 import { makeLineup, makePitcher, makeStaff, PLAYER_TEAM } from './teams.js';
-import { MLB_TEAMS, teamName, uniformFor, teamLineup } from './mlb.js';
+import { MLB_TEAMS, teamName, uniformFor, teamLineup, armsOf } from './mlb.js';
 import { ratingEffects } from './season.js';
 import { staminaMax } from './pitching.js';
 import { cpuSwingInputs } from './cpuBatter.js';
@@ -67,7 +67,7 @@ export class Engine {
     this.lineup = o.lineup ? o.lineup.map((b) => ({ ...b })) : makeLineup(this.seed, 'p');
     this.oppLineup = o.oppLineup ? o.oppLineup.map((b) => ({ ...b })) : (o.opponent ? makeLineup(this.seed ^ 0x5bd1e995, 'o') : teamLineup(oppTeam, this.seed, 'o'));
     if (this.handSetting !== 'auto') for (const b of this.lineup) b.hand = this.handSetting;
-    this.oppPitcher = o.oppPitcher || makePitcher(this.seed); // (theirs, when you bat; `pitcher` is whoever is on the mound)
+    this.oppPitcher = o.oppPitcher || (o.realArms ? armsOf(oppTeam)[0] : makePitcher(this.seed)); // (Quick Game: the other club's best arm) // (theirs, when you bat; `pitcher` is whoever is on the mound)
     // When the computer bats you are in the field: `cpuHalf` 'pitch' = you pitch, 'auto' = the computer pitches for you (tests, bots)
     this.cpuHalf = o.cpuHalf || 'auto';
     this.simming = false; // Sim pressed: the computer pitches the rest of this half (pitchingHalf.simHalf)
@@ -252,7 +252,7 @@ export class Engine {
     this.batterReadyFlag = !this.waitForBatter;
     this.setBunt(false);
     this.steal = null; this.setSteal(false);
-    this.emit('paStart', { batter: this.batter, index: this.batterIndex, count: this.count, waiting: !this.batterReadyFlag });
+    this.emit('paStart', { pitcher: this.offense === 'player' ? this.oppPitcher : null, batter: this.batter, index: this.batterIndex, count: this.count, waiting: !this.batterReadyFlag });
     this.emitCount();
     if (!quiet) this.checkpoint();
   }
@@ -304,6 +304,7 @@ export class Engine {
     const p = this.pitchOverride ? this.pitchOverride(this) : choosePitch({
       mode: this.mode, difficulty: this.difficulty, count: this.count, rng: this.rng,
       batterHand: this.batterHand, pitcherHand: this.pitcher.hand, practice: this.practice, lastType: this.lastType,
+      arsenal: this.offense === 'player' && this.mode === 'quick' ? this.oppPitcher.pitches : undefined, // (their starter throws his own pitches)
     }, this.cfg);
     if (!p.tell) p.tell = { slot: 0, lag: 0 };
     const hand = this.pitcher.hand;

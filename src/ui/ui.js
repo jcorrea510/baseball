@@ -98,6 +98,16 @@ const crest = (t, size = '') => `<span class="crest ${size} ${lum(t.color) > 0.6
 // a player's Contact / Power / Speed, each with a little bar (the words are spelled out in the column heads)
 const ratingCells = (p) => ['con', 'pow', 'spd'].map((k) => `<span class="rt ${p[k] >= 70 ? 'hi' : p[k] <= 40 ? 'lo' : ''}" title="${{ con: 'Contact', pow: 'Power', spd: 'Speed' }[k]}">${p[k]}<i style="--v:${p[k]}%"></i></span>`).join('');
 const ratingHead = '<span class="rt">Contact</span><span class="rt">Power</span><span class="rt">Speed</span>';
+// a pitcher's Velocity / Control / Stuff / Stamina, the same way
+const PK = { vel: 'Velocity', ctl: 'Control', stf: 'Stuff', sta: 'Stamina' };
+const pitchCells = (p) => Object.keys(PK).map((k) => `<span class="rt ${p[k] >= 70 ? 'hi' : p[k] <= 40 ? 'lo' : ''}" title="${PK[k]}">${p[k]}<i style="--v:${p[k]}%"></i></span>`).join('');
+const pitchHead = Object.values(PK).map((l) => `<span class="rt">${l}</span>`).join('');
+// innings pitched from outs (12.1), earned run average
+const ipText = (outs) => `${Math.floor((outs || 0) / 3)}.${(outs || 0) % 3}`;
+const eraText = (er, outs) => (outs > 0 ? ((er * 27) / outs).toFixed(2) : '-.--');
+const throwsText = (p) => (p.hand === 'L' ? 'Throws L' : 'Throws R');
+// the Hitters / Pitchers switch above the roster and the shop
+const tabsHtml = (key, cur, nPitch) => `<div class="seg tabs" data-tabs="${key}"><button data-tab="hit" class="${cur === 'hit' ? 'on' : ''}">Hitters</button><button data-tab="pit" class="${cur === 'pit' ? 'on' : ''}">Pitchers${nPitch ? ' · ' + nPitch : ''}</button></div>`;
 const artUrl = (name) => { let base = '/'; try { base = (import.meta.env && import.meta.env.BASE_URL) || '/'; } catch (e) { /* tests */ } return `url('${base}art/${name}.jpg')`; };
 // Small screens fold the practice chooser away so it never covers the play.
 const smallScreen = () => typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-height: 520px), (max-width: 900px)').matches;
@@ -665,6 +675,8 @@ export class UI {
         const t = sea.teams[g.opp];
         const series = g.kind === 'final' ? `<span class="chip">Series ${g.series[0]}–${g.series[1]}</span>` : '';
         const ip = sea.inProgress;
+        const mine1 = SEA.pickStarter(sea), theirs1 = SEA.opposingStarter(teamById(t.id), sea.games.length + (t.lineupSeed || 0));
+        const starters = mine1 && theirs1 ? `<div class="starters"><span><small>${me.abbr}</small>${mine1.name}</span><span class="vs">vs</span><span><small>${t.abbr}</small>${theirs1.name}</span></div>` : '';
         hero = `<div class="next" style="--me:${me.color};--them:${t.color}">
           <div class="label">${g.label} · ${g.home !== false ? 'Home' : 'Away'}</div>
           <div class="match">
@@ -672,6 +684,7 @@ export class UI {
           </div>
           <div class="parkname">${(CONFIG.parks.list[g.home !== false ? me.id : t.id] || CONFIG.parks.list.sandlot).name}</div>
           <div class="oppname">${t.name}${stars(t.rating, true)}${series}</div>
+          ${starters}
           <button class="btn wide" data-a="seasonPlay">${icon('play')}${ip ? 'Resume' : 'Play'}</button>${ip ? `<div class="chips"><span class="chip">${ip.state.game.half === 'top' ? 'Top' : 'Bottom'} ${ip.state.game.inning}</span><span class="chip">${ip.state.game.score.top}–${ip.state.game.score.bottom}</span></div>` : ''}
         </div>`;
       } else {
@@ -757,19 +770,38 @@ export class UI {
     d.style.setProperty('--accent', sea.teams[0].color);
     const n = CONFIG.season.roster.lineup;
     const buying = replaceFor ? sea.shop.find((p) => p.id === replaceFor) : null;
+    const tab = buying ? (buying.role ? 'pit' : 'hit') : (this.rosterTab || 'hit');
     const row = (p, i) => {
       const t = sea.stats[p.id] || {};
       const extra = buying ? '' : `<span class="line">${SEA.avg(t.h || 0, t.ab || 0)}</span><span class="line">${t.hr || 0}</span><span class="line">${t.rbi || 0}</span>`;
       return `${i === n ? '<div class="label benchlab">Bench</div>' : ''}<button class="prow ${p.star ? 'star' : ''} ${sel === p.id ? 'sel' : ''}" data-id="${p.id}"><span class="ord">${i < n ? i + 1 : ''}</span><span class="who"><b>${p.name}</b><small>${p.pos} · #${p.number} · ${p.hand === 'L' ? 'Bats L' : 'Bats R'}${p.team ? ' · ' + p.team : ''}</small></span>${ratingCells(p)}${extra}</button>`;
     };
+    const next = SEA.pickStarter(sea);
+    const prow = (p) => {
+      const t = (sea.pstats && sea.pstats[p.id]) || {};
+      const rest = sea.rest[p.id] ?? 1;
+      const tired = p.role === 'SP' ? rest < CONFIG.season.startMin : rest < CONFIG.season.relieverMin;
+      const chip = tired ? '<span class="chip warn">Rest</span>' : next && next.id === p.id ? '<span class="chip">Next</span>' : '';
+      const extra = buying ? '' : `<span class="line">${ipText(t.outs)}</span><span class="line">${t.k || 0}</span><span class="line">${eraText(t.er || 0, t.outs || 0)}</span>`;
+      const bar = buying ? '' : `<span class="rt restbar ${tired ? 'lo' : ''}" title="Rest">${Math.round(rest * 100)}<i style="--v:${Math.round(rest * 100)}%"></i></span>`;
+      return `<button class="prow pit ${p.star ? 'star' : ''} ${sel === p.id ? 'sel' : ''}" data-id="${p.id}"><span class="ord">${p.role}</span><span class="who"><b>${p.name}</b><small>${chip}${throwsText(p)} · #${p.number}${p.team ? ' · ' + p.team : ''}</small></span>${pitchCells(p)}${bar}${extra}</button>`;
+    };
     const head = buying ? 'Replace who?' : 'Roster';
+    const buyRow = buying ? (buying.role
+      ? `<div class="prow buying pit"><span class="ord">${icon('cart')}</span><span class="who"><b>${buying.name}</b><small>${buying.role} · ${throwsText(buying)} · ${SEA.price(buying)} coins</small></span>${pitchCells(buying)}</div>`
+      : `<div class="prow buying"><span class="ord">${icon('cart')}</span><span class="who"><b>${buying.name}</b><small>${buying.pos} · ${SEA.price(buying)} coins</small></span>${ratingCells(buying)}</div>`) : '';
+    const list = tab === 'pit'
+      ? `<div class="phead pit"><span class="ord">Job</span><span class="who">Pitcher</span>${pitchHead}${buying ? '' : '<span class="rt restbar">Rest</span><span class="line">IP</span><span class="line">K</span><span class="line">ERA</span>'}</div><div class="plist">${sea.staff.map(prow).join('')}</div>`
+      : `<div class="phead"><span class="ord">#</span><span class="who">Player</span>${ratingHead}${buying ? '' : '<span class="line">AVG</span><span class="line">HR</span><span class="line">RBI</span>'}</div><div class="plist">${sea.roster.map(row).join('')}</div>`;
     d.innerHTML = `${this.backHead(head, `<span class="coins">${icon('coin')}${sea.coins}</span>`, `League · Year ${sea.year}`)}
-      ${buying ? `<div class="prow buying"><span class="ord">${icon('cart')}</span><span class="who"><b>${buying.name}</b><small>${buying.pos} · ${SEA.price(buying)} coins</small></span>${ratingCells(buying)}</div>` : ''}
-      <div class="phead"><span class="ord">#</span><span class="who">Player</span>${ratingHead}${buying ? '' : '<span class="line">AVG</span><span class="line">HR</span><span class="line">RBI</span>'}</div>
-      <div class="plist">${sea.roster.map(row).join('')}</div>`;
+      ${buying ? '' : tabsHtml('roster', tab, 0)}
+      ${buyRow}
+      ${list}`;
     s.appendChild(d);
     this.refocus(s);
     s.onclick = (e) => {
+      const tb = e.target.closest('.tabs [data-tab]');
+      if (tb) { this.rosterTab = tb.dataset.tab; this.act('rosterTab'); return; }
       const r = e.target.closest('.prow[data-id]');
       if (r) { this.act(buying ? 'seasonReplace' : 'rosterTap', { id: r.dataset.id, shopId: replaceFor }); return; }
       const b = e.target.closest('[data-a]'); if (b) this.act(b.dataset.a);
@@ -780,17 +812,27 @@ export class UI {
     const s = this.fresh('shop');
     const d = h('div', 'league panel rise');
     d.style.setProperty('--accent', sea.teams[0].color);
-    const card = (p) => {
+    const tab = this.shopTab || 'hit';
+    const buy = (p) => {
       const cost = SEA.price(p);
       const afford = sea.coins >= cost; // (he costs exactly his price, out of the coins you have)
-      return `<div class="prow shopp ${p.star ? 'star' : ''}"><span class="ord ovr">${SEA.overall(p)}</span><span class="who"><b>${p.name}</b><small>${p.pos} · #${p.number} · ${p.hand === 'L' ? 'Bats L' : 'Bats R'}${p.team ? ' · ' + p.team : ''}</small></span>${ratingCells(p)}<button class="btn small ${afford ? '' : 'ghost'}" data-a="shopBuy" data-id="${p.id}" ${afford ? '' : 'disabled'}>${icon('coin')}${cost}</button></div>`;
+      return `<button class="btn small ${afford ? '' : 'ghost'}" data-a="shopBuy" data-id="${p.id}" ${afford ? '' : 'disabled'}>${icon('coin')}${cost}</button>`;
     };
+    const card = (p) => (p.role
+      ? `<div class="prow shopp ${p.star ? 'star' : ''}"><span class="ord ovr">${SEA.overall(p)}</span><span class="who"><b>${p.name}</b><small>${p.role} · ${throwsText(p)} · #${p.number}${p.team ? ' · ' + p.team : ''}</small></span>${pitchCells(p)}${buy(p)}</div>`
+      : `<div class="prow shopp ${p.star ? 'star' : ''}"><span class="ord ovr">${SEA.overall(p)}</span><span class="who"><b>${p.name}</b><small>${p.pos} · #${p.number} · ${p.hand === 'L' ? 'Bats L' : 'Bats R'}${p.team ? ' · ' + p.team : ''}</small></span>${ratingCells(p)}${buy(p)}</div>`);
+    const pit = sea.shop.filter((p) => p.role), hit = sea.shop.filter((p) => !p.role);
     d.innerHTML = `${this.backHead('Shop', `<span class="coins">${icon('coin')}${sea.coins}</span>`, `League · Year ${sea.year}`)}
-      <div class="phead"><span class="ord">OVR</span><span class="who">Player</span>${ratingHead}<span class="price" style="min-width:96px"></span></div>
-      <div class="plist">${sea.shop.map(card).join('')}</div>`;
+      ${tabsHtml('shop', tab, pit.length)}
+      <div class="phead"><span class="ord">OVR</span><span class="who">Player</span>${tab === 'pit' ? pitchHead : ratingHead}<span class="price" style="min-width:96px"></span></div>
+      <div class="plist">${(tab === 'pit' ? pit : hit).map(card).join('')}</div>`;
     s.appendChild(d);
     this.refocus(s);
-    s.onclick = (e) => { const b = e.target.closest('[data-a]'); if (b && !b.disabled) this.act(b.dataset.a, { id: b.dataset.id }); };
+    s.onclick = (e) => {
+      const tb = e.target.closest('.tabs [data-tab]');
+      if (tb) { this.shopTab = tb.dataset.tab; this.act('shopTab'); return; }
+      const bb = e.target.closest('[data-a]'); if (bb && !bb.disabled) this.act(bb.dataset.a, { id: bb.dataset.id });
+    };
   }
 
   // ---------------------------------------------------------------- HUD updates

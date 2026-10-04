@@ -384,6 +384,24 @@ describe('pitchers', () => {
     game(s); game(s);
     expect(s.rest[r1.id]).toBe(1);
   });
+  it('a reliever whose rest is under relieverMin is passed to the engine as unavailable; a rested one is not', () => {
+    const s = S.newSeason(null, { team: 'nym', seed: 31 });
+    const [r1, r2] = s.staff.filter((p) => p.role === 'RP');
+    s.rest[r1.id] = CONFIG.season.relieverMin - 0.01;
+    s.rest[r2.id] = CONFIG.season.relieverMin;
+    const staff = S.gameSetup(s).staff;
+    expect(staff.find((p) => p.id === r1.id).unavailable).toBe(true);
+    expect(!!staff.find((p) => p.id === r2.id).unavailable).toBe(false);
+    const e = new Engine({ difficulty: 'pro', staff, cpuHalf: 'pitch', playerSide: 'top', seed: 3 });
+    e.start();
+    expect(e.bullpenOptions().some((o) => o.pitcher.id === r1.id)).toBe(false);
+  });
+  it('clubSetup gives the club has five real arms, fresh, for a Quick Game', () => {
+    const s = S.newSeason(null, { team: 'nym', seed: 32 });
+    const c = S.clubSetup(s);
+    expect(c.staff.length).toBe(5);
+    expect(c.staff.every((p) => p.teamId === 'nym')).toBe(true);
+  });
   it('earned runs and the rest of the line add up in pstats', () => {
     const s = S.newSeason(null, { team: 'nym', seed: 27 });
     const a = s.staff[0].id;

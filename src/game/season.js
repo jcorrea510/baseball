@@ -582,6 +582,7 @@ export function clubSetup(s, cfg = CONFIG) {
   return {
     playerTeam: { id: club.id, name: s.teams[0].name, abbr: s.teams[0].abbr, color: s.teams[0].color, uniform: uniformFor(club, 'home') },
     lineup: lineup(s, cfg).map((p, i) => ({ ...p, order: i })),
+    staff: armsOf(club, cfg), // (a Quick Game with your club: its five real arms, fresh)
   };
 }
 
@@ -606,7 +607,8 @@ export function pickStarter(s, cfg = CONFIG) {
 /** The engine's staff: today's starter first, then your relievers, then the other starters (marked unavailable: never offered). */
 function gameStaff(s, cfg) {
   const start = pickStarter(s, cfg);
-  return [{ ...start }, ...relieversOf(s).map((p) => ({ ...p })), ...startersOf(s, cfg).filter((p) => p.id !== start.id).map((p) => ({ ...p, unavailable: true }))];
+  const tired = (p) => (s.rest[p.id] ?? 1) < cfg.season.relieverMin; // (a reliever who threw a lot lately: never offered today)
+  return [{ ...start }, ...relieversOf(s).map((p) => (tired(p) ? { ...p, unavailable: true } : { ...p })), ...startersOf(s, cfg).filter((p) => p.id !== start.id).map((p) => ({ ...p, unavailable: true }))];
 }
 
 /** The other club's starter for its game number n: its three real starters in turn. */

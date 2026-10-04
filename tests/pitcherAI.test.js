@@ -186,3 +186,19 @@ describe('sinker, cutter and splitter miss the way they move', () => {
     }
   });
 });
+
+describe('the other club\'s starter when you bat (engine)', () => {
+  it('with realArms the engine throws only the pitches in his arsenal, and paStart names him', async () => {
+    const { Engine } = await import('../src/game/engine.js');
+    const e = new Engine({ mode: 'quick', playerSide: 'top', seed: 6, realArms: true });
+    const types = new Set(), names = [];
+    e.on('paStart', (p) => names.push(p.pitcher && p.pitcher.name));
+    e.on('windup', ({ pitch }) => types.add(pitch.type));
+    e.start();
+    for (let t = 0; t < 400 && types.size < 4 && !e.over; t += 1 / 120) e.update(1 / 120);
+    expect(e.oppPitcher.pitches.length).toBeGreaterThan(1);
+    expect(types.size).toBeGreaterThan(0);
+    for (const t of types) expect(e.oppPitcher.pitches).toContain(t);
+    expect(names[0]).toBe(e.oppPitcher.name);
+  }, 60000);
+});

@@ -235,6 +235,8 @@ export class App {
       case 'seasonPlay': this.audio.uiClick(); this.startSeasonGame(); break;
       case 'seasonHub': this.audio.uiClick(); this.quitToMenu(); break;
       case 'standings': case 'roster': case 'shop': this.audio.uiClick(); this.rosterSel = null; this.replaceFor = null; this.openMenu(a); break;
+      case 'rosterTab': this.audio.uiClick(); this.rosterSel = null; this.showMenuScreen('roster'); break;
+      case 'shopTab': this.audio.uiClick(); this.showMenuScreen('shop'); break;
       case 'rosterTap': {
         const sea = this.prog.data.season;
         if (!this.rosterSel) this.rosterSel = d.id;
@@ -246,7 +248,9 @@ export class App {
       }
       case 'shopBuy': {
         const sea = this.prog.data.season;
-        if (sea.roster.length >= CONFIG.season.roster.size) { this.audio.uiClick(); this.replaceFor = d.id; this.rosterSel = null; this.openMenu('roster'); break; }
+        const buyP = sea.shop.find((x) => x.id === d.id);
+        const full = buyP && buyP.role ? sea.staff.length >= CONFIG.season.staff.size : sea.roster.length >= CONFIG.season.roster.size;
+        if (full) { this.audio.uiClick(); this.replaceFor = d.id; this.rosterSel = null; this.openMenu('roster'); break; }
         this.signPlayer(d.id, null);
         break;
       }
@@ -451,7 +455,8 @@ export class App {
       cpuHalf: mode === 'quick' && !this.params.get('bot') ? 'pitch' : 'auto',
       practice: this.engine && this.engine.mode === 'practice' ? { ...this.engine.practice } : undefined,
       seed: this.params.get('seed') ? +this.params.get('seed') : this.quickSave ? this.quickSave.seed : undefined,
-      ...(club ? { playerTeam: club.playerTeam, lineup: club.lineup } : {}),
+      realArms: mode === 'quick', // (the other club's best arm throws his own pitches at you)
+      ...(club ? { playerTeam: club.playerTeam, lineup: club.lineup, staff: club.staff } : {}),
       ...(extra ? extra.engine : {}),
     }, extra && extra.cfg ? extra.cfg : CONFIG);
     this.engine = eng;
@@ -501,10 +506,10 @@ export class App {
     // (umpire, crowd, bat and glove sounds, banners, effects, slow motion) plays - the recap panel tells the story.
     const QUIET = new Set(['stealGo', 'windup', 'release', 'swing', 'whiff', 'catch', 'pitchCall', 'contact', 'playEvent', 'ringTap', 'pitchGrade']);
     const on = (name, fn) => e.on(name, QUIET.has(name) ? (...a) => { if (!e.simming) fn(...a); } : fn);
-    on('paStart', ({ batter, waiting }) => {
+    on('paStart', ({ batter, waiting, pitcher }) => {
       ui.setBatter(batter);
       this.refreshLineup();
-      if (waiting) ui.showBatterUp(batter, e.lineOf(batter), this.batterChips(batter)); else ui.hideBatterUp();
+      if (waiting) ui.showBatterUp(batter, e.lineOf(batter), (pitcher ? ['vs ' + pitcher.name] : []).concat(this.batterChips(batter))); else ui.hideBatterUp();
       this.pitchMarker.visible = false;
       this.actors.loose.spent = false;
       this.actors.loose.active = false;
