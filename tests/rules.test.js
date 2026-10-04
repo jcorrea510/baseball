@@ -352,3 +352,51 @@ describe('extra innings', () => {
     expect(g.bases[1]).toEqual({ id: 'last-top' });
   });
 });
+
+describe('who scored', () => {
+  it('bases loaded walk scores the runner on third', () => {
+    const g = g0();
+    const r1 = runner(1);
+    const r2 = runner(2);
+    const r3 = runner(3);
+    g.bases = [r1, r2, r3];
+    g.balls = 3;
+    const res = rules.pitchBall(g, runner('B'));
+    expect(res.scoredRunners).toEqual([r3]);
+  });
+
+  it('bases loaded hit-by-pitch scores the runner on third', () => {
+    const g = g0();
+    const r1 = runner(1);
+    const r2 = runner(2);
+    const r3 = runner(3);
+    g.bases = [r1, r2, r3];
+    const res = rules.hitByPitch(g, runner('B'));
+    expect(res.scoredRunners).toEqual([r3]);
+  });
+
+  it('a walk with nobody forced home returns empty array', () => {
+    const g = g0();
+    const r2 = runner(2);
+    g.bases = [null, r2, null];
+    g.balls = 3;
+    const res = rules.pitchBall(g, runner('B'));
+    expect(res.scoredRunners).toEqual([]);
+  });
+
+  it('applyAdvance with runner from third to home scores him', () => {
+    const g = g0();
+    const r3 = runner(3);
+    g.bases = [null, null, r3];
+    const res = rules.applyAdvance(g, [{ from: 3, to: 4 }]);
+    expect(res.scoredRunners).toEqual([r3]);
+  });
+
+  it('applySteal with a runner scoring returns him', () => {
+    const g = g0();
+    const r3 = runner(3);
+    g.bases = [null, null, r3];
+    const res = rules.applySteal(g, [{ from: 3, to: 4 }]);
+    expect(res.scoredRunners).toEqual([r3]);
+  });
+});

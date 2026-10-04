@@ -64,35 +64,36 @@ function recordOut(g, n = 1) {
 function forceAdvance(g, batter) {
   const b = g.bases;
   let runs = 0;
+  const scoredRunners = [];
   if (b[0]) {
     if (b[1]) {
-      if (b[2]) { runs++; }
+      if (b[2]) { runs++; scoredRunners.push(b[2]); }
       b[2] = b[1];
     }
     b[1] = b[0];
   }
   b[0] = batter || true;
-  return runs;
+  return { runs, scoredRunners };
 }
 
 /** A pitch that is not swung at and is out of the zone. */
 export function pitchBall(g, batter) {
   g.balls++;
   if (g.balls >= 4) {
-    const runs = forceAdvance(g, batter);
+    const { runs, scoredRunners } = forceAdvance(g, batter);
     addRuns(g, runs);
     endPlateAppearance(g);
-    return { result: 'walk', paEnded: true, runs, halfOver: halfIsOver(g), walkOff: g.walkOff };
+    return { result: 'walk', paEnded: true, runs, scoredRunners, halfOver: halfIsOver(g), walkOff: g.walkOff };
   }
   return { result: 'ball', paEnded: false, runs: 0, halfOver: false };
 }
 
 /** A pitch that hits the batter: he takes first base (runners move up only if forced, like a walk). */
 export function hitByPitch(g, batter) {
-  const runs = forceAdvance(g, batter);
+  const { runs, scoredRunners } = forceAdvance(g, batter);
   addRuns(g, runs);
   endPlateAppearance(g);
-  return { result: 'hitByPitch', paEnded: true, runs, halfOver: halfIsOver(g), walkOff: g.walkOff };
+  return { result: 'hitByPitch', paEnded: true, runs, scoredRunners, halfOver: halfIsOver(g), walkOff: g.walkOff };
 }
 
 /** Called strike or swinging strike. */
@@ -195,11 +196,12 @@ export function applyPlay(g, play, batter) {
 export function applySteal(g, moves) {
   const newBases = [null, null, null];
   let outs = 0;
+  const scoredRunners = [];
   for (const m of moves) {
     const runner = g.bases[m.from - 1];
     if (!runner) continue;
     if (m.out) { outs++; continue; }
-    placeRunner(newBases, Math.min(3, m.to), runner);
+    if (m.to >= 4) { scoredRunners.push(runner); } else placeRunner(newBases, Math.min(3, m.to), runner);
   }
   for (let b = 3; b >= 1; b--) {
     const runner = g.bases[b - 1];
@@ -207,7 +209,7 @@ export function applySteal(g, moves) {
   }
   g.bases = newBases;
   recordOut(g, outs);
-  return { outs, halfOver: halfIsOver(g) };
+  return { outs, scoredRunners, halfOver: halfIsOver(g) };
 }
 
 /**
@@ -216,15 +218,16 @@ export function applySteal(g, moves) {
 export function applyAdvance(g, moves) {
   const newBases = [null, null, null];
   let runs = 0;
+  const scoredRunners = [];
   for (const m of [...moves].sort((a, b) => b.from - a.from)) {
     const runner = g.bases[m.from - 1];
     if (!runner) continue;
-    if (m.to >= 4) runs++; else placeRunner(newBases, m.to, runner);
+    if (m.to >= 4) { runs++; scoredRunners.push(runner); } else placeRunner(newBases, m.to, runner);
   }
   for (let b = 3; b >= 1; b--) { const runner = g.bases[b - 1]; if (runner && !moves.some((m) => m.from === b)) placeRunner(newBases, b, runner); }
   g.bases = newBases;
   addRuns(g, runs);
-  return { runs, walkOff: g.walkOff };
+  return { runs, scoredRunners, walkOff: g.walkOff };
 }
 
 function placeRunner(bases, base, runner) {
