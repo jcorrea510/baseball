@@ -581,6 +581,8 @@ export const CONFIG = {
     playEndPause: 0.8, // pause after a play finishes
     pitcherSet: 0.65, // s the pitcher (and catcher) need to be set once they are back in place: no pitch before it
     fastForward: 4.5, // speed multiplier when you tap to skip a play
+    summaryMin: 1.6, // seconds the highlights of a Sim stay up at least (then they go by themselves)
+    summaryTail: 0.9, // ...plus this long after the last line has shown
     aiSummaryLine: 0.55, // seconds per line of the computer's half-inning highlights
   },
 

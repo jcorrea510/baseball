@@ -141,7 +141,7 @@ const methods = {
   // independent, like swingPressed). Once per delivery, before the ring closes (no tap = WILD). True when taken.
   ringTap(sinceUpdate = 0) {
     const r = this.ring;
-    if (this.phase !== 'delivery' || !r || r.tapped) return false;
+    if (this.phase !== 'delivery' || !r || r.tapped || this.simming) return false;
     const t = this.time + clamp(sinceUpdate, -0.02, 0.05) - this.inputDelay;
     if (t > r.tStart + r.time) return false; // (the ring has closed)
     return this.tapRing((t - (r.tStart + r.hitAt)) * 1000);
@@ -259,7 +259,7 @@ const methods = {
   // The computer pitches the rest of this half for you (the same auto pitcher, the same engine - nothing is drawn). A pitch in the air
   // or a play in progress finishes exactly as it would have; the computer takes the next pitch. True when accepted (once, while pitching).
   simHalf() {
-    if (!this.pitching || this.simming) return false;
+    if (!this.pitching || this.simming || this.phase === 'delivery') return false; // (not mid-delivery: your ring would never be tapped)
     const g = this.game;
     this.simming = true;
     this.simRecap = { events: [], seen: g.score[g.half], inning: g.inning, half: g.half, before: { ...g.score } };

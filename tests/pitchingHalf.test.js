@@ -416,16 +416,16 @@ describe('Sim', () => {
     expect(e.pitchStats.pitches).toBe(e.mound.pitches);
   });
 
-  it('pressed during the delivery, that pitch is thrown exactly as it would have been, then the computer takes over', () => {
+  it('pressed just after the release, that pitch is thrown exactly as it would have been, then the computer takes over', () => {
     const a = make({ seed: 33 }), b = make({ seed: 33 });
     const calls = (e) => { const out = []; e.on('pitchCall', (c) => out.push(c.call)); e.on('release', ({ pitch }) => out.push([pitch.type, Math.round(pitch.speedMph * 1e4), Math.round(pitch.target.x * 1e4), Math.round(pitch.target.y * 1e4)].join())); return out; };
     const ca = calls(a), cb = calls(b);
     a.start(); b.start();
     for (const e of [a, b]) { e.selectPitch('fastball'); e.setPitchAim(0.2, 2.3); e.startDelivery(); }
-    for (const e of [a, b]) while (e.time < e.ring.tStart + 0.4) e.update(DT);
-    expect(a.phase).toBe('delivery');
+    for (const e of [a, b]) while (e.phase === 'delivery') e.update(DT);
+    expect(a.phase).toBe('pitch');
     expect(a.simHalf()).toBe(true);
-    expect(a.phase).toBe('delivery'); // (nothing changed under the ball)
+    expect(a.phase).toBe('pitch'); // (nothing changed under the ball)
     until(a, () => a.phase === 'aim' || a.phase === 'result', 20);
     until(b, () => b.phase === 'aim' || b.phase === 'result', 20);
     expect(ca.length).toBeGreaterThanOrEqual(2);
@@ -434,6 +434,28 @@ describe('Sim', () => {
     const done = simDone(a);
     for (let i = 0; i < 400 && a.simming; i++) a.simStep(3);
     expect(done.length).toBe(1);
+  });
+
+  it('Sim is refused mid-delivery, and a Sim takes no delivery or ring tap from you', () => {
+    const e = make({ seed: 33 });
+    e.start();
+    e.startDelivery();
+    e.update(0.2);
+    expect(e.phase).toBe('delivery');
+    expect(e.simHalf()).toBe(false);
+    expect(e.simming).toBe(false);
+    while (e.phase === 'delivery') e.update(DT);
+    expect(e.simHalf()).toBe(true);
+    until(e, () => e.phase === 'aim' || e.phase === 'result', 20);
+    const r = e.ring;
+    expect(e.startDelivery()).toBe(false); // (simming: refused)
+    expect(e.ring).toBe(r);
+    until(e, () => e.phase === 'aim', 20);
+    e.simming = false; e.simRecap = null;
+    expect(e.startDelivery()).toBe(true);
+    e.simming = true; // (as if a Sim were on during a delivery)
+    expect(e.ringTap(0)).toBe(false);
+    e.simming = false;
   });
 
   it('pressed during a play, the play finishes first', () => {

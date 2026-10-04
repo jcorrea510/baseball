@@ -569,7 +569,7 @@ export class App {
       // the half you simmed: its highlights, with Skip (the engine is already on to your turn at bat, held at Ready)
       ui.hideBanner(); ui.hideCallout();
       ui.showSummary(s, e.opponent.name, CONFIG.pace.aiSummaryLine);
-      this.simSummary = { until: this.time + Math.max(1.6, Math.max(1, s.events.length) * CONFIG.pace.aiSummaryLine + 0.9) };
+      this.simSummary = { until: this.time + Math.max(CONFIG.pace.summaryMin, Math.max(1, s.events.length) * CONFIG.pace.aiSummaryLine + CONFIG.pace.summaryTail) };
       this.updateScoreboard();
       if (s.runs > 0) audio.crowdGroan(0.5); else audio.crowdSwell(0.3, 1.5);
     });
@@ -1169,7 +1169,7 @@ export class App {
     }
     const inField = !!(e.pitching && !e.over && this.screen === 'game');
     const open = active && !this.simSummary;
-    const sig = `${inField}|${open}|${open && e.phase === 'aim'}|${e.pitchType}|${e.mound ? e.mound.pitcher.id : ''}`;
+    const sig = `${inField}|${open}|${open && e.phase !== 'delivery'}|${e.pitchType}|${e.mound ? e.mound.pitcher.id : ''}`;
     if (sig !== this.pitchSig) {
       this.pitchSig = sig;
       if (!inField) this.ui.setPitching(null);
@@ -1177,7 +1177,7 @@ export class App {
         const p = e.mound.pitcher;
         const sel = p.pitches.includes(e.pitchType) ? e.pitchType : p.pitches[0];
         this.ui.setPitching({
-          open, selected: sel, canSim: open && !e.simming,
+          open, selected: sel, canSim: open && e.phase !== 'delivery',
           pitches: p.pitches.map((t) => ({ type: t, label: LABEL[t] || t, mph: pitchTopMph(p, t, CONFIG) })),
         });
       }
@@ -1200,7 +1200,7 @@ export class App {
   // Sim: the computer pitches the rest of this half (nothing is drawn; the highlights come when it is over).
   pressSim() {
     const e = this.engine;
-    if (!e || this.paused || this.bot || !e.pitching || e.simming) return;
+    if (!e || this.paused || this.bot || !e.pitching || e.simming || e.phase === 'delivery') return;
     if (e.simHalf()) { this.audio.uiClick(); this.ui.setPitchDot(null); this.dotShown = false; }
   }
 
@@ -1296,6 +1296,7 @@ export class App {
     if (this.ui.current && this.ui.current !== 'game') return;
     // (a Sim's highlights are up: a click or Space skips them, nothing else)
     if (this.simSummary) { this.hideSimSummary(); return; }
+    if (e.simming) return; // (the computer is pitching the half: a click or Space does nothing)
     const sinceTap = () => {
       let stamp = ev && ev.timeStamp;
       if (!stamp || stamp > 1e12) stamp = performance.now();
