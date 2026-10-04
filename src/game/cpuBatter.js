@@ -3,7 +3,7 @@
 // but with his own contact window and none of the player's batting help (cpuSwingInputs). All numbers: config.cpuBat and
 // config.difficulty.<level>.cpuBat.
 //   1. Read: where he THINKS the pitch will cross, from the pitch guide's early guess plus a read error that grows with the pitch's
-//      break, with how well YOU threw it (the grade) and when it starts as a strike and ends outside the zone.
+//      break, with how well YOU threw it (the grade) and, when it starts as a strike and ends outside the zone, pulled toward where it started.
 //   2. Take or swing: a chance by where he thinks it is and the count.
 //   3. Errors: timing (spread by grade, a speed change from your last pitches throws it off) and aim (his read plus hand error, a bit
 //      under the ball). His Contact rating shrinks the errors and widens his timing windows; Power adds exit speed. A batter with no
@@ -49,9 +49,17 @@ export function perceivedSpot(pitch, sd, level, rng, cfg = CONFIG) {
   const g = pitchGuide(pitch, pitch.tCross - C.readTime - (pitch.tRelease || 0), cfg, level);
   const s0 = startSpot(pitch.flight, cfg);
   const breakFt = Math.hypot(pitch.target.x - s0.x, pitch.target.y - s0.y);
-  let sdFt = sd * (1 + C.breakRead * breakFt) * gradeFactor(pitch, cfg);
-  if (isStrike(s0.x, s0.y, cfg) && !isStrike(pitch.target.x, pitch.target.y, cfg)) sdFt *= C.fadeOut;
-  return { x: g.x + rng.gauss(0, sdFt), y: g.y + rng.gauss(0, sdFt) };
+  const grade = gradeFactor(pitch, cfg);
+  let sdFt = sd * (1 + C.breakRead * breakFt) * grade;
+  let gx = g.x, gy = g.y;
+  if (isStrike(s0.x, s0.y, cfg) && !isStrike(pitch.target.x, pitch.target.y, cfg)) {
+    // it looks like a strike for most of its flight and breaks out late: his read is pulled toward where it started, and is less sure
+    const pull = Math.min(1, C.fadePull * grade);
+    gx += (s0.x - gx) * pull;
+    gy += (s0.y - gy) * pull;
+    sdFt *= C.fadeOut;
+  }
+  return { x: gx + rng.gauss(0, sdFt), y: gy + rng.gauss(0, sdFt) };
 }
 
 /** His chance to swing at a pitch he thinks is at `ratio` (zoneRatio), for this count and batter. */

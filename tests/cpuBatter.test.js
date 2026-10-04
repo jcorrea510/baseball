@@ -48,11 +48,16 @@ describe('the computer batter', () => {
   it('pitches that fade out of the zone get chased', () => {
     const target = outRight(1.5);
     const slider = makePitch('slider', target);
-    const fast = makePitch('fastball', target);
     const s0 = startSpot(slider.flight, CONFIG);
     expect(zoneRatio(s0.x, s0.y, CONFIG)).toBeLessThan(1); // it starts as a strike
     expect(zoneRatio(target.x, target.y, CONFIG)).toBeGreaterThan(1.4);
-    expect(rate(run(slider))).toBeGreaterThan(rate(run(fast)));
+    // the same slider with the fade-out switched off (no pull toward where it started, no extra read error)
+    const noFade = { ...CONFIG, cpuBat: { ...CONFIG.cpuBat, fadePull: 0, fadeOut: 1 } };
+    const run2 = (cfg) => { let n = 0; for (let s = 1; s <= SEEDS; s++) if (decideSwing({ ...base, pitch: slider, rng: createRng(s) }, cfg).swing) n++; return n / SEEDS; };
+    const real = run2(CONFIG), plain = run2(noFade);
+    expect(real).toBeGreaterThanOrEqual(1.3 * plain);
+    // ...and a fastball (which starts outside the zone) is chased less than the slider
+    expect(rate(run(slider))).toBeGreaterThan(rate(run(makePitch('fastball', target))));
   }, 60000);
 
   it('a changeup after two fastballs is swung at early', () => {

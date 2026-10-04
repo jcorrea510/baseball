@@ -273,7 +273,8 @@ export const CONFIG = {
     breakRead: 0.6, // his read gets this much worse per foot the pitch breaks (x(1 + this x break in ft))
     // Share of his read / timing error each grade of YOUR pitch causes (the hang floats over the middle: easy to square up).
     gradeFactor: { perfect: 1.35, good: 1.15, ok: 1, hang: 0.6, sail: 1 },
-    fadeOut: 1.8, // x his read error on a pitch that starts in the zone and finishes outside it (the slider off the corner)
+    fadeOut: 1.4, // x his read error on a pitch that starts in the zone and finishes outside it (the slider off the corner)
+    fadePull: 0.35, // ...and his read is also pulled this share of the way back toward where that pitch started (x the grade factor, at most all the way): he sees a strike and chases it
     // His chance to swing, by where he THINKS the pitch will cross (zoneRatio bands in `bands`). "Two" = two strikes.
     swing: {
       zone: 0.72, zoneTwo: 0.9, // a strike
