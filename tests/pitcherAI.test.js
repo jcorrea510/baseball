@@ -111,6 +111,40 @@ describe('quick game pitch locations', () => {
   });
 });
 
+describe('a pitcher with his own pitches', () => {
+  const draw = (arsenal, n = 2000, seed = 3) => {
+    const rng = createRng(seed);
+    const out = [];
+    let last;
+    for (let i = 0; i < n; i++) {
+      const p = choosePitch({ mode: 'quick', difficulty: 'allstar', count: MIXED[i % MIXED.length], rng, batterHand: 'R', pitcherHand: 'R', lastType: last, arsenal }, cfg);
+      last = p.type;
+      out.push(p.type);
+    }
+    return out;
+  };
+  it('only throws what is in his arsenal, the fastball about .45 of the time', () => {
+    for (const arsenal of [['fastball', 'slider'], ['fastball', 'changeup', 'curveball'], ['curveball', 'slider'], ['fastball']]) {
+      const types = draw(arsenal);
+      expect(types.every((t) => arsenal.includes(t))).toBe(true);
+      for (const t of arsenal) expect(types).toContain(t);
+    }
+    const three = draw(['fastball', 'changeup', 'curveball'], 4000);
+    const fb = three.filter((t) => t === 'fastball').length / three.length;
+    expect(fb).toBeGreaterThan(0.36);
+    expect(fb).toBeLessThan(0.54);
+  });
+  it('without an arsenal the level\'s mix is used, exactly as before', () => {
+    const a = draw(undefined, 400, 9), b = draw([], 400, 9);
+    expect(a).toEqual(b);
+    expect(new Set(a)).toEqual(new Set(['fastball', 'changeup', 'curveball', 'slider', 'heater'])); // (All-Star throws the heater)
+  });
+  it('the heater only when it is listed', () => {
+    expect(draw(['fastball', 'slider', 'curveball']).includes('heater')).toBe(false);
+    expect(draw(['fastball', 'heater']).includes('heater')).toBe(true);
+  });
+});
+
 describe('Home Run Derby pitches', () => {
   it('are all hittable: every one in or right next to the zone', () => {
     for (const d of DIFFICULTIES) {

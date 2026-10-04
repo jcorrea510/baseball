@@ -12,6 +12,7 @@ import { isStrike, zoneRatio, hitsBatter } from '../physics/pitch.js';
  * @param {'R'|'L'} [o.batterHand]
  * @param {object} [o.practice]  { type: key|'mixed', speed: mph, location: 'random'|'center' }
  * @param {string} [o.lastType]
+ * @param {string[]} [o.arsenal]  the pitches this pitcher throws (quick game): the type is drawn only from them (see arsenalMix)
  */
 export function choosePitch(o, cfg = CONFIG) {
   const rng = o.rng;
@@ -49,13 +50,15 @@ export function choosePitch(o, cfg = CONFIG) {
 
   // ---- Quick game: pick a pitch like a pitcher would ----
   const count = o.count || { balls: 0, strikes: 0 };
-  const mix = { ...d.mix };
+  const mix = o.arsenal && o.arsenal.length ? arsenalMix(o.arsenal, cfg) : { ...d.mix };
+  // (a type the pitcher does not throw is simply not in the mix: the count rules skip it)
+  const scale = (t, k) => { if (mix[t]) mix[t] *= k; };
   if (count.strikes === 2) {
     // put-away pitches
-    mix.curveball *= 1.5; mix.slider *= 1.5; mix.fastball *= 0.85;
+    scale('curveball', 1.5); scale('slider', 1.5); scale('fastball', 0.85);
   }
-  if (count.balls === 3) { mix.curveball *= 0.4; mix.changeup *= 0.6; }
-  if (o.lastType && rng.chance(0.35)) mix[o.lastType] *= 0.5; // avoid repeating too much
+  if (count.balls === 3) { scale('curveball', 0.4); scale('changeup', 0.6); }
+  if (o.lastType && rng.chance(0.35)) scale(o.lastType, 0.5); // avoid repeating too much
   const type = rng.weighted(mix);
 
   // Where does it go? First decide what kind of pitch this is (in the zone, on the edge, a chase pitch or one way out of reach),
@@ -95,6 +98,19 @@ export function choosePitch(o, cfg = CONFIG) {
 }
 
 const zoneMidX = (x, k) => x * k;
+
+// The odds of each type for a pitcher who throws only `arsenal`: his fastball (and sinker) together `pitch.arsenalFast`, split
+// equally between them; every other listed type an equal share of the rest (the heater only when it is listed).
+function arsenalMix(arsenal, cfg) {
+  const FAST = ['fastball', 'sinker'];
+  const types = [...new Set(arsenal)].filter((t) => cfg.pitch.types[t]);
+  const fast = types.filter((t) => FAST.includes(t)), other = types.filter((t) => !FAST.includes(t));
+  const fastShare = !other.length ? 1 : !fast.length ? 0 : cfg.pitch.arsenalFast;
+  const mix = {};
+  for (const t of fast) mix[t] = fastShare / fast.length;
+  for (const t of other) mix[t] = (1 - fastShare) / other.length;
+  return mix;
+}
 
 // Which way does a pitch that is not a strike miss? Angles in the plane of the plate as the batter sees it:
 // 0 = the way the pitch breaks sideways (fastballs: away from the batter), PI/2 = up, PI = the other way, -PI/2 = down.

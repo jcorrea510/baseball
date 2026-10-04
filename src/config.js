@@ -193,6 +193,7 @@ export const CONFIG = {
       heater: { label: 'Heater', code: 'HT', speedDelta: 0, breakArm: 0.1, hop: 0.9, spinRpm: 2500, spin: 'back', armSlot: 0.05, glove: 0 },
     },
     heaterSpeed: [100, 104],
+    arsenalFast: 0.45, // a pitcher with his own list of pitches throws his fastball (and sinker) this share of the time; his other pitches split the rest
     windup: { ready: 0.3 }, // (per-difficulty windup lengths are below)
     // The pitch guide: a soft circle over the strike zone that guesses where the pitch will cross the plate. It fades in part of the
     // way through the flight, is a little off, and at first assumes the pitch will not break (curveballs and sliders only show where
