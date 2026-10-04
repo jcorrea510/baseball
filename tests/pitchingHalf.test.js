@@ -353,6 +353,43 @@ describe('the referee on the computer\'s balls in play', () => {
 describe('Sim', () => {
   const simDone = (e) => { const out = []; e.on('simDone', (d) => out.push(d)); return out; };
 
+  it('the recap lines add up to the total runs over many halves, wild pitches and steals included', () => {
+    let lines = 0, wild = 0, withRuns = 0;
+    for (let seed = 1; seed <= 40; seed++) {
+      const e = make({ seed: seed * 7919, innings: 9 });
+      const done = simDone(e);
+      e.start();
+      e.on('result', (r) => { if (r.kind === 'steal' && r.result === 'wildPitch') wild++; });
+      for (let h = 0; h < 6 && !e.over; h++) {
+        if (e.offense !== 'cpu') { until(e, () => e.offense === 'cpu' || e.over, 1); if (e.offense !== 'cpu') { for (let t = 0; t < 300 && e.offense !== 'cpu' && !e.over; t += DT) { if (e.phase === 'ready') e.batterReady(); e.update(DT); } } }
+        if (e.offense !== 'cpu' || e.over) break;
+        e.simHalf();
+        for (let i = 0; i < 400 && e.simming && !e.over; i++) e.simStep(3);
+      }
+      for (const d of done) { lines += d.events.length; if (d.runs) withRuns++; expect(d.events.reduce((s, x) => s + x.runs, 0)).toBe(d.runs); }
+    }
+    expect(lines).toBeGreaterThan(100);
+    expect(withRuns).toBeGreaterThan(0);
+    void wild;
+  }, 240000);
+
+  it('a run on a wild pitch gets its own recap line', () => {
+    const e = make({ seed: 3 });
+    e.start();
+    const done = simDone(e);
+    e.simHalf();
+    // (a wild pitch that scores, as the engine reports it)
+    e.game.bases[2] = { id: 'x', name: 'Runner' };
+    e.game.score[e.game.half] += 1;
+    e.emit('result', { kind: 'steal', result: 'wildPitch', runs: 1, base: 4, outs: 0, halfOver: false });
+    expect(e.simRecap.events[0].text).toBe('Wild pitch - runner scores.');
+    expect(e.simRecap.events[0].runs).toBe(1);
+    e.emit('result', { kind: 'steal', result: 'stolenBase', base: 2, outs: 0, halfOver: false });
+    expect(e.simRecap.events[1].text).toBe('The runner steals second.');
+    expect(e.simRecap.events[1].runs).toBe(0);
+    expect(done.length).toBe(0);
+  });
+
   it('finishes the half at once through simStep: a recap line per plate appearance, the runs, the stamina used', () => {
     const e = make({ seed: 21 });
     e.start();
@@ -372,7 +409,7 @@ describe('Sim', () => {
     expect(d.events.length).toBeGreaterThanOrEqual(3);
     for (const ev of d.events) { expect(typeof ev.text).toBe('string'); expect(ev.text.length).toBeGreaterThan(3); }
     expect(d.runs).toBe(e.game.score[half] - before[half]);
-    expect(d.events.reduce((s, x) => s + x.runs, 0)).toBeLessThanOrEqual(d.runs);
+    expect(d.events.reduce((s, x) => s + x.runs, 0)).toBe(d.runs);
     expect(d.score).toEqual({ ...e.game.score });
     expect(e.offense).toBe('player'); // (the half is over: you bat)
     expect(e.mound.pitches).toBeGreaterThanOrEqual(3);

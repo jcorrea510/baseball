@@ -56,6 +56,18 @@ export function recapText(result, batter, runs = 0, spray = 0) {
   }
 }
 
+/** The recap line for a play that is not a plate appearance: a wild pitch or a steal. */
+export function recapStealText(result, base, runs = 0) {
+  const bag = { 2: 'second', 3: 'third', 4: 'home' }[base] || 'the next base';
+  switch (result) {
+    case 'wildPitch': return runs > 0 ? 'Wild pitch - runner scores.' : 'Wild pitch.';
+    case 'stolenBase': return `The runner steals ${bag}.`;
+    case 'doubleSteal': return 'Double steal.';
+    case 'caughtStealing': return 'The runner is caught stealing.';
+    default: return 'The runners move.';
+  }
+}
+
 const methods = {
   // ------------------------------------------------------------------ the half and its batters
   // The computer comes up to bat: your pitcher is on the mound (the starter, the first time) and its first batter steps in.
@@ -250,7 +262,7 @@ const methods = {
     if (!this.pitching || this.simming) return false;
     const g = this.game;
     this.simming = true;
-    this.simRecap = { events: [], inning: g.inning, half: g.half, before: { ...g.score } };
+    this.simRecap = { events: [], seen: g.score[g.half], inning: g.inning, half: g.half, before: { ...g.score } };
     return true;
   },
 
@@ -280,9 +292,12 @@ const methods = {
   // staff's). A run is unearned when the runner who scored reached on an error.
   creditPitching(r) {
     if (!this.game || this.offense !== 'cpu' || !r) return;
-    if (this.simming && this.simRecap && r.kind === 'pa') {
-      const runs = r.runs || 0;
-      this.simRecap.events.push({ text: recapText(r.result, r.batter, runs, r.contact ? r.contact.sprayAngle : 0), kind: r.result, runs });
+    if (this.simming && this.simRecap && (r.kind === 'pa' || r.kind === 'steal')) {
+      // (the runs of a line = the computer's runs since the last line, so the lines always add up to the recap's total)
+      const R = this.simRecap, now = this.game.score[R.half], runs = now - R.seen;
+      R.seen = now;
+      const text = r.kind === 'pa' ? recapText(r.result, r.batter, runs, r.contact ? r.contact.sprayAngle : 0) : recapStealText(r.result, r.base, runs);
+      R.events.push({ text, kind: r.result, runs });
     }
     const g = this.game, ps = this.pitchStats, line = this.pitchLine(this.mound.pitcher.id);
     if (r.kind === 'pa' && r.batter && typeof r.batter === 'object') r.batter.roe = r.result === 'error'; // (whenever a batter reaches)
