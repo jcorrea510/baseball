@@ -206,6 +206,65 @@ export const CONFIG = {
   },
 
   // --------------------------------------------------------------------------
+  //  Pitching  (you throw the computer's half: aim a dot, then tap as a shrinking ring meets it)
+  // --------------------------------------------------------------------------
+  pitching: {
+    // The timing ring. It shrinks onto the aimed dot; the tap is graded by how many milliseconds off the moment of meeting it was.
+    ring: {
+      time: 0.9, // seconds the ring takes to shrink (a fastball from an average pitcher)
+      hitAt: 0.75, // the ring meets the dot this share of the way through its time
+      perfect: 40, // ms either side of the meeting that still counts as PERFECT
+      good: 90, // ms either side that counts as GOOD
+      ok: 160, // ms either side that counts as OK (anything later or earlier, or no tap, is WILD)
+    },
+    delivery: 1.1, // seconds from the tap to the ball leaving the hand
+    nextPitch: 1.5, // seconds between a result and the next aiming screen
+    // What each grade does to the pitch: `speed` = share of full speed, `brk` = share of the pitch's break,
+    // `miss` = how far (feet, one standard deviation) it can miss the dot.
+    grades: {
+      perfect: { speed: 1, brk: 1, miss: 0.05 },
+      good: { speed: 0.98, brk: 0.9, miss: 0.15 },
+      ok: { speed: 0.94, brk: 0.7, miss: 0.3 },
+      wild: { speed: 0.9, brk: 1, miss: 0.7 },
+    },
+    // A wild pitch is either a "hang" (floats over the middle with hardly any break) or a "sail" (misses the dot by a lot).
+    hang: {
+      share: 0.5, // chance a wild pitch is a hang
+      pull: 0.6, // how far toward the middle of the zone it is pulled (0 = stays on the dot, 1 = dead centre)
+      up: 0.35, // feet it then rises
+      brk: 0.3, // share of its break it keeps
+    },
+    // How much faster the ring shrinks for each pitch (a harder pitch is harder to time).
+    ringSpeed: { fastball: 1, sinker: 1, changeup: 1.05, cutter: 1.05, slider: 1.1, splitter: 1.1, curveball: 1.15, heater: 1.3 },
+    control: 0.15, // ring time is this much longer / shorter (share) for a pitcher with Control 99 / 1
+    velo: [86, 100], // fastball speed (mph) for Velocity 1 / 99
+    stuff: [0.8, 1.2], // how much a pitch breaks (share of normal) for Stuff 1 / 99
+    // Stamina: a pitcher has a tank that each pitch drains; below `tireFrom` of a full tank he gets tired.
+    stamina: {
+      starter: [60, 95], // size of a starter's tank for Stamina 1 / 99
+      reliever: [20, 35], // size of a reliever's tank for Stamina 1 / 99
+      cost: 1, // what an ordinary pitch costs
+      risp: 1.2, // times the cost with a runner in scoring position
+      threeBalls: 1.15, // times the cost on a three-ball count
+      heater: 1.3, // times the cost of the heater
+      tireFrom: 0.4, // the tank share below which he starts to tire
+      tireRing: 0.35, // fully tired: the ring shrinks this much faster
+      tireVelo: 4, // fully tired: mph lost
+      tireBreak: 0.2, // fully tired: share of the break lost
+      tireMiss: 0.3, // fully tired: misses this much further
+    },
+    painted: 0.15, // a pitch this close (feet) to the edge of the zone counts as PAINTED
+    catcherArm: { rookie: 0.9, pro: 1, allstar: 1.05 }, // your catcher's throwing, by level
+    fieldErrorScale: { rookie: 0.6, pro: 0.8, allstar: 1 }, // how often your fielders boot a ball, by level
+    // Sim (skip an inning): how the pitches are graded when the computer plays them for you.
+    sim: {
+      grades: { perfect: 0.25, good: 0.4, ok: 0.27, wild: 0.08 }, // chance of each grade
+      chunk: 6, // batters played at a time before it checks whether to pull the pitcher
+      pullAt: 0.15, // the tank share at which a simmed pitcher is replaced
+    },
+  },
+
+  // --------------------------------------------------------------------------
   //  Swing timing  (the heart of the game)
   //  errorMs = (when the bat reaches the plate) - (when the ball crosses it)
   //  negative = early, positive = late
