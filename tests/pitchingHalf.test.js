@@ -684,3 +684,55 @@ describe('bullpen', () => {
     expect(e2.bullpenOptions().map((o) => o.pitcher.id)).not.toContain(rp.id);
   });
 });
+
+describe('practice pitch', () => {
+  const mk = (o = {}) => new Engine({ mode: 'practice', seed: 5, cpuHalf: 'pitch', practice: { role: 'pitch', batterHand: 'L' }, ...o });
+
+  it('you pitch to a computer batter of the chosen hand, with no stamina', () => {
+    const e = mk();
+    e.start();
+    expect(e.pitching).toBe(true);
+    expect(e.offense).toBe('cpu');
+    expect(e.phase).toBe('aim');
+    expect(e.batterHand).toBe('L');
+    expect(e.bullpenOptions()).toEqual([]);
+    expect(e.practiceState()).toMatchObject({ pitches: 0, k: 0, bb: 0, h: 0 });
+    const left = e.mound.left;
+    for (let i = 0; i < 10; i++) { pitchOne(e); }
+    expect(e.mound.left).toBe(left);
+    expect(e.practiceState().pitches).toBe(10);
+  });
+
+  it('30 plate appearances run without an out ever counting; the count and the bases reset', () => {
+    const e = mk();
+    e.start();
+    let pas = 0;
+    e.on('result', (r) => { if (r.kind === 'pa') pas++; });
+    for (let guard = 0; guard < 400 && pas < 30; guard++) {
+      pitchOne(e, { aim: { x: 0, y: 2.4 } });
+      if (e.phase === 'aim' && (e.game.balls + e.game.strikes === 0)) expect(e.bases.some(Boolean)).toBe(false);
+      expect(e.game.outs).toBeLessThanOrEqual(2);
+      expect(e.over).toBe(false);
+    }
+    expect(pas).toBeGreaterThanOrEqual(30);
+    expect(e.game.inning).toBe(1);
+    expect(e.game.half).toBe('bottom');
+    expect(e.stats.pa).toBe(0); // (never touches your batting)
+  });
+
+  it('selectPitch accepts every type', () => {
+    const e = mk();
+    e.start();
+    for (const t of Object.keys(CONFIG.pitch.types)) {
+      expect(e.selectPitch(t)).toBe(true);
+      expect(e.pitchType).toBe(t);
+    }
+  });
+
+  it('batting practice is unchanged (role bat)', () => {
+    const e = new Engine({ mode: 'practice', seed: 5 });
+    e.start();
+    expect(e.pitching).toBe(false);
+    expect(e.offense).toBe('player');
+  });
+});

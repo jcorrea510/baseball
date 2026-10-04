@@ -11,7 +11,7 @@ const report = [];
 for (const sz of sizes) {
   const [w, h] = sz.split('x').map(Number);
   const touch = w < 900;
-  for (const [mode, state] of (process.env.ONLY ? [['quick', process.env.ONLY]] : [['quick', 'pitch'], ['derby', 'pitch'], ['practice', 'pitch'], ['quick', 'play'], ['practice', 'play'], ['quick', 'field'], ['quick', 'field5'], ['quick', 'fieldplay'], ['quick', 'fieldbull']])) {
+  for (const [mode, state] of (process.env.ONLY ? [[process.env.ONLY === 'ppitch' ? 'practice' : 'quick', process.env.ONLY]] : [['quick', 'pitch'], ['derby', 'pitch'], ['practice', 'pitch'], ['practice', 'ppitch'], ['quick', 'play'], ['practice', 'play'], ['quick', 'field'], ['quick', 'field5'], ['quick', 'fieldplay'], ['quick', 'fieldbull']])) {
     const ctx = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: touch, isMobile: touch });
     const page = await ctx.newPage();
     await page.goto(`${process.argv[3] || 'http://localhost:5173/'}?mode=${mode}&seed=4`, { waitUntil: 'load' });
@@ -19,6 +19,7 @@ for (const sz of sizes) {
     await page.addStyleTag({ content: '*,*::before,*::after{transition:none!important;animation:none!important}' });
     const r = await page.evaluate((state) => {
       const a = window.__app, ui = a.ui;
+      if (state === 'ppitch') { a.onAction('practice', { role: 'pitch' }); if (innerHeight >= 520) ui.q.practice.classList.remove('collapsed'); }
       if (ui.rotateEl) ui.rotateEl.style.display = 'none';
       for (let i = 0; i < 60; i++) a.tick(1 / 30, false);
       ui.showPitchInfo('Curveball', 84, false, 99999);
@@ -28,11 +29,16 @@ for (const sz of sizes) {
       if (a.engine.mode === 'quick' && state === 'pitch') ui.showBatterUp({ number: 12, name: 'J. Delgado-Whitfield', pos: 'SS' }, { pa: 2, ab: 2, h: 1, hr: 1, rbi: 2, bb: 0 }, ['vs Castellanos-Ortiz', '.312 AVG', '14 HR', 'Contact 62 · Power 70 · Speed 55']);
       if (a.engine.mode === 'quick') { ui.setSteal(true, true); a.refreshLineup(); }
       if (state === 'pitch' || state === 'field' || state === 'field5') ui.setSwingButton(true); // (the Steal button next to Bunt)
-      else ui.setBasePad({ open: [3, 4], dots: [{ x: 0, z: 0, from: 0 }, { x: 60, z: -60, sent: true, from: 1 }] }), ui.setFast(true, false); // (during a play: the base diamond and the fast-forward button, no Swing button)
+      else if (state !== 'ppitch') ui.setBasePad({ open: [3, 4], dots: [{ x: 0, z: 0, from: 0 }, { x: 60, z: -60, sent: true, from: 1 }] }), ui.setFast(true, false); // (during a play: the base diamond and the fast-forward button, no Swing button)
       ui.q.banner.style.opacity = '1';
       a.tick(0.001, true);
       // you pitch (the computer is up): the pitch buttons (4, or 5 for the crowded case), Bullpen + Sim, your pitcher's tag, their order, the count
-      if (!state.startsWith('field')) ui.setPitching(null); // (batting states: the pitching controls are away)
+      if (!state.startsWith('field') && state !== 'ppitch') ui.setPitching(null); // (batting states: the pitching controls are away)
+      if (state === 'ppitch') {
+        const all8 = [['fastball', 'Fastball', 70], ['sinker', 'Sinker', 69], ['cutter', 'Cutter', 67], ['slider', 'Slider', 63], ['curveball', 'Curveball', 53], ['changeup', 'Changeup', 58], ['splitter', 'Splitter', 61], ['heater', 'Heater', 72]];
+        ui.setPitching({ open: true, selected: 'slider', canSim: false, canBullpen: false, pitches: all8.map(([type, label, mph]) => ({ type, label, mph })) });
+        ui.setPitchCount('1-2'); ui.setBasePad(null); ui.setPracticeState({ pitching: true, pitches: 12, k: 3, bb: 1, h: 2, runs: 0, hits: 0, hr: 0, bases: [false, false, false] });
+      }
       if (state.startsWith('field')) {
         const all = [['fastball', 'Fastball', 94], ['sinker', 'Sinker', 92], ['slider', 'Slider', 86], ['curveball', 'Curveball', 79], ['changeup', 'Changeup', 85]];
         ui.setPitching({ open: state !== 'fieldplay', selected: 'slider', canSim: true, canBullpen: true, pitches: all.slice(0, state === 'field5' ? 5 : 4).map(([type, label, mph]) => ({ type, label, mph })) });

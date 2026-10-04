@@ -870,7 +870,7 @@ export const CONFIG = {
       locationSigma: 0.24,
       watchAfter: 0.9, // s a ball in the park is watched after it comes down before the next pitch (nobody runs after it: it is an out)
     },
-    practice: { speedMin: 45, speedMax: 105, speedDefault: 85 },
+    practice: { speedMin: 45, speedMax: 105, speedDefault: 85, pitcherRating: 50 }, // pitcherRating: the neutral arm you throw with in Practice (Pitch): every rating 50
   },
 
   // --------------------------------------------------------------------------

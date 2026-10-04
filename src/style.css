@@ -921,3 +921,28 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
   .prow.pit .who small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 8px; }
   .prow.pit .who b { font-size: 13px; }
 }
+
+/* Practice (Pitch): the batting choices, the runs box, the bullpen and the stamina tag give way to Bat / Pitch, Righty / Lefty and the
+   pitches / K / BB / H box. Eight pitch buttons wrap into rows (a grid on small screens) so they still fit. */
+.practbox .pp, .practice .bh { display: none; }
+.hud.ppitch .practbox .pp, .hud.ppitch .practice .bh { display: block; }
+.hud.ppitch .practice .bh { display: flex; }
+.hud.ppitch .practbox .cell:not(.pp), .hud.ppitch .practbox .diamond { display: none; }
+.hud.ppitch .practbox .cell.pp:first-of-type { border-left: 0; }
+.hud.ppitch .practice .pt, .hud.ppitch .practice .spd, .hud.ppitch .practice input[type=range], .hud.ppitch .practice .loc { display: none; }
+.hud.ppitch .pitchside, .hud.ppitch .pitchtag { display: none !important; }
+.pitchbar[data-n="6"], .pitchbar[data-n="7"], .pitchbar[data-n="8"] { flex-wrap: wrap; justify-content: center; width: max-content; max-width: min(360px, calc(100vw - 2 * (var(--safe-l) + 14px))); gap: 6px; }
+.pitchbar[data-n="6"] button, .pitchbar[data-n="7"] button, .pitchbar[data-n="8"] button { min-width: 82px; height: 54px; padding: 0 8px 3px; }
+@media (max-height: 520px) and (orientation: landscape), (max-width: 1180px) and (orientation: landscape) {
+  .hud.pitching.ctl .pitchbar[data-n="6"], .hud.pitching.ctl .pitchbar[data-n="7"], .hud.pitching.ctl .pitchbar[data-n="8"] { display: grid; grid-template-columns: 1fr 1fr; width: auto; max-width: none; gap: 4px 5px; bottom: calc(var(--safe-b) + 14px); }
+  .pitchbar[data-n="6"] button, .pitchbar[data-n="7"] button, .pitchbar[data-n="8"] button { min-width: 0; height: 32px; padding: 0 8px; }
+  .pitchbar[data-n="6"] .pn, .pitchbar[data-n="7"] .pn, .pitchbar[data-n="8"] .pn { font-size: 11px; letter-spacing: .02em; }
+  .pitchbar[data-n="6"] .pm, .pitchbar[data-n="7"] .pm, .pitchbar[data-n="8"] .pm { font-size: 16px; }
+}
+@media (orientation: portrait) {
+  .hud.pitching.ctl .pitchbar[data-n="6"], .hud.pitching.ctl .pitchbar[data-n="7"], .hud.pitching.ctl .pitchbar[data-n="8"] { display: grid; grid-template-columns: repeat(4, 1fr); width: calc(100vw - 2 * (var(--safe-l) + 10px)); max-width: 420px; gap: 5px; }
+  .pitchbar[data-n="6"] button, .pitchbar[data-n="7"] button, .pitchbar[data-n="8"] button { min-width: 0; height: 46px; padding: 0 3px 3px; }
+  .pitchbar[data-n="6"] .pn, .pitchbar[data-n="7"] .pn, .pitchbar[data-n="8"] .pn { font-size: 10px; letter-spacing: 0; }
+  .pitchbar[data-n="6"] .pm, .pitchbar[data-n="7"] .pm, .pitchbar[data-n="8"] .pm { font-size: 17px; }
+  .pitchbar[data-n="6"] .pm::after, .pitchbar[data-n="7"] .pm::after, .pitchbar[data-n="8"] .pm::after { content: none; }
+}

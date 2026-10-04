@@ -158,6 +158,10 @@ export class UI {
         <div class="cell"><div class="v runs">0</div><div class="l">Runs</div></div>
         <div class="cell"><div class="v hits">0</div><div class="l">Hits</div></div>
         <div class="cell"><div class="v hr">0</div><div class="l">HR</div></div>
+        <div class="cell pp"><div class="v np">0</div><div class="l">Pitches</div></div>
+        <div class="cell pp"><div class="v nk">0</div><div class="l">K</div></div>
+        <div class="cell pp"><div class="v nbb">0</div><div class="l">BB</div></div>
+        <div class="cell pp"><div class="v nh">0</div><div class="l">H</div></div>
         <svg class="diamond" viewBox="0 0 60 60"><rect class="base b2" x="21" y="4" width="18" height="18" transform="rotate(45 30 13)"/><rect class="base b3" x="3" y="22" width="18" height="18" transform="rotate(45 12 31)"/><rect class="base b1" x="39" y="22" width="18" height="18" transform="rotate(45 48 31)"/></svg>
       </div>
       <div class="derbybox">
@@ -181,8 +185,10 @@ export class UI {
       <div class="pitchside"><button class="btn small ghost bullbtn" data-a="bullpen" disabled title="Bullpen">${icon('swap')}<span>Bullpen</span></button><button class="btn small ghost simbtn" data-a="sim" title="Sim this inning">${icon('ff')}<span>Sim</span></button></div>
       <div class="acts"><button class="stealbtn" data-a="steal" aria-pressed="false" title="Steal (S)">${icon('go')}<span>Steal</span></button><button class="buntbtn" data-a="bunt" aria-pressed="false" title="Bunt (B)">${icon('bat')}<span>Bunt</span></button></div>
       <div class="practice panel collapsed">
-        <button class="prhead" aria-label="Pitch settings">${icon('sliders')}<span>Pitch</span>${icon('chevDown', 'chev')}</button>
+        <button class="prhead" aria-label="Practice settings">${icon('sliders')}<span>Practice</span>${icon('chevDown', 'chev')}</button>
         <div class="prbody">
+          <div class="seg role"><button data-role="bat" class="on">Bat</button><button data-role="pitch">Pitch</button></div>
+          <div class="seg bh"><button data-bh="R" class="on">Righty</button><button data-bh="L">Lefty</button></div>
           <div class="pt"></div>
           <div class="spd"><span class="label">Speed</span><span class="sv">85 mph</span></div>
           <input type="range" min="${CONFIG.modes.practice.speedMin}" max="${CONFIG.modes.practice.speedMax}" value="${CONFIG.modes.practice.speedDefault}" aria-label="Pitch speed" />
@@ -236,6 +242,8 @@ export class UI {
       for (const x of b.parentNode.children) x.classList.toggle('on', x === b);
       this.act('practice', { location: b.dataset.loc });
     });
+    $(hud, '.practice .role').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) this.act('practice', { role: b.dataset.role }); });
+    $(hud, '.practice .bh').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) this.act('practice', { batterHand: b.dataset.bh }); });
     $(hud, '.practice .prhead').addEventListener('click', () => this.q.practice.classList.toggle('collapsed'));
     // your pitch choice (labels only): a tap picks it; the buttons never count as a click on the field
     this.q.pitchbar = $(hud, '.pitchbar');
@@ -910,6 +918,7 @@ export class UI {
     q.querySelector('.runs').textContent = st.runs;
     q.querySelector('.hits').textContent = st.hits;
     q.querySelector('.hr').textContent = st.hr;
+    if (st.pitching) { q.querySelector('.np').textContent = st.pitches; q.querySelector('.nk').textContent = st.k; q.querySelector('.nbb').textContent = st.bb; q.querySelector('.nh').textContent = st.h; }
     ['b1', 'b2', 'b3'].forEach((k, i) => q.querySelector('.' + k).classList.toggle('on', !!st.bases[i]));
   }
   setDerby(d) {
@@ -1092,6 +1101,9 @@ export class UI {
   }
   setPracticeButtons(p) {
     const pt = this.q.practice;
+    this.hud.classList.toggle('ppitch', p.role === 'pitch'); // (Practice, pitching: the batting choices and the runs box give way)
+    for (const b of pt.querySelectorAll('.role button')) b.classList.toggle('on', b.dataset.role === (p.role || 'bat'));
+    for (const b of pt.querySelectorAll('.bh button')) b.classList.toggle('on', b.dataset.bh === (p.batterHand || 'R'));
     for (const b of pt.querySelectorAll('.pt button')) b.classList.toggle('on', b.dataset.type === p.type);
     const r = pt.querySelector('input'); r.value = p.speed; pt.querySelector('.sv').textContent = Math.round(p.speed) + ' mph';
     for (const b of pt.querySelectorAll('.loc button')) b.classList.toggle('on', b.dataset.loc === p.location);

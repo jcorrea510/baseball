@@ -81,6 +81,7 @@ const methods = {
   // A computer batter steps in. No Ready card: you are straight back at the aiming screen (`quiet`: no save point - a resumed game).
   beginCpuPA(first = false, quiet = false) {
     const g = this.game;
+    if (this.practicePitch) { g.outs = 0; g.balls = 0; g.strikes = 0; g.bases = [null, null, null]; this.outsSeen = 0; } // (practice: no outs, nobody stays on)
     this.batterIndex = g.lineupIdx[g.half] % 9;
     this.batter = this.oppLineup[this.batterIndex];
     this.pitch = null; this.swing = null; this.play = null; this.ring = null; this.cpuSwing = null;
@@ -248,11 +249,12 @@ const methods = {
     m.pitches++;
     // the pitch costs stamina (more with a runner in scoring position, at three balls, for the heater)
     const cost = pitchCost({ type: th.type, balls: this.count.balls, risp: !!(this.bases[1] || this.bases[2]) }, cfg);
-    m.left = Math.max(0, m.left - cost);
+    if (!this.practicePitch) m.left = Math.max(0, m.left - cost); // (practice: no stamina)
     const spent = (this.pitchStats.spent ||= {});
     spent[pitcher.id] = (spent[pitcher.id] || 0) + cost;
     this.emit('stamina', { left: m.left, max: m.max });
     this.pitchStats.pitches++; this.pitchLine(pitcher.id).pitches++;
+    if (this.practicePitch) this.emit('practice', this.practiceState());
     // runners who broke during the delivery: the catcher's exchange and the throw are rolled now (engine.beginSteal)
     if (this.steal && !this.steal.plan) this.beginSteal(this.steal.bases, this.steal.start);
     // the batter reads it from the release and decides: take or swing (and if he swings, how early or late and where)

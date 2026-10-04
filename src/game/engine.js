@@ -57,7 +57,9 @@ export class Engine {
     this.buntStance = false; // squared around to bunt (B): the swing button then pushes the bat at the ball
     this.stealArmed = false; // the runners will go on the next pitch (S)
     this.steal = null; // this pitch's steal attempt: { bases, start: { base: engine time he took off } }
-    this.practice = { type: 'fastball', speed: cfg.modes.practice.speedDefault, location: 'random', ...(o.practice || {}) };
+    this.practice = { type: 'fastball', speed: cfg.modes.practice.speedDefault, location: 'random', role: 'bat', batterHand: 'R', ...(o.practice || {}) };
+    // Practice, pitching: you throw to a computer batter (no outs, a fresh count and empty bases every plate appearance, every pitch, no stamina)
+    this.practicePitch = this.mode === 'practice' && this.practice.role === 'pitch';
     let oi = this.rng.int(0, MLB_TEAMS.length - 1);
     if (o.playerTeam && MLB_TEAMS[oi].id === o.playerTeam.id) oi = (oi + 1) % MLB_TEAMS.length; // (never your own club)
     const oppTeam = MLB_TEAMS[oi];
@@ -73,6 +75,12 @@ export class Engine {
     this.simming = false; // Sim pressed: the computer pitches the rest of this half (pitchingHalf.simHalf)
     this.simRecap = null;
     this.staff = o.staff || makeStaff(this.seed, cfg);
+    if (this.practicePitch) {
+      // a neutral pitcher who throws every pitch there is (the heater too); his tank is never used (see releaseCpuPitch)
+      const R = cfg.modes.practice.pitcherRating;
+      this.staff = [{ ...this.staff[0], id: 'practice', name: 'Practice', short: 'Practice', role: 'SP', vel: R, ctl: R, stf: R, sta: R, pitches: Object.keys(cfg.pitch.types) }];
+      this.setPracticeHand(this.practice.batterHand);
+    }
     const starter = this.staff[0];
     this.mound = { pitcher: starter, left: staminaMax(starter, cfg), max: staminaMax(starter, cfg), pitches: 0, used: [], recent: [] };
     this.pitchType = starter.pitches[0]; // the pitch you have chosen (the last choice stays)
@@ -112,8 +120,9 @@ export class Engine {
     this.playerSide = this.mode === 'quick' ? (o.playerSide || 'bottom') : 'top';
     this.oppSide = this.playerSide === 'top' ? 'bottom' : 'top';
     this.game = this.mode === 'quick' ? rules.createGame({ innings: o.innings ?? cfg.modes.quick.innings, extraRunner: cfg.modes.quick.extraInningRunner }) : null;
+    if (this.practicePitch) { this.game = rules.createGame({ innings: 1e6, extraRunner: false }); this.game.half = this.oppSide; } // (the visitors bat: you pitch)
     // Practice keeps runners on base and counts the runs of the session - but nobody is ever out for good (outs reset every play)
-    this.pgame = this.mode === 'practice' ? rules.createGame({ innings: 1e6, extraRunner: false }) : null;
+    this.pgame = this.mode === 'practice' && !this.practicePitch ? rules.createGame({ innings: 1e6, extraRunner: false }) : null;
     this.derby = { outs: 0, maxOuts: cfg.modes.derby.outs, hr: 0, streak: 0, bestStreak: 0, longest: 0, results: [] };
     this.stats = newStats(); // your batting
     this.cpuStats = newStats(); // (the computer's batting goes here and is thrown away: it never touches yours)
@@ -561,7 +570,7 @@ export class Engine {
     if (swung) this.tally.whiffs++;
     const info = { pitch, swung, strike: pitch.isStrike, errorMs: this.swing ? this.swing.errorMs : null, grade: this.swing ? this.swing.grade : null };
 
-    if (this.mode === 'practice') {
+    if (this.pgame) {
       const call = swung ? 'swingingStrike' : pitch.isStrike ? 'calledStrike' : 'ball';
       this.emit('pitchCall', { ...info, call });
       this.emit('result', { kind: 'pitch', call, text: swung ? 'SWING & MISS' : (pitch.isStrike ? 'STRIKE' : 'BALL'), ...info });
@@ -619,7 +628,7 @@ export class Engine {
     const g = this.diamond;
     const res = rules.hitByPitch(g, this.batter);
     this.steal = null; // (runners who were going stop: only a forced runner moves up)
-    if (this.mode === 'practice') {
+    if (this.pgame) {
       g.outs = 0; g.balls = 0; g.strikes = 0;
       this.tally.runs += res.runs; this.tally.rbi += res.runs;
       this.emit('pitchCall', { ...info, call: 'hitByPitch' });
@@ -867,7 +876,7 @@ export class Engine {
       grade: c.grade, batter: this.batter,
     };
 
-    if (this.mode === 'practice') {
+    if (this.pgame) {
       const foul = plan.result === 'foul' || plan.result === 'foulOut';
       const text = plan.result === 'foulOut' ? 'FOUL OUT' : foul ? 'FOUL BALL' : plan.homer ? 'HOME RUN' : practiceLabel(plan, c);
       let runs = 0;
@@ -983,7 +992,16 @@ export class Engine {
   // Practice: the session so far (runs, hits, home runs) and who is on base.
   practiceState() {
     const g = this.pgame;
-    return { runs: g ? g.score.top : 0, hits: this.tally.hits, hr: this.tally.hr, bases: g ? g.bases.map((b) => !!b) : [false, false, false] };
+    const ps = this.pitchStats;
+    return {
+      runs: g ? g.score.top : 0, hits: this.tally.hits, hr: this.tally.hr, bases: g ? g.bases.map((b) => !!b) : [false, false, false],
+      pitching: this.practicePitch, pitches: ps.pitches, k: ps.k, bb: ps.bb, h: ps.h,
+    };
+  }
+  // Practice, pitching: the side the computer batter hits from (every man in his lineup).
+  setPracticeHand(hand) {
+    this.practice.batterHand = hand === 'L' ? 'L' : 'R';
+    for (const b of this.oppLineup) b.hand = this.practice.batterHand;
   }
 
   // ------------------------------------------------------------------ Home Run Derby

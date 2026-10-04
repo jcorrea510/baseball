@@ -277,7 +277,12 @@ export class App {
       case 'base': this.baseKey(d.base); break;
       case 'runnerBack': this.runnerBack(d.from); break;
       case 'swing': this.swingInput(d); break;
-      case 'practice': if (this.engine) { Object.assign(this.engine.practice, d); } break;
+      case 'practice':
+        if (!this.engine) break;
+        if (d.role && d.role !== this.engine.practice.role) { Object.assign(this.engine.practice, d); this.startGame('practice'); break; } // (the other role starts clean: a new session)
+        if (d.batterHand && this.engine.practicePitch) { this.engine.setPracticeHand(d.batterHand); this.ui.setPracticeButtons(this.engine.practice); break; }
+        Object.assign(this.engine.practice, d);
+        break;
       default: break;
     }
   }
@@ -452,7 +457,7 @@ export class App {
       hand: st.hand, inputDelayMs: st.inputDelayMs,
       waitForBatter: mode === 'quick' && !this.params.get('bot'), // the pitcher waits for Ready before each new batter
       // you pitch the computer's half (aim, start, tap the ring); a bot-run game lets the computer pitch for you
-      cpuHalf: mode === 'quick' && !this.params.get('bot') ? 'pitch' : 'auto',
+      cpuHalf: !this.params.get('bot') && (mode === 'quick' || (mode === 'practice' && this.engine && this.engine.mode === 'practice' && this.engine.practice.role === 'pitch')) ? 'pitch' : 'auto',
       practice: this.engine && this.engine.mode === 'practice' ? { ...this.engine.practice } : undefined,
       seed: this.params.get('seed') ? +this.params.get('seed') : this.quickSave ? this.quickSave.seed : undefined,
       realArms: mode === 'quick', // (the other club's best arm throws his own pitches at you)
@@ -522,6 +527,7 @@ export class App {
     on('checkpoint', (st) => this.saveSeasonGame(st));
     on('buntStance', ({ on }) => ui.setBunt(on));
     on('practice', (st) => { ui.setPracticeState(st); this.updateScoreboard(); });
+    on('result', () => { if (e.practicePitch) ui.setPracticeState(e.practiceState()); }); // (your strikeouts, walks and hits)
     on('stealArmed', ({ on }) => ui.setSteal(e.canSteal, on));
     on('stealGo', () => audio.crowdSwell(0.3, 1.4)); // the crowd sees him go
     on('stealPlay', () => { this.landing = null; this.landRing.hide(); this.playOuts = 0; this.groaned = false; });
@@ -1076,7 +1082,7 @@ export class App {
         case 'Equal': case 'NumpadAdd': if (inGame && this.engine.mode === 'practice') this.practiceSpeed(+2); break;
         case 'Minus': case 'NumpadSubtract': if (inGame && this.engine.mode === 'practice') this.practiceSpeed(-2); break;
         case 'KeyH': if (inGame && this.engine.sendOpen) { if (e.shiftKey) this.backKey(4); else this.baseKey(4); } break; // (while a hit is played: send the runner on third home)
-        case 'Digit1': case 'Digit2': case 'Digit3': case 'Digit4': case 'Digit5': case 'Digit6':
+        case 'Digit1': case 'Digit2': case 'Digit3': case 'Digit4': case 'Digit5': case 'Digit6': case 'Digit7': case 'Digit8':
           // while a hit is being played: 1 / 2 / 3 / 4 = tap that base on the diamond (4 = home); with Shift, call back the runner
           // you sent there
           // while you pitch: 1 / 2 / 3 / 4 = that pitch on the buttons
@@ -1088,7 +1094,7 @@ export class App {
           if (inGame && this.engine.sendOpen) { const b = +e.code.slice(5); if (b <= 4) { if (e.shiftKey) this.backKey(b); else this.baseKey(b); } break; }
           if (inGame && this.engine.mode === 'practice') {
             const types = ['fastball', 'changeup', 'curveball', 'slider', 'heater', 'mixed'];
-            this.engine.practice.type = types[+e.code.slice(5) - 1];
+            this.engine.practice.type = types[+e.code.slice(5) - 1] || this.engine.practice.type;
             this.ui.setPracticeButtons(this.engine.practice);
           }
           break;
