@@ -130,7 +130,7 @@ const MISS = {
   slider: { chase: [[-0.5, 0.4, 0.75], [-1.1, -0.5, 0.25]], waste: [[-0.4, 0.35, 0.7], [-1.1, -0.5, 0.3]] },
   changeup: { chase: [[-1.9, -1.2, 0.5], [-1.2, -0.4, 0.5]], waste: [[-1.9, -1.3, 0.6], [-1.2, -0.5, 0.4]] },
 };
-const BREAKS_SIDEWAYS = { curveball: true, slider: true, changeup: true };
+const BREAKS_SIDEWAYS = { curveball: true, slider: true, changeup: true, cutter: true, splitter: true };
 
 /** The spot (x, y) where a pitch of this kind crosses the plate. */
 export function pickTarget(kind, type, away, cfg, rng, g, breakDir = away) {

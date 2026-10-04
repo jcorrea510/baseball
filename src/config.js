@@ -190,6 +190,11 @@ export const CONFIG = {
       changeup: { label: 'Changeup', code: 'CH', speedDelta: -12, breakArm: 0.85, hop: -0.15, spinRpm: 1400, spin: 'back', armSlot: -0.05, glove: 1 },
       curveball: { label: 'Curveball', code: 'CB', speedDelta: -17, breakArm: -0.55, hop: -1.95, spinRpm: 2500, spin: 'top', armSlot: 0.22, glove: 2 },
       slider: { label: 'Slider', code: 'SL', speedDelta: -7, breakArm: -0.95, hop: -0.5, spinRpm: 2400, spin: 'side', armSlot: -0.16, glove: 3 },
+      // The three a real pitcher's arsenal can add (never in the level mixes - only in a pitcher's own list): a sinker runs arm side and
+      // dives, a cutter slides a little to the glove side and stays up, a splitter tumbles down with a little arm-side fade.
+      sinker: { label: 'Sinker', code: 'SI', speedDelta: -2, breakArm: 0.7, hop: -0.25, spinRpm: 2150, spin: 'back', armSlot: 0, glove: 0 },
+      cutter: { label: 'Cutter', code: 'CT', speedDelta: -4, breakArm: -0.35, hop: 0.35, spinRpm: 2400, spin: 'side', armSlot: 0, glove: 3 },
+      splitter: { label: 'Splitter', code: 'SP', speedDelta: -9, breakArm: 0.3, hop: -1.2, spinRpm: 1200, spin: 'back', armSlot: -0.03, glove: 1 },
       heater: { label: 'Heater', code: 'HT', speedDelta: 0, breakArm: 0.1, hop: 0.9, spinRpm: 2500, spin: 'back', armSlot: 0.05, glove: 0 },
     },
     heaterSpeed: [100, 104],
@@ -993,5 +998,5 @@ export const CONFIG = {
   storageKey: 'sandlot.save.v1',
 };
 
-export const PITCH_ORDER = ['fastball', 'changeup', 'curveball', 'slider', 'heater'];
+export const PITCH_ORDER = ['fastball', 'sinker', 'changeup', 'cutter', 'curveball', 'slider', 'splitter', 'heater'];
 export const DIFFICULTIES = ['rookie', 'pro', 'allstar'];

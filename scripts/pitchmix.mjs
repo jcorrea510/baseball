@@ -13,13 +13,13 @@ function classify(t) {
   const r = zoneRatio(t.x, t.y, cfg);
   return { strike: isStrike(t.x, t.y, cfg), r };
 }
-export function mixFor(mode, difficulty, counts = [{ balls: 0, strikes: 0 }], seed = 1) {
+export function mixFor(mode, difficulty, counts = [{ balls: 0, strikes: 0 }], seed = 1, arsenal) {
   const rng = createRng(seed);
   const s = { n: 0, strike: 0, edge: 0, chase: 0, unhittable: 0, far: 0, dirt: 0, high: 0, wide: 0, byType: {} };
   let last;
   for (let i = 0; i < N; i++) {
     const count = counts[i % counts.length];
-    const p = choosePitch({ mode, difficulty, count, rng, batterHand: i % 3 === 0 ? 'L' : 'R', pitcherHand: i % 5 === 0 ? 'L' : 'R', lastType: last }, cfg);
+    const p = choosePitch({ mode, difficulty, count, rng, batterHand: i % 3 === 0 ? 'L' : 'R', arsenal, pitcherHand: i % 5 === 0 ? 'L' : 'R', lastType: last }, cfg);
     last = p.type;
     const c = classify(p.target);
     s.n++;
@@ -46,6 +46,11 @@ if (process.argv[1] && process.argv[1].endsWith('pitchmix.mjs')) {
   for (const d of DIFFICULTIES) {
     const s = mixFor('quick', d, mixed);
     console.log(`  ${d.padEnd(8)} out of the zone by type: ` + Object.entries(s.byType).map(([k, v]) => `${k} ${pct(v.out, v.n)}`).join('  '));
+  }
+  // Pitchers' arsenals (not the level mixes): a pitcher who also throws the three new types
+  for (const d of DIFFICULTIES) {
+    const s = mixFor('quick', d, mixed, 1, ['fastball', 'sinker', 'cutter', 'splitter', 'curveball']);
+    console.log(`  ${d.padEnd(8)} arsenal FB/SI/CT/SP/CB, share (out of the zone): ` + Object.entries(s.byType).map(([k, v]) => `${k} ${pct(v.n, s.n)} (${pct(v.out, v.n)})`).join('  '));
   }
   for (const d of DIFFICULTIES) {
     const s = mixFor('derby', d);

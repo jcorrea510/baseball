@@ -96,6 +96,50 @@ describe('pitch flight', () => {
   });
 });
 
+describe('sinker, cutter and splitter', () => {
+  const NEW = ['sinker', 'cutter', 'splitter'];
+  it('each reaches its target at the timing plane', () => {
+    for (const type of NEW) for (const hand of ['R', 'L']) {
+      const p = mk(type, 88, { x: -0.3, y: 2.2 }, hand);
+      const at = p.at(p.T);
+      expect(at.x).toBeCloseTo(-0.3, 5);
+      expect(at.y).toBeCloseTo(2.2, 5);
+      expect(at.z).toBeCloseTo(CONFIG.pitch.contactZ, 5);
+    }
+  });
+  it('speed is the fastball plus speedDelta', () => {
+    expect(CONFIG.pitch.types.sinker.speedDelta).toBe(-2);
+    expect(CONFIG.pitch.types.cutter.speedDelta).toBe(-4);
+    expect(CONFIG.pitch.types.splitter.speedDelta).toBe(-9);
+    const fb = mk('fastball', 92);
+    for (const t of NEW) {
+      const p = mk(t, 92 + CONFIG.pitch.types[t].speedDelta);
+      expect(p.speedMph).toBe(92 + CONFIG.pitch.types[t].speedDelta);
+      expect(p.T).toBeGreaterThan(fb.T);
+    }
+  });
+  it('a righty: sinker runs arm side and down, cutter goes glove side and stays up, splitter drops with a little arm-side fade', () => {
+    const fb = mk('fastball', 88), si = mk('sinker', 88), cu = mk('cutter', 88), sp = mk('splitter', 88); // (same speed: the acceleration scales with flight time)
+    expect(si.accel.x).toBeLessThan(0); // arm side of a righty = -x
+    expect(si.accel.y).toBeLessThan(fb.accel.y); // more drop than the fastball
+    expect(cu.accel.x).toBeGreaterThan(0);
+    expect(cu.accel.y).toBeGreaterThan(si.accel.y); // stays up (more than the sinker and splitter)
+    expect(sp.accel.x).toBeLessThan(0);
+    expect(sp.accel.y).toBeLessThan(si.accel.y); // the biggest drop of the three
+  });
+  it('a lefty is the mirror image', () => {
+    for (const t of NEW) {
+      const r = mk(t, 85, { x: 0, y: 2.5 }, 'R'), l = mk(t, 85, { x: 0, y: 2.5 }, 'L');
+      expect(l.accel.x).toBeCloseTo(-r.accel.x, 8);
+      expect(l.accel.y).toBeCloseTo(r.accel.y, 8);
+      expect(l.release.x).toBeCloseTo(-r.release.x, 8);
+    }
+  });
+  it('they are not in any level mix', () => {
+    for (const d of Object.values(CONFIG.difficulty)) for (const t of NEW) expect(d.mix[t] || 0).toBe(0);
+  });
+});
+
 describe('strike zone', () => {
   it('calls the middle a strike and clear misses balls', () => {
     expect(isStrike(0, 2.5)).toBe(true);
