@@ -36,6 +36,7 @@ export function createBot(engine, o = {}) {
   return {
     update() {
       if (engine.awaitingBatter) engine.batterReady(); // (a new batter: the bot is always ready)
+      if (engine.offense === 'cpu') return; // (the computer is at bat: it runs its own runners - the engine pitches for the bot)
       // sending runners: a moment after the ball is down it looks at each base that is lit on the diamond (lead runner first) and
       // taps it when the runner would make it (it peeks at the planner: a well-judged send)
       if (sends && engine.phase === 'play' && engine.sendOpen) {

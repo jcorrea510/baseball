@@ -6,7 +6,7 @@ import { createDefense, planPlay } from '../src/game/fielding.js';
 import { auditPlan } from '../src/game/playAudit.js';
 import { runnerArrival } from '../src/game/runnerMotion.js';
 import * as rules from '../src/game/rules.js';
-import { simulateHalf } from '../src/game/aiHalf.js';
+import { Engine } from '../src/game/engine.js';
 import { createRng } from '../src/util/rng.js';
 import { isInsideField } from '../src/physics/field.js';
 
@@ -117,15 +117,18 @@ describe('fielding errors', () => {
   });
 
   it('the computer can reach on your errors too', () => {
-    const rng = createRng(3);
-    let seen = 0;
-    for (let k = 0; k < 400 && !seen; k++) {
-      const g = rules.createGame();
-      g.half = 'bottom';
-      const s = simulateHalf(g, { difficulty: 'pro', rng }, CONFIG);
-      if (s.events.some((e) => e.kind === 'error')) { seen++; expect(g.errors.top).toBeGreaterThan(0); }
-    }
-    expect(seen).toBe(1);
+    // the computer bats first; every ball it puts in play is booted (errorRollOverride 0) until one is an error
+    const e = new Engine({ mode: 'quick', seed: 3, cpuHalf: 'auto' });
+    e.errorRollOverride = 0;
+    const errors = [];
+    e.on('result', (r) => { if (e.offense === 'cpu' && r.result === 'error') errors.push(r); });
+    e.start();
+    for (let t = 0; t < 600 && !errors.length && e.offense === 'cpu'; t += 1 / 120) e.update(1 / 120);
+    expect(errors.length).toBe(1);
+    expect(e.game.errors.bottom).toBeGreaterThan(0); // (charged to you: you are in the field)
+    expect(e.game.errors.top).toBe(0);
+    expect(e.game.bases.some(Boolean)).toBe(true);
+    expect(e.stats.pa).toBe(0); // (their at-bat is not yours)
   });
 });
 

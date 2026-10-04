@@ -12,9 +12,12 @@ import { choosePitch, pitchWindowScale } from './pitcherAI.js';
 import { createDefense, alignDefense, planPlay, sendOptions, runnerOptions, tapOptions, planSteal, planWildPitch, fielderBackTime } from './fielding.js';
 import * as rules from './rules.js';
 import { simulateHalf } from './aiHalf.js';
-import { makeLineup, makePitcher, PLAYER_TEAM } from './teams.js';
+import { makeLineup, makePitcher, makeStaff, PLAYER_TEAM } from './teams.js';
 import { MLB_TEAMS, teamName, uniformFor, teamLineup } from './mlb.js';
 import { ratingEffects } from './season.js';
+import { staminaMax } from './pitching.js';
+import { cpuSwingInputs } from './cpuBatter.js';
+import { installPitchingHalf, newPitchStats } from './pitchingHalf.js';
 
 export class Engine {
   /**
@@ -32,6 +35,10 @@ export class Engine {
    * @param {'top'|'bottom'} [o.playerSide] which half you bat in a game: 'bottom' (you are the home team and bat last; the default) or 'top'
    * @param {Array}  [o.lineup]         your nine batters, in order (Season players carry con / pow / spd ratings)
    * @param {Array}  [o.oppLineup]      the other team's names
+   * @param {'pitch'|'auto'} [o.cpuHalf] the computer's half: 'pitch' = you pitch it (aim, start, tap the ring); 'auto' (default) = the
+   *                                    computer pitches it for you, live (tests and bots)
+   * @param {Array}  [o.staff]          your pitchers (pitching.js shape), the starter first (default: Sandlot's own, teams.makeStaff)
+   * @param {object} [o.oppPitcher]     the other team's pitcher when you bat (default: a made-up one)
    * (and the config itself - `cfg` - is the Season's one for this opponent: see season.gameConfig)
    */
   constructor(o = {}, cfg = CONFIG) {
@@ -58,9 +65,21 @@ export class Engine {
     this.playerTeam = o.playerTeam || PLAYER_TEAM; // (League games: your own big-league club, with its own jersey)
 
     this.lineup = o.lineup ? o.lineup.map((b) => ({ ...b })) : makeLineup(this.seed, 'p');
-    this.oppLineup = o.oppLineup || (o.opponent ? makeLineup(this.seed ^ 0x5bd1e995, 'o') : teamLineup(oppTeam, this.seed, 'o'));
+    this.oppLineup = o.oppLineup ? o.oppLineup.map((b) => ({ ...b })) : (o.opponent ? makeLineup(this.seed ^ 0x5bd1e995, 'o') : teamLineup(oppTeam, this.seed, 'o'));
     if (this.handSetting !== 'auto') for (const b of this.lineup) b.hand = this.handSetting;
-    this.pitcher = makePitcher(this.seed);
+    this.oppPitcher = o.oppPitcher || makePitcher(this.seed); // (theirs, when you bat; `pitcher` is whoever is on the mound)
+    // When the computer bats you are in the field: `cpuHalf` 'pitch' = you pitch, 'auto' = the computer pitches for you (tests, bots)
+    this.cpuHalf = o.cpuHalf || 'auto';
+    this.staff = o.staff || makeStaff(this.seed, cfg);
+    const starter = this.staff[0];
+    this.mound = { pitcher: starter, left: staminaMax(starter, cfg), max: staminaMax(starter, cfg), pitches: 0, used: [], recent: [] };
+    this.pitchType = starter.pitches[0]; // the pitch you have chosen (the last choice stays)
+    this.pitchAim = { x: 0, y: cfg.timing.zoneCenterY }; // where you aim it (see setPitchAim)
+    this.ring = null; // the timing ring during a delivery
+    this.cpuSwing = null; // the computer batter's swing, decided at the release, waiting for its moment
+    this.cpuSwingOverride = null; // QA hook: (engine) => decision (see cpuBatter.decideSwing) forces his take / swing
+    this.pitchStats = newPitchStats(); // your pitchers' numbers today
+    this.outsSeen = 0; // outs already credited to your pitchers this half
     this.defense = createDefense(cfg, this.rng);
 
     this.time = 0;
@@ -94,8 +113,11 @@ export class Engine {
     // Practice keeps runners on base and counts the runs of the session - but nobody is ever out for good (outs reset every play)
     this.pgame = this.mode === 'practice' ? rules.createGame({ innings: 1e6, extraRunner: false }) : null;
     this.derby = { outs: 0, maxOuts: cfg.modes.derby.outs, hr: 0, streak: 0, bestStreak: 0, longest: 0, results: [] };
-    this.stats = newStats();
+    this.stats = newStats(); // your batting
+    this.cpuStats = newStats(); // (the computer's batting goes here and is thrown away: it never touches yours)
     this.lines = {}; // each batter's line today: { pa, ab, h, hr, rbi, bb, k } by batter id
+    this.oppLines = {}; // ...and the computer's batters' lines
+    this.on('result', (r) => this.creditPitching(r)); // (your pitchers' line: before anyone else hears the result)
     this.batterIndex = 0;
     this.batter = this.lineup[0];
   }
@@ -121,6 +143,15 @@ export class Engine {
   get playTime() { return this.play ? this.time - this.play.t0 : -1; }
   get batterHand() { return this.batter.hand || 'R'; }
   get windowScale() { return this.d.windowScale * (this.mode === 'derby' ? this.cfg.modes.derby.timingGrow : 1); }
+  // Whose half it is: 'player' (you bat) or 'cpu' (the computer bats and you are in the field). Practice and the Derby: always you.
+  get offense() { return this.game && this.game.half !== this.playerSide ? 'cpu' : 'player'; }
+  get battingLineup() { return this.offense === 'cpu' ? this.oppLineup : this.lineup; }
+  get tally() { return this.offense === 'cpu' ? this.cpuStats : this.stats; } // (the batting numbers of the side at bat: only yours are kept)
+  get myPitcher() { return this.mound.pitcher; } // your pitcher on the mound
+  get pitcher() { return this.offense === 'cpu' ? this.mound.pitcher : this.oppPitcher; } // whoever is on the mound right now
+  get pitching() { return !!this.game && this.offense === 'cpu' && !this.over; } // you are in the field in a game
+  // How often the fielders boot a ball: yours (by level) when the computer bats, theirs (the level, the League opponent) when you do.
+  get fieldErrorScale() { return this.offense === 'cpu' ? this.cfg.pitching.fieldErrorScale[this.difficulty] ?? 1 : this.d.errorScale; }
 
   setPhase(p) { this.phase = p; this.phaseSince = this.time; }
   setAim(v) { this.aim = Math.max(-1, Math.min(1, v)); }
@@ -143,7 +174,7 @@ export class Engine {
   start() {
     if (this.phase !== 'idle') return;
     this.emit('gameStart', { mode: this.mode });
-    if (this.game && this.game.half !== this.playerSide) return this.runAiHalf(); // the visitors bat first
+    if (this.offense === 'cpu') return this.beginCpuHalf(); // the visitors bat first: you pitch
     this.beginPlateAppearance(true);
   }
 
@@ -155,28 +186,60 @@ export class Engine {
     if (this.game) this.emit('checkpoint', this.saveState());
   }
   saveState() {
-    return JSON.parse(JSON.stringify({ rngN: this.rngN, game: this.game, stats: this.stats, lines: this.lines, pitchCount: this.pitchCount, lastType: this.lastType }));
+    const m = this.mound;
+    return JSON.parse(JSON.stringify({
+      rngN: this.rngN, game: this.game, stats: this.stats, lines: this.lines, pitchCount: this.pitchCount, lastType: this.lastType,
+      // the side in the field: your pitcher (by id), his tank and pitch count, the pitchers already used, your last two pitches, your
+      // pitching line, and the computer's batting (kept apart from yours)
+      side: {
+        offense: this.offense, mound: { pitcherId: m.pitcher.id, pitcher: m.pitcher, left: m.left, max: m.max, pitches: m.pitches, used: m.used, recent: m.recent },
+        recent: m.recent, pitchStats: this.pitchStats, oppLines: this.oppLines, cpuStats: this.cpuStats, pitchType: this.pitchType,
+      },
+    }));
   }
-  // Carry on from a saved state: the same score, outs, runners, count, lineup spot and numbers; the batter's Ready card comes up first.
+  // Carry on from a saved state: the same score, outs, runners, count, lineup spot and numbers. In your half the batter's Ready card
+  // comes up first; in the computer's you are back at the aiming screen for the same pitch. (A save from before you could pitch has no
+  // `side`: your pitchers start fresh.)
   resume(st) {
     if (this.phase !== 'idle') return;
     this.rngN = st.rngN;
     this.rng = createRng((this.seed ^ Math.imul(this.rngN, 0x9e3779b1)) >>> 0);
     const g = st.game;
-    g.bases = g.bases.map((b) => (b && b.id !== undefined ? this.lineup.find((p) => p.id === b.id) || b : b)); // (runners are the lineup's own players again)
+    const cpuBats = g.half !== this.playerSide;
+    const books = cpuBats ? [this.oppLineup, this.lineup] : [this.lineup, this.oppLineup];
+    // (runners are the lineups' own players again - and one who reached on an error is still marked so: his run is unearned)
+    const rebind = (b) => {
+      if (!b || b.id === undefined) return b;
+      const p = books[0].find((q) => q.id === b.id) || books[1].find((q) => q.id === b.id);
+      if (!p) return b;
+      if (b.roe !== undefined) p.roe = b.roe;
+      return p;
+    };
+    g.bases = g.bases.map(rebind);
     this.game = g;
     this.stats = st.stats; this.lines = st.lines; this.pitchCount = st.pitchCount; this.lastType = st.lastType;
+    const side = st.side;
+    if (side) {
+      const sm = side.mound;
+      const pitcher = this.staff.find((p) => p.id === sm.pitcherId) || sm.pitcher || this.staff[0];
+      this.mound = { pitcher, left: sm.left, max: sm.max, pitches: sm.pitches, used: sm.used || [], recent: side.recent || sm.recent || [] };
+      this.pitchStats = side.pitchStats; this.oppLines = side.oppLines || {}; this.cpuStats = side.cpuStats || newStats();
+      if (side.pitchType && pitcher.pitches.includes(side.pitchType)) this.pitchType = side.pitchType;
+      else this.pitchType = pitcher.pitches[0];
+    }
     this.emit('gameStart', { mode: this.mode, resumed: true });
+    if (this.offense === 'cpu') { this.outsSeen = g.outs; return this.beginCpuPA(true, true); }
     this.beginPlateAppearance(true, true);
   }
 
   beginPlateAppearance(first = false, quiet = false) {
     if (this.diamond) {
       const g = this.diamond;
+      const lineup = this.battingLineup;
       // (practice: nobody is ever out, so a runner can still be on base when his turn comes round - the next man bats instead)
-      for (let k = 0; this.pgame && k < 9 && g.bases.includes(this.lineup[g.lineupIdx[g.half] % 9]); k++) g.lineupIdx[g.half]++;
+      for (let k = 0; this.pgame && k < 9 && g.bases.includes(lineup[g.lineupIdx[g.half] % 9]); k++) g.lineupIdx[g.half]++;
       this.batterIndex = this.diamond.lineupIdx[this.diamond.half] % 9;
-      this.batter = this.lineup[this.batterIndex];
+      this.batter = lineup[this.batterIndex];
     } else {
       this.batter = this.lineup[0];
     }
@@ -208,10 +271,17 @@ export class Engine {
       case 'windup':
         if (this.time >= this.pitch.tRelease) this.release();
         break;
+      case 'aim': // (you pitch: waiting for you to start the delivery - the computer starts at once when it pitches for you)
+        this.updateAim();
+        break;
+      case 'delivery':
+        this.updateDelivery();
+        break;
       case 'pitch':
         this.updatePitch();
         break;
       case 'play':
+        if (this.offense === 'cpu') this.cpuRunnerLooks(); // (the computer sends its own runners)
         this.updatePlay();
         break;
       case 'result':
@@ -279,7 +349,7 @@ export class Engine {
 
   // Square around to bunt (or pull back). Any time before the swing, not in the Derby. Returns the stance now.
   setBunt(on) {
-    const can = this.mode !== 'derby' && !this.swing && ['idle', 'ready', 'windup', 'pitch', 'halfBreak'].includes(this.phase);
+    const can = this.mode !== 'derby' && this.offense === 'player' && !this.swing && ['idle', 'ready', 'windup', 'pitch', 'halfBreak'].includes(this.phase);
     const v = !!on && can;
     if (v !== this.buntStance) { this.buntStance = v; this.emit('buntStance', { on: v }); }
     return this.buntStance;
@@ -296,7 +366,7 @@ export class Engine {
     if (b[0] && (!b[1] || out.includes(2))) out.push(1);
     return out;
   }
-  get canSteal() { return this.stealBases().length > 0 && (this.phase === 'ready' || this.phase === 'windup' || this.phase === 'result' || this.phase === 'halfBreak'); }
+  get canSteal() { return this.offense === 'player' && this.stealBases().length > 0 && (this.phase === 'ready' || this.phase === 'windup' || this.phase === 'result' || this.phase === 'halfBreak'); }
   // Tell the runners to go on the next pitch (or call it off). Before the pitch is thrown only. Returns whether they will go.
   setSteal(on) {
     let v = !!on && this.canSteal;
@@ -309,24 +379,32 @@ export class Engine {
     return this.stealArmed;
   }
   // The runners take off with the pitcher's first move (a jump that is a little better or worse each time).
-  beginSteal() {
-    const going = this.stealBases();
+  // (`going` / `start`: when you pitch, the runners decided to go and broke during your delivery, before the pitch existed - see
+  // pitchingHalf.startDelivery - and the rest of the steal is rolled here at the release)
+  beginSteal(going = this.stealBases(), start = null) {
     if (!going.length || !this.pitch) return;
     const S = this.cfg.steal;
     const pitch = this.pitch;
-    const start = {};
-    // (the pitch takes longer to arrive than a real one at its speed - `pitchPace`, to make it easier to hit: the runner's break moves
-    // later by the same amount, so a steal is exactly as hard as it was tuned to be)
-    const paceLag = pitch.flight.T * (1 - 1 / (pitch.flight.pace || 1));
-    for (const b of going) start[b] = Math.max(this.time, pitch.tRelease - (this.d.stealBreak ?? 1) + paceLag + (S.jump[b] - S.jump[1]) + this.rng.gauss(0, S.jumpSd));
+    if (!start) start = this.stealStarts(going, pitch.tRelease, pitch.flight);
     // the catcher's exchange is rolled now too (so the whole steal can be planned as the runner goes and the infielder covering
     // the bag is seen breaking for it during the pitch); a pitch in the dirt has to be blocked first
     const dirt = pitch.target.y < 1.1;
-    const transfer = Math.max(0.5, (S.transfer + this.rng.gauss(0, S.transferSd)) * (this.d.catcherArm ?? 1)) + (dirt ? S.dirtExtra : 0);
+    const arm = this.offense === 'cpu' ? this.cfg.pitching.catcherArm[this.difficulty] ?? 1 : this.d.catcherArm ?? 1; // (your catcher when you are in the field)
+    const transfer = Math.max(0.5, (S.transfer + this.rng.gauss(0, S.transferSd)) * arm) + (dirt ? S.dirtExtra : 0);
     const coverStart = Math.min(...Object.values(start)) + S.coverReact - pitch.tCatch;
     this.steal = { bases: going, start, transfer, coverStart };
     this.steal.plan = this.planStealNow();
     this.emit('stealGo', { bases: going });
+  }
+  // When each runner takes off (engine time) for a pitch released at `tRelease`: `stealBreak` before it, a jump a little better or worse each time.
+  stealStarts(going, tRelease, flight) {
+    const S = this.cfg.steal;
+    const start = {};
+    // (the pitch takes longer to arrive than a real one at its speed - `pitchPace`, to make it easier to hit: the runner's break moves
+    // later by the same amount, so a steal is exactly as hard as it was tuned to be)
+    const paceLag = flight ? flight.T * (1 - 1 / (flight.pace || 1)) : 0;
+    for (const b of going) start[b] = Math.max(this.time, tRelease - (this.d.stealBreak ?? 1) + paceLag + (S.jump[b] - S.jump[1]) + this.rng.gauss(0, S.jumpSd));
+    return start;
   }
   planStealNow() {
     const s = this.steal;
@@ -343,7 +421,7 @@ export class Engine {
   // Player input. `sinceUpdate` = seconds between the last engine update and the actual input event
   // (so timing does not depend on frame rate). Returns true if the swing was accepted.
   swingPressed(sinceUpdate = 0) {
-    if (this.phase !== 'pitch' || this.swing || !this.pitch) return false;
+    if (this.phase !== 'pitch' || this.swing || !this.pitch || this.offense !== 'player') return false;
     if (this.buntStance) return false; // (squared around to bunt, the bat is held out where you put it - see holdBunt)
     const tPress = this.time + Math.max(-0.02, Math.min(0.05, sinceUpdate)) - this.inputDelay;
     return this.commitSwing(tPress, { x: this.batAim.x, y: this.batAim.y }, false);
@@ -364,23 +442,37 @@ export class Engine {
     return this.commitSwing(pitch.tCross + errorMs / 1000 - this.cfg.timing.swingDelay, aim, true, 'bat');
   }
 
-  commitSwing(tPress, aim, bunting, buntSide = 0) {
+  // (`opts` for the computer's batter: { protect } - two strikes, he just tries to put it in play: a slower bat, more fouls)
+  commitSwing(tPress, aim, bunting, buntSide = 0, opts = {}) {
     const pitch = this.pitch;
     const times = resolveSwingTimes(tPress, pitch.tCross, this.cfg);
-    const eff = ratingEffects(this.batter, this.cfg); // (Season players: Contact widens the timing windows and the bat's contact window, Power adds exit velocity)
-    const windowScale = this.windowScale * eff.window;
     // where the ball is when the bat gets there (its height there is what the bat has to meet), how it is moving and spinning
     const { ball, vBall, wBall } = contactPoint(pitch.flight, times.hitTime - pitch.tRelease, times.barrelTime - pitch.tRelease, this.cfg);
-    // (the bat is committed where it was aimed when he swung)
-    const window = this.contactWindow;
-    const contact = bunting
-      ? computeBunt({ errorMs: times.errorMs, ball, aim, window, windowScale, batterHand: this.batterHand, side: buntSide, rng: this.rng }, this.cfg)
-      : computeSwing({
-        errorMs: times.errorMs, ball, aim, window, vBall, wBall,
-        windowScale, speedScale: pitchWindowScale(pitch.type), batterHand: this.batterHand, batBonus: this.d.batBonus || 0, aimAssist: this.d.aimAssist || 0,
-        ...(this.mode === 'derby' ? derbyBatting(this.cfg) : { evBonus: eff.ev }),
-        rng: this.rng,
+    let contact;
+    if (this.offense === 'cpu') {
+      // the computer's batter: his own contact window and timing windows, none of your batting help (cpuBatter.cpuSwingInputs); a
+      // protect swing is a slower bat (`cpuBat.protectSpeed` of the full bat speed - computeSwing takes extra bat speed in mph)
+      const ci = cpuSwingInputs(this.difficulty, this.batter, this.d.cpuStrength ?? 0, this.cfg);
+      const slower = opts.protect ? (1 - this.cfg.cpuBat.protectSpeed) * this.cfg.swing.batSpeed : 0;
+      contact = computeSwing({
+        errorMs: times.errorMs, ball, aim, window: ci.window, vBall, wBall, windowScale: ci.windowScale,
+        speedScale: pitchWindowScale(pitch.type), batterHand: this.batterHand, batBonus: ci.batBonus - slower, aimAssist: ci.aimAssist,
+        evBonus: ci.evBonus, rng: this.rng,
       }, this.cfg);
+    } else {
+      const eff = ratingEffects(this.batter, this.cfg); // (Season players: Contact widens the timing windows and the bat's contact window, Power adds exit velocity)
+      const windowScale = this.windowScale * eff.window;
+      // (the bat is committed where it was aimed when he swung)
+      const window = this.contactWindow;
+      contact = bunting
+        ? computeBunt({ errorMs: times.errorMs, ball, aim, window, windowScale, batterHand: this.batterHand, side: buntSide, rng: this.rng }, this.cfg)
+        : computeSwing({
+          errorMs: times.errorMs, ball, aim, window, vBall, wBall,
+          windowScale, speedScale: pitchWindowScale(pitch.type), batterHand: this.batterHand, batBonus: this.d.batBonus || 0, aimAssist: this.d.aimAssist || 0,
+          ...(this.mode === 'derby' ? derbyBatting(this.cfg) : { evBonus: eff.ev }),
+          rng: this.rng,
+        }, this.cfg);
+    }
     if (this.contactOverride) { delete contact.reason; Object.assign(contact, { made: true, grade: 'good' }, this.contactOverride(this)); }
     // The bat only meets the ball at the clamped time when contact is made; a miss swings through at the true time.
     const tHit = contact.made ? times.hitTime : times.barrelTime;
@@ -389,7 +481,7 @@ export class Engine {
       grade: contact.grade, made: contact.made, contact, resolved: false,
       follow: this.cfg.timing.followThrough, bunt: bunting, aim, ball,
     };
-    if (bunting) this.stats.bunts++; else this.stats.swings++;
+    if (bunting) this.tally.bunts++; else this.tally.swings++;
     this.emit('swing', { swing: this.swing, pitch, errorText: describeError(times.errorMs) });
     return true;
   }
@@ -397,6 +489,9 @@ export class Engine {
   updatePitch() {
     const pitch = this.pitch;
     if (this.buntStance && !this.swing && !pitch.buntDecided && this.time >= pitch.tCross - this.cfg.timing.swingDelay) this.holdBunt();
+    // the computer's batter swings at the moment he chose at the release (exactly then, whatever the frame rate - see pitchingHalf)
+    const cs = this.cpuSwing;
+    if (cs && !this.swing && this.time >= cs.tPress) { this.cpuSwing = null; this.commitSwing(cs.tPress, cs.aim, false, 0, { protect: cs.protect }); }
     const s = this.swing;
     if (s && !s.resolved && this.time >= s.tHit) {
       s.resolved = true;
@@ -445,9 +540,9 @@ export class Engine {
     const g = this.diamond, res = p.wild.res;
     const moves = p.plan.moves.filter((m) => m.to > m.from).map((m) => ({ from: m.from, to: m.to }));
     const r = rules.applyAdvance(g, moves);
-    if (this.pgame) { this.stats.runs += r.runs; this.emit('practice', this.practiceState()); }
+    if (this.pgame) { this.tally.runs += r.runs; this.emit('practice', this.practiceState()); }
     this.emitCount();
-    this.emit('result', { kind: 'steal', result: 'wildPitch', text: rules.RESULT_TEXT.wildPitch, outs: g.outs, halfOver: false, runs: r.runs, walkOff: r.walkOff, plan: p.plan });
+    this.emit('result', { kind: 'steal', result: 'wildPitch', text: rules.RESULT_TEXT.wildPitch, outs: g.outs, halfOver: false, runs: r.runs, scoredRunners: r.scoredRunners || [], walkOff: r.walkOff, plan: p.plan });
     this.finishPitch(this.cfg.pace.playEndPause + (r.runs ? 0.35 : 0), !!g.over && !this.pgame, res.paEnded, res.paEnded ? res.result : 'wildPitch');
     if (g.over && !this.pgame) this.pendingNext = 'half';
   }
@@ -456,8 +551,8 @@ export class Engine {
   resolvePitchNoContact() {
     const pitch = this.pitch;
     const swung = !!this.swing;
-    this.stats.pitchesSeen++;
-    if (swung) this.stats.whiffs++;
+    this.tally.pitchesSeen++;
+    if (swung) this.tally.whiffs++;
     const info = { pitch, swung, strike: pitch.isStrike, errorMs: this.swing ? this.swing.errorMs : null, grade: this.swing ? this.swing.grade : null };
 
     if (this.mode === 'practice') {
@@ -492,12 +587,12 @@ export class Engine {
     // runners were going: the catcher tries to throw one out (not after ball four - they are waved on - or a third out)
     const stealPlay = this.steal && !res.halfOver && res.result !== 'walk';
     if (res.paEnded) {
-      this.stats.pa++;
-      if (res.result === 'walk') { this.stats.walks++; this.stats.rbi += res.runs; } // a bases-loaded walk drives in a run
-      if (res.result.startsWith('strikeout')) { this.stats.strikeouts++; this.stats.ab++; }
+      this.tally.pa++;
+      if (res.result === 'walk') { this.tally.walks++; this.tally.rbi += res.runs; } // a bases-loaded walk drives in a run
+      if (res.result.startsWith('strikeout')) { this.tally.strikeouts++; this.tally.ab++; }
       this.creditBatter(res.result, res.runs);
       this.emit('result', {
-        kind: 'pa', result: res.result, text: rules.RESULT_TEXT[res.result], runs: res.runs, outs: g.outs, halfOver: res.halfOver, walkOff: !!res.walkOff,
+        kind: 'pa', result: res.result, text: rules.RESULT_TEXT[res.result], runs: res.runs, scoredRunners: res.scoredRunners || [], outs: g.outs, halfOver: res.halfOver, walkOff: !!res.walkOff,
         batter: this.batter, ...info,
       });
       if (stealPlay) return this.startStealPlay(res);
@@ -513,14 +608,14 @@ export class Engine {
   // Hit by pitch: like ball four - the batter takes first and runners move up only if they are forced.
   resolveHitByPitch() {
     const pitch = this.pitch;
-    this.stats.pitchesSeen++;
+    this.tally.pitchesSeen++;
     const info = { pitch, swung: false, strike: false, errorMs: null, grade: null, hbp: true };
     const g = this.diamond;
     const res = rules.hitByPitch(g, this.batter);
     this.steal = null; // (runners who were going stop: only a forced runner moves up)
     if (this.mode === 'practice') {
       g.outs = 0; g.balls = 0; g.strikes = 0;
-      this.stats.runs += res.runs; this.stats.rbi += res.runs;
+      this.tally.runs += res.runs; this.tally.rbi += res.runs;
       this.emit('pitchCall', { ...info, call: 'hitByPitch' });
       this.emit('practice', this.practiceState());
       this.emit('result', { kind: 'pitch', call: 'hitByPitch', text: rules.RESULT_TEXT.hitByPitch, runs: res.runs, ...info });
@@ -529,9 +624,9 @@ export class Engine {
     }
     this.emit('pitchCall', { ...info, call: 'hitByPitch', result: res.result, strikes: g.strikes, balls: g.balls });
     this.emitCount();
-    this.stats.pa++; this.stats.hbp = (this.stats.hbp || 0) + 1; this.stats.rbi += res.runs;
+    this.tally.pa++; this.tally.hbp = (this.tally.hbp || 0) + 1; this.tally.rbi += res.runs;
     this.creditBatter(res.result, res.runs);
-    this.emit('result', { kind: 'pa', result: res.result, text: rules.RESULT_TEXT.hitByPitch, runs: res.runs, outs: g.outs, halfOver: res.halfOver, walkOff: !!res.walkOff, batter: this.batter, ...info });
+    this.emit('result', { kind: 'pa', result: res.result, text: rules.RESULT_TEXT.hitByPitch, runs: res.runs, scoredRunners: res.scoredRunners || [], outs: g.outs, halfOver: res.halfOver, walkOff: !!res.walkOff, batter: this.batter, ...info });
     this.finishPitch(this.cfg.pace.callDisplay + 0.45, res.halfOver, true, res.result);
   }
 
@@ -560,8 +655,8 @@ export class Engine {
     if (this.pgame) { g.outs = 0; r.halfOver = false; } // (practice: nobody is out for good)
     for (const m of moves) {
       const runner = before[m.from - 1];
-      if (m.out) this.stats.cs++;
-      else if (m.to > m.from) { this.stats.sb++; if (runner && runner.id !== undefined) this.lineOf(runner).sb++; }
+      if (m.out) this.tally.cs++;
+      else if (m.to > m.from) { this.tally.sb++; if (runner && runner.id !== undefined) this.lineOf(runner).sb++; }
     }
     const lead = plan.moves[0];
     const base = lead.out ? lead.outBase : lead.to;
@@ -580,6 +675,8 @@ export class Engine {
     this.lastPA = paEnded ? { result: kind, time: this.time } : this.lastPA;
     this.setPhase('result');
     this.resultUntil = this.time + pause;
+    // you pitch: the next pitch can be aimed `pitching.nextPitch` after the call (and not before the pitcher is back and set)
+    if (this.offense === 'cpu') this.resultUntil = Math.max(this.time + Math.max(pause, this.cfg.pitching.nextPitch), this.fieldersSetAt);
     // a finished plate appearance brings up the next batter; otherwise the same batter sees another pitch
     this.pendingNext = halfOver ? 'half' : paEnded && this.diamond ? 'pa' : 'pitch';
   }
@@ -589,6 +686,7 @@ export class Engine {
     this.pendingNext = null;
     if (this.mode === 'derby' && this.derby.outs >= this.derby.maxOuts) return this.finishGame();
     if (next === 'half') return this.endHalf();
+    if (this.offense === 'cpu') return next === 'pa' ? this.beginCpuPA() : this.nextCpuPitch();
     if (next === 'pa') return this.beginPlateAppearance();
     // next pitch to the same batter
     this.pitch = null; this.swing = null; this.play = null;
@@ -602,7 +700,7 @@ export class Engine {
     const pitch = this.pitch;
     const s = this.swing;
     const c = s.contact;
-    this.stats.pitchesSeen++;
+    this.tally.pitchesSeen++;
     const tRel = Math.min(Math.max(0, s.tHit - pitch.tRelease), pitch.flight.tCatch);
     const start = pitch.flight.at(tRel);
     const params = {
@@ -615,7 +713,7 @@ export class Engine {
     const errorRoll = simple ? undefined : this.errorRollOverride ?? this.rng.next(); // (errorRollOverride: QA hook, 0 = always an error)
     const running = this.steal && !simple ? Object.fromEntries(this.steal.bases.map((b) => [b, this.steal.start[b] - s.tHit])) : null; // runners going with the pitch
     this.rng.next(); // (kept so a game's random numbers stay in step with older saves)
-    const planIn = { sim, contact: c, bases: this.bases.slice(), outs: this.outs, defense: this.defense, simple, errorRoll, errorScale: this.d.errorScale, running, speeds: this.runnerSpeeds(), orders: [] };
+    const planIn = { sim, contact: c, bases: this.bases.slice(), outs: this.outs, defense: this.defense, simple, errorRoll, errorScale: this.fieldErrorScale, running, speeds: this.runnerSpeeds(), orders: [] };
     const plan = planPlay(planIn, this.cfg);
     // a foul tip: straight back into the catcher's mitt (he holds it)
     const FT = this.cfg.pitch.foulTip;
@@ -632,17 +730,18 @@ export class Engine {
     const proj = projectDistance(params, this.cfg);
     const fb = sim.firstBounce;
     const distance = plan.homer ? proj.distance : fb ? Math.hypot(fb.x, fb.z) : proj.distance;
-    this.stats.contacts++;
-    if (c.grade === 'perfect') this.stats.perfect++;
-    else if (c.grade === 'good') this.stats.good++;
-    else if (c.grade === 'early') this.stats.early++;
-    else if (c.grade === 'late') this.stats.late++;
-    this.stats.evSum += c.exitVelocity; this.stats.evN++;
-    this.stats.maxEV = Math.max(this.stats.maxEV, c.exitVelocity);
+    this.tally.contacts++;
+    if (c.grade === 'perfect') this.tally.perfect++;
+    else if (c.grade === 'good') this.tally.good++;
+    else if (c.grade === 'early') this.tally.early++;
+    else if (c.grade === 'late') this.tally.late++;
+    this.tally.evSum += c.exitVelocity; this.tally.evN++;
+    this.tally.maxEV = Math.max(this.tally.maxEV, c.exitVelocity);
     this.play = {
       t0: s.tHit, sim, plan, planIn, contact: c, pitch, distance, projected: proj, start,
       events: buildEventList(sim, plan), nextEvent: 0, prevT: 0, landedReported: false,
     };
+    if (this.offense === 'cpu') this.play.cpuLook = this.rng.range(...this.cfg.cpuRun.look); // (s after contact the computer first looks at sending a runner)
     this.setPhase('play');
     this.emit('contact', {
       swing: s, pitch, contact: c, sim, plan, distance, projected: proj,
@@ -733,7 +832,7 @@ export class Engine {
     p.events = buildEventList(p.sim, plan);
     p.nextEvent = p.events.findIndex((e) => e.t > t + 1e-9);
     if (p.nextEvent < 0) p.nextEvent = p.events.length;
-    if (opt.kind === 'send') this.stats.sends = (this.stats.sends || 0) + 1;
+    if (opt.kind === 'send') this.tally.sends = (this.tally.sends || 0) + 1;
     this.emit('send', { base, t, plan, kind: opt.kind });
     return true;
   }
@@ -772,9 +871,9 @@ export class Engine {
         const res = rules.applyPlay(g, { result: plan.result, batterDest: plan.batterDest, moves: plan.moves.filter((m) => m.from >= 1).map((m) => ({ from: m.from, to: m.to, out: !!m.out })), outsMade: plan.outsMade }, this.batter);
         runs = res.runs;
         g.outs = 0; g.balls = 0; g.strikes = 0;
-        this.stats.runs += runs; this.stats.rbi += runs;
-        if (rules.isHitResult(plan.result)) this.stats.hits++;
-        if (plan.homer || plan.result === 'insideParkHomer') { this.stats.hr++; this.stats.longestHR = Math.max(this.stats.longestHR, Math.round(p.distance)); }
+        this.tally.runs += runs; this.tally.rbi += runs;
+        if (rules.isHitResult(plan.result)) this.tally.hits++;
+        if (plan.homer || plan.result === 'insideParkHomer') { this.tally.hr++; this.tally.longestHR = Math.max(this.tally.longestHR, Math.round(p.distance)); }
         this.emit('practice', this.practiceState());
       }
       this.emit('result', { kind: 'play', result: plan.homer ? 'homer' : plan.result, text, runs, ...summary });
@@ -790,11 +889,11 @@ export class Engine {
     // ---------------- quick game ----------------
     const g = this.game;
     if (plan.result === 'foul') {
-      this.stats.fouls++;
+      this.tally.fouls++;
       if (plan.foulTip && g.strikes >= 2) {
         // a foul tip held by the catcher with two strikes is strike three
         const res = rules.pitchStrike(g, { swinging: true });
-        this.stats.pa++; this.stats.strikeouts++; this.stats.ab++;
+        this.tally.pa++; this.tally.strikeouts++; this.tally.ab++;
         this.creditBatter(res.result, 0);
         this.emitCount();
         this.emit('result', { kind: 'pa', result: res.result, text: 'STRIKEOUT', detail: 'Foul tip', runs: 0, outs: g.outs, halfOver: res.halfOver, batter: this.batter, ...summary });
@@ -804,7 +903,7 @@ export class Engine {
       if (c.bunt && g.strikes >= 2) {
         // a bunt foul with two strikes is strike three
         const res = rules.pitchStrike(g, { swinging: true });
-        this.stats.pa++; this.stats.strikeouts++; this.stats.ab++;
+        this.tally.pa++; this.tally.strikeouts++; this.tally.ab++;
         this.creditBatter(res.result, 0);
         this.emitCount();
         this.emit('result', { kind: 'pa', result: res.result, text: 'STRIKEOUT', detail: 'Bunted foul', runs: 0, outs: g.outs, halfOver: res.halfOver, batter: this.batter, ...summary });
@@ -829,23 +928,23 @@ export class Engine {
     const outsBefore = g.outs;
     const res = rules.applyPlay(g, play, this.batter);
     play.result = res.result; // (a walk-off hit is credited with only the bases the winning run needed)
-    this.stats.pa++;
+    this.tally.pa++;
     const isHit = rules.isHitResult(play.result);
-    if (play.result !== 'sacFly' && play.result !== 'sacBunt') this.stats.ab++;
+    if (play.result !== 'sacFly' && play.result !== 'sacBunt') this.tally.ab++;
     if (isHit) {
-      this.stats.hits++;
+      this.tally.hits++;
       if (play.result === 'homer' || play.result === 'insideParkHomer') {
-        this.stats.hr++;
-        this.stats.longestHR = Math.max(this.stats.longestHR, Math.round(p.distance));
+        this.tally.hr++;
+        this.tally.longestHR = Math.max(this.tally.longestHR, Math.round(p.distance));
       }
     }
-    this.stats.rbi += res.rbi;
-    this.stats.runs += res.scoredRunners.filter((r) => r === this.batter).length;
+    this.tally.rbi += res.rbi;
+    this.tally.runs += res.scoredRunners.filter((r) => r === this.batter).length;
     this.creditBatter(play.result, res.rbi);
     this.emitCount();
     this.emit('result', {
       kind: 'pa', result: play.result, text: plan.groundRule && play.result === 'double' ? 'GROUND-RULE DOUBLE' : plan.infieldFly ? 'INFIELD FLY' : rules.RESULT_TEXT[play.result] || play.result.toUpperCase(),
-      runs: res.runs, outs: g.outs, outsBefore, halfOver: res.halfOver, walkOff: res.walkOff, batter: this.batter,
+      runs: res.runs, scoredRunners: res.scoredRunners || [], outs: g.outs, outsBefore, halfOver: res.halfOver, walkOff: res.walkOff, batter: this.batter,
       ...summary,
     });
     this.finishPitch(this.cfg.pace.playEndPause + (res.runs > 0 ? 0.35 : 0), res.halfOver || g.over, true, play.result);
@@ -867,15 +966,18 @@ export class Engine {
     L.rbi += runs;
     this.emit('batterLine', { batter: b, line: { ...L }, result, runs });
   }
+  // (a computer batter's line goes in `oppLines`, never with your players' - whoever asks, and whichever half it is)
   lineOf(b) {
     const id = b && b.id !== undefined ? b.id : 'x';
-    return this.lines[id] || (this.lines[id] = { pa: 0, ab: 0, h: 0, hr: 0, rbi: 0, bb: 0, k: 0, sb: 0 });
+    const theirs = this.oppLineup.includes(b) || (this.offense === 'cpu' && !this.lineup.includes(b));
+    const book = theirs ? this.oppLines : this.lines;
+    return book[id] || (book[id] = { pa: 0, ab: 0, h: 0, hr: 0, rbi: 0, bb: 0, k: 0, sb: 0 });
   }
 
   // Practice: the session so far (runs, hits, home runs) and who is on base.
   practiceState() {
     const g = this.pgame;
-    return { runs: g ? g.score.top : 0, hits: this.stats.hits, hr: this.stats.hr, bases: g ? g.bases.map((b) => !!b) : [false, false, false] };
+    return { runs: g ? g.score.top : 0, hits: this.tally.hits, hr: this.tally.hr, bases: g ? g.bases.map((b) => !!b) : [false, false, false] };
   }
 
   // ------------------------------------------------------------------ Home Run Derby
@@ -885,8 +987,8 @@ export class Engine {
     d.bestStreak = Math.max(d.bestStreak, d.streak);
     const ft = Math.round(summary.distance);
     d.longest = Math.max(d.longest, ft);
-    this.stats.hits++; this.stats.hr++; this.stats.pa++; this.stats.ab++;
-    this.stats.longestHR = Math.max(this.stats.longestHR, ft);
+    this.tally.hits++; this.tally.hr++; this.tally.pa++; this.tally.ab++;
+    this.tally.longestHR = Math.max(this.tally.longestHR, ft);
     this.emit('derby', { ...d });
     this.emit('result', { kind: 'play', result: 'homer', text: 'HOME RUN', distanceFt: ft, streak: d.streak, ...summary });
     this.finishPitch(this.cfg.pace.playEndPause);
@@ -897,18 +999,18 @@ export class Engine {
     d.streak = 0;
     const free = (kind === 'foul' || kind === 'whiff') && !this.d.derbyFoulIsOut;
     if (!free) d.outs++;
-    this.stats.pa++; this.stats.ab++;
+    this.tally.pa++; this.tally.ab++;
     this.emit('derby', { ...d });
     this.emit('result', { kind: 'play', result: 'out', text: free ? text.toUpperCase() + ' (FREE)' : 'OUT', detail: text, ...summary });
     this.finishPitch(this.cfg.pace.playEndPause);
   }
 
-  // The runner who starts an extra inning on second: your player who bats just before this half's leadoff man (the computer's is just
-  // "Runner" - its half is simulated).
+  // The runner who starts an extra inning on second: the player who bats just before this half's leadoff man, from the side at bat.
   extraRunner(half) {
     const g = this.game;
-    if (half !== this.playerSide) return { ghost: true, name: 'Runner' };
-    return this.lineup[(g.lineupIdx[half] + 8) % 9];
+    const r = (half === this.playerSide ? this.lineup : this.oppLineup)[(g.lineupIdx[half] + 8) % 9];
+    r.roe = false; // (he was put there: his run counts as earned - see creditPitching)
+    return r;
   }
 
   // ------------------------------------------------------------------ half innings (quick game)
@@ -917,7 +1019,8 @@ export class Engine {
     const res = rules.advanceHalf(g, (half) => this.extraRunner(half));
     this.emit('halfEnd', { game: g });
     if (res.gameOver) return this.finishGame();
-    if (g.half !== this.playerSide) return this.runAiHalf();
+    this.fieldersSetAt = 0; // (the other team takes the field: its pitcher and catcher are set)
+    if (this.offense === 'cpu') return this.beginCpuHalf(true); // (the computer bats: you pitch)
     this.emit('inningChange', { inning: g.inning, half: g.half, newInning: true });
     this.setPhase('halfBreak');
     this.beginPlateAppearance(true);
@@ -980,6 +1083,10 @@ export class Engine {
     };
   }
 }
+
+// You pitch the computer's half: the aim / delivery / ring phases, the computer's batter and runners, your pitching line
+// (game/pitchingHalf.js).
+installPitchingHalf(Engine);
 
 function newStats() {
   return {

@@ -231,7 +231,7 @@ describe('whole games', () => {
       const sumTop = ls.top.reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0);
       expect(sumTop).toBe(e.game.score.top);
     }
-  });
+  }, 120000); // (the computer's halves are played live)
 
   it('is repeatable: the same seed and the same bot give the same game', () => {
     const run = () => {
@@ -307,21 +307,23 @@ describe('whole games', () => {
     expect(e.pitch.target.x).toBe(0);
   });
 
-  it('you are the home team: the computer bats first (instantly) and you bat last', () => {
+  it('you are the home team: the computer bats first (you pitch to it) and you bat last', () => {
     const e = new Engine({ mode: 'quick', seed: 41 });
     expect(e.playerSide).toBe('bottom');
     e.pitchOverride = strikePitch;
-    let summary = null;
-    e.on('aiHalf', (s) => { summary = s; });
     e.start();
-    expect(summary).toBeTruthy(); // the visitors' first half is played out before your first pitch
-    expect(summary.half).toBe('top');
-    expect(e.phase).toBe('aiSummary');
-    e.skipSummary();
-    e.update(DT);
-    expect(e.phase).toBe('ready');
+    // the visitors' first half is played out (the computer pitches it for you) before your first time up
+    expect(e.offense).toBe('cpu');
+    expect(e.game.half).toBe('top');
+    expect(e.phase).toBe('aim');
+    let pas = 0;
+    e.on('paStart', () => { if (e.offense === 'cpu') pas++; });
+    expect(untilPhase(e, 'ready', 600)).toBe(true);
+    expect(pas).toBeGreaterThanOrEqual(2); // (at least three batters: the leadoff man came up at the start)
+    expect(e.offense).toBe('player');
     expect(e.game.half).toBe('bottom');
     expect(e.game.inning).toBe(1);
+    expect(e.batter).toBe(e.lineup[0]);
   });
 
   it('a whole game as the home team: the win is yours when the bottom score is higher, and a walk-off ends it', () => {
@@ -340,21 +342,25 @@ describe('whole games', () => {
       if (e.game.walkOff) walkOffs++;
     }
     expect(walkOffs).toBeGreaterThanOrEqual(0);
-  }, 60000);
+  }, 120000);
 
-  it('the computer half-inning is summarised and the game moves on', () => {
+  it('the computer\'s half-inning is played live (the computer pitches it for you) and the game moves on', () => {
     const e = new Engine({ mode: 'quick', seed: 41, playerSide: 'top' });
     e.pitchOverride = strikePitch;
-    let summary = null;
-    e.on('aiHalf', (s) => { summary = s; });
+    const results = [];
+    e.on('result', (r) => { if (e.offense === 'cpu' && r.kind === 'pa') results.push(r.result); });
     e.start();
     let guard = 0;
-    while (!summary && guard++ < 200 / DT) e.update(DT);
-    expect(summary).toBeTruthy();
-    expect(summary.events.length).toBeGreaterThan(0);
-    expect(e.phase).toBe('aiSummary');
-    e.skipSummary();
-    e.update(DT);
+    while (e.offense === 'player' && guard++ < 200 / DT) e.update(DT);
+    expect(e.offense).toBe('cpu');
+    expect(e.game.half).toBe('bottom');
+    expect(e.phase).toBe('aim');
+    const before = JSON.stringify(e.stats);
+    guard = 0;
+    while (e.offense === 'cpu' && !e.over && guard++ < 600 / DT) e.update(DT);
+    expect(results.length).toBeGreaterThanOrEqual(3);
+    expect(e.pitchStats.outs).toBe(3);
+    expect(JSON.stringify(e.stats)).toBe(before); // (their at-bats never touch your batting)
     expect(e.phase).toBe('ready');
     expect(e.game.half).toBe('top');
     expect(e.game.inning).toBe(2);

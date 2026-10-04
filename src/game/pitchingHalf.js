@@ -1,0 +1,245 @@
+// You pitch the computer's half-inning. The engine's own methods for that half, installed onto Engine.prototype (engine.js calls
+// installPitchingHalf at the bottom of the file): no graphics, engine time only, every random draw from the engine's seeded rng.
+//   aim      - you choose a pitch (selectPitch) and move the target (setPitchAim); startDelivery() begins the windup
+//   delivery - a ring shrinks onto the target; ringTap() as it meets it grades the pitch; the ball leaves the hand after
+//              `pitching.delivery` s whatever the tap was (the tap only sets the grade)
+//   pitch    - the computer's batter has read it and decided at the release (cpuBatter.decideSwing); a swing goes through the same
+//              swing physics as yours (engine.commitSwing) - then the existing play / result machinery
+//   play     - your fielders make the play; the computer sends its own runners (cpuRunner.chooseSend)
+//   result   - your pitcher's line is credited (creditPitching); the next pitch is aimed `pitching.nextPitch` s after the call
+// With `cpuHalf: 'auto'` the computer pitches for you (choosePitch with your pitcher's arsenal, a ring grade from `pitching.sim.grades`).
+import { clamp } from '../util/math.js';
+import { buildPitch, isStrike, hitsBatter } from '../physics/pitch.js';
+import { alignDefense, tapOptions } from './fielding.js';
+import * as rules from './rules.js';
+import { ringTiming, throwPitch, gradeTap, fatigue } from './pitching.js';
+import { decideSwing } from './cpuBatter.js';
+import { chooseSend, stealDecision } from './cpuRunner.js';
+import { choosePitch } from './pitcherAI.js';
+
+/** One pitching line: outs, hits, runs, earned runs, walks, strikeouts, home runs, pitches. */
+export function newPitchLine() {
+  return { outs: 0, h: 0, r: 0, er: 0, bb: 0, k: 0, hr: 0, pitches: 0 };
+}
+/** Your pitchers' numbers in a game: the whole staff's line plus one per pitcher (`byPitcher[id]`). */
+export function newPitchStats() {
+  return { ...newPitchLine(), byPitcher: {} };
+}
+
+const methods = {
+  // ------------------------------------------------------------------ the half and its batters
+  // The computer comes up to bat: your pitcher is on the mound (the starter, the first time) and its first batter steps in.
+  beginCpuHalf(newInning = false) {
+    const g = this.game;
+    this.emit('inningChange', { inning: g.inning, half: g.half, newInning });
+    this.outsSeen = g.outs;
+    this.beginCpuPA(true);
+  },
+
+  // A computer batter steps in. No Ready card: you are straight back at the aiming screen (`quiet`: no save point - a resumed game).
+  beginCpuPA(first = false, quiet = false) {
+    const g = this.game;
+    this.batterIndex = g.lineupIdx[g.half] % 9;
+    this.batter = this.oppLineup[this.batterIndex];
+    this.pitch = null; this.swing = null; this.play = null; this.ring = null; this.cpuSwing = null;
+    alignDefense(this.defense, this.bases, this.outs, this.cfg); // (your fielders take up their spots for the situation)
+    this.batterReadyFlag = true;
+    this.setBunt(false);
+    this.steal = null; this.setSteal(false);
+    this.setPhase('aim');
+    this.emit('paStart', { batter: this.batter, index: this.batterIndex, count: this.count, waiting: false, offense: 'cpu', first });
+    this.emitCount();
+    if (!quiet) this.checkpoint();
+    this.emit('aimStart', { pitcher: this.mound.pitcher, batter: this.batter });
+  },
+
+  // The next pitch to the same batter.
+  nextCpuPitch() {
+    this.pitch = null; this.swing = null; this.play = null; this.ring = null; this.cpuSwing = null;
+    this.setPhase('aim');
+    this.checkpoint();
+    this.emit('aimStart', { pitcher: this.mound.pitcher, batter: this.batter });
+  },
+
+  // ------------------------------------------------------------------ your inputs
+  // Choose a pitch (one your pitcher throws). The choice stays for the next pitches. True when taken.
+  selectPitch(type) {
+    if (!this.pitching || !this.mound.pitcher.pitches.includes(type)) return false;
+    this.pitchType = type;
+    return true;
+  },
+
+  // Where you aim the pitch (ft, in the plane over the front of the plate - the same area as the bat's reach). Returns the aim.
+  setPitchAim(x, y) {
+    const R = this.cfg.swing.reach;
+    this.pitchAim.x = clamp(x, -R.x, R.x);
+    this.pitchAim.y = clamp(y, R.yMin, R.yMax);
+    return this.pitchAim;
+  },
+
+  // Start the delivery: the pitch and the aim are locked and the ring starts to shrink. Only at the aiming screen. True when started.
+  startDelivery() {
+    if (this.phase !== 'aim' || !this.pitching) return false;
+    const P = this.cfg.pitching, pitcher = this.mound.pitcher;
+    const type = pitcher.pitches.includes(this.pitchType) ? this.pitchType : pitcher.pitches[0];
+    alignDefense(this.defense, this.bases, this.outs, this.cfg); // (a steal may have changed the situation)
+    this.ring = { tStart: this.time, ...ringTiming(pitcher, type, this.fatigueF(), this.cfg), tapped: false, errMs: null, type, aim: { ...this.pitchAim } };
+    this.setPhase('delivery');
+    // their runners may go with your delivery: they break `stealBreak` before the release (the rest is rolled at the release)
+    this.steal = null;
+    if (this.diamond && stealDecision({ bases: this.bases, count: this.count, outs: this.outs, speeds: this.runnerSpeeds(), rng: this.rng }, this.cfg)) {
+      const going = this.stealBases();
+      if (going.length) this.steal = { bases: going, start: this.stealStarts(going, this.time + P.delivery, null) };
+    }
+    this.emit('delivery', { ring: this.ring });
+    return true;
+  },
+
+  // Tap as the ring meets the target. `sinceUpdate` = seconds between the last engine update and the actual tap (frame-rate
+  // independent, like swingPressed). Once per delivery, before the ring closes (no tap = WILD). True when taken.
+  ringTap(sinceUpdate = 0) {
+    const r = this.ring;
+    if (this.phase !== 'delivery' || !r || r.tapped) return false;
+    const t = this.time + clamp(sinceUpdate, -0.02, 0.05) - this.inputDelay;
+    if (t > r.tStart + r.time) return false; // (the ring has closed)
+    return this.tapRing((t - (r.tStart + r.hitAt)) * 1000);
+  },
+  tapRing(errMs) {
+    const r = this.ring;
+    r.tapped = true; r.errMs = errMs;
+    this.emit('ringTap', { grade: gradeTap(errMs, this.cfg), errMs });
+    return true;
+  },
+
+  // How tired your pitcher is (0 fresh .. 1 spent).
+  fatigueF() {
+    return fatigue(this.mound.left, this.mound.max, this.cfg);
+  },
+
+  // ------------------------------------------------------------------ the tick
+  updateAim() {
+    // the computer pitches for you ('auto'): it picks and starts at once (once the pitcher is back on the rubber)
+    if (this.cpuHalf === 'auto' && this.pitching && this.time >= this.fieldersSetAt) this.autoPitch();
+  },
+
+  updateDelivery() {
+    const r = this.ring, P = this.cfg.pitching;
+    if (r.autoErrMs !== undefined && !r.tapped && this.time >= r.tStart + r.hitAt + r.autoErrMs / 1000) this.tapRing(r.autoErrMs);
+    if (this.time >= r.tStart + P.delivery) this.releaseCpuPitch();
+  },
+
+  // The computer pitching for you: a pitch from your pitcher's arsenal at the level's locations, and a ring grade drawn from
+  // `pitching.sim.grades` (the tap's error drawn inside that grade's window, early or late at random).
+  autoPitch() {
+    const pitcher = this.mound.pitcher, P = this.cfg.pitching, W = P.ring;
+    const last = this.mound.recent[this.mound.recent.length - 1];
+    const p = choosePitch({
+      mode: 'quick', difficulty: this.difficulty, count: this.count, rng: this.rng, batterHand: this.batterHand, pitcherHand: pitcher.hand,
+      lastType: last ? last.type : undefined, arsenal: pitcher.pitches,
+    }, this.cfg);
+    this.pitchType = p.type;
+    this.setPitchAim(p.target.x, p.target.y);
+    const grade = this.rng.weighted(P.sim.grades);
+    const band = { perfect: [0, W.perfect], good: [W.perfect, W.good], ok: [W.good, W.ok], wild: [W.ok, P.sim.wildMax] }[grade];
+    const mag = this.rng.range(band[0], band[1]);
+    const errMs = this.rng.chance(0.5) ? -mag : mag;
+    if (this.startDelivery()) this.ring.autoErrMs = errMs;
+  },
+
+  // The ball leaves your pitcher's hand: the pitch you aimed, as well as you tapped (pitching.throwPitch), at full real speed.
+  releaseCpuPitch() {
+    const r = this.ring, cfg = this.cfg, P = cfg.pitching, m = this.mound, pitcher = m.pitcher;
+    const tRelease = r.tStart + P.delivery;
+    const th = throwPitch({ pitcher, type: r.type, aim: r.aim, errMs: r.tapped ? r.errMs : null, fatigueF: this.fatigueF(), rng: this.rng }, cfg);
+    const hand = pitcher.hand || 'R';
+    const flight = buildPitch({ type: th.type, speedMph: th.speedMph, hand, target: th.target, movementScale: th.movementScale, pace: 1 }, cfg);
+    this.pitchCount++;
+    this.pitch = {
+      id: this.pitchCount,
+      type: th.type, speedMph: th.speedMph, plateSpeedMph: flight.plateSpeedMph, target: th.target, intendedStrike: isStrike(r.aim.x, r.aim.y, cfg),
+      tell: { slot: 0, lag: 0 }, announce: false, flight, hand,
+      tWindup: r.tStart, windupDur: P.delivery, tRelease,
+      tCross: tRelease + flight.T, tCatch: tRelease + flight.tCatch,
+      isStrike: isStrike(th.target.x, th.target.y, cfg),
+      hitsBatter: hitsBatter(th.target.x, th.target.y, this.batterHand, cfg), // (if he lets it go: hit by pitch)
+      resolved: false, caught: false,
+      grade: th.grade, wildKind: th.wildKind, errMs: th.errMs, aim: { ...r.aim }, mine: true,
+    };
+    this.swing = null;
+    m.pitches++;
+    this.pitchStats.pitches++; this.pitchLine(pitcher.id).pitches++;
+    // runners who broke during the delivery: the catcher's exchange and the throw are rolled now (engine.beginSteal)
+    if (this.steal && !this.steal.plan) this.beginSteal(this.steal.bases, this.steal.start);
+    // the batter reads it from the release and decides: take or swing (and if he swings, how early or late and where)
+    const dec = this.cpuSwingOverride ? this.cpuSwingOverride(this) : decideSwing({
+      pitch: this.pitch, count: this.count, recent: m.recent.slice(-2), batter: this.batter, level: this.difficulty,
+      strength: this.d.cpuStrength ?? 0, rng: this.rng,
+    }, cfg);
+    this.cpuSwing = null;
+    if (dec && dec.swing) {
+      const R = cfg.swing.reach;
+      const aim = { x: clamp(dec.aim.x, -R.x, R.x), y: clamp(dec.aim.y, R.yMin, R.yMax) }; // (his bat reaches as far as yours)
+      this.cpuSwing = { tPress: this.pitch.tCross + dec.errorMs / 1000 - cfg.timing.swingDelay, aim, protect: !!dec.protect };
+    }
+    m.recent = [...m.recent, { type: th.type, speedMph: th.speedMph }].slice(-2);
+    this.setPhase('pitch');
+    this.emit('pitchGrade', { grade: th.grade, wildKind: th.wildKind });
+    this.emit('release', { pitch: this.pitch });
+  },
+
+  // The computer sends its runners on a ball in play: a first look a moment after contact (drawn when the ball was hit), then every
+  // `cpuRun.every` s, once the ball is caught or down (`plan.send.res`) and while a send still decides the play (`plan.send.main`).
+  // Each look happens at its exact moment, whatever the frame rate.
+  cpuRunnerLooks() {
+    const p = this.play, R = this.cfg.cpuRun;
+    if (!p || p.steal || p.wild || !p.planIn || !p.plan.send || p.cpuLook == null) return;
+    for (let guard = 0; guard < 200 && this.phase === 'play' && p.cpuLook != null && p.t0 + p.cpuLook <= this.time; guard++) {
+      const S = p.plan.send;
+      const t = p.cpuLook; // (seconds after contact)
+      if (t > (S.main ?? Infinity) || t > S.by || t >= (S.closeAt ?? Infinity) || t >= p.plan.endTime) { p.cpuLook = null; break; }
+      const opens = Math.max(S.from, S.res ?? S.from);
+      if (t < opens) { p.cpuLook = opens; continue; }
+      p.cpuLook += R.every;
+      // (everything up to this moment has happened: the events of the play so far are out before a send re-plans the rest)
+      while (p.nextEvent < p.events.length && p.events[p.nextEvent].t <= t) this.emit('playEvent', p.events[p.nextEvent++]);
+      const targets = tapOptions(p.plan, t);
+      const base = chooseSend({ planIn: p.planIn, t, targets, rng: this.rng }, this.cfg);
+      if (base !== null) {
+        const opt = targets.find((q) => q.base === base);
+        this.applyRunnerOrder({ base, t, from: opt.from });
+      }
+    }
+  },
+
+  // ------------------------------------------------------------------ your pitching line
+  pitchLine(id) {
+    return this.pitchStats.byPitcher[id] || (this.pitchStats.byPitcher[id] = newPitchLine());
+  },
+
+  // After every result in the computer's half: outs, strikeouts, walks, hits, home runs and runs go on your pitcher's line (and the
+  // staff's). A run is unearned when the runner who scored reached on an error.
+  creditPitching(r) {
+    if (!this.game || this.offense !== 'cpu' || !r) return;
+    const g = this.game, ps = this.pitchStats, line = this.pitchLine(this.mound.pitcher.id);
+    if (r.kind === 'pa' && r.batter && typeof r.batter === 'object') r.batter.roe = r.result === 'error'; // (whenever a batter reaches)
+    const outs = Math.max(0, g.outs - this.outsSeen);
+    this.outsSeen = g.outs;
+    const runs = r.runs || 0;
+    const unearned = (r.scoredRunners || []).filter((x) => x && typeof x === 'object' && x.roe).length;
+    const add = { outs, r: runs, er: Math.max(0, runs - unearned) };
+    if (r.kind === 'pa') {
+      if (/^strikeout/.test(r.result)) add.k = 1;
+      if (r.result === 'walk') add.bb = 1;
+      if (rules.isHitResult(r.result)) add.h = 1;
+      if (r.result === 'homer' || r.result === 'insideParkHomer') add.hr = 1;
+    }
+    for (const [k, v] of Object.entries(add)) { ps[k] += v; line[k] += v; }
+  },
+};
+
+/** Puts the pitched-half methods onto the engine (engine.js). */
+export function installPitchingHalf(Engine) {
+  for (const [name, fn] of Object.entries(methods)) {
+    Object.defineProperty(Engine.prototype, name, { value: fn, writable: true, configurable: true, enumerable: false });
+  }
+}
