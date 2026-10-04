@@ -1,8 +1,10 @@
 // Headless playtest: run many simulated games/derbies with a bot and print statistics + sanity checks.
 // usage: node scripts/sim.mjs [games=200] [errSd=14] [difficulty=pro] [park=sandlot]   (NOSEND=1: the bot never sends a runner)
+// In the games the bot also pitches the computer's half like a person (bot.js, the `average` pitcher of scripts/pitchfeel.mjs).
 import { Engine } from '../src/game/engine.js';
 import { createBot } from '../src/game/bot.js';
 import { setPark } from '../src/physics/field.js';
+import { PITCHERS } from './pitchfeel.mjs';
 setPark(process.argv[5] || 'sandlot');
 
 const games = +(process.argv[2] || 200);
@@ -11,14 +13,23 @@ const difficulty = process.argv[4] || 'pro';
 const DT = 1 / 120;
 
 function run(mode, seed, extra = {}) {
-  const e = new Engine({ mode, difficulty, seed, ...extra });
-  const bot = createBot(e, { errSd, seed: seed + 1, send: !process.env.NOSEND });
-  const counts = { pitches: 0, results: {} };
+  const e = new Engine({ mode, difficulty, seed, cpuHalf: 'pitch', ...extra });
+  const bot = createBot(e, { errSd, seed: seed + 1, send: !process.env.NOSEND, pitcher: PITCHERS.average });
+  const counts = { pitches: 0, results: {}, cpu: { pa: 0, k: 0, bb: 0, hbp: 0, halves: 0, pitches: 0 } };
+  e.on('release', () => { if (e.offense === 'cpu') counts.cpu.pitches++; });
+  e.on('inningChange', () => { if (e.offense === 'cpu') counts.cpu.halves++; });
+  e.on('result', (r) => {
+    if (e.offense !== 'cpu' || r.kind !== 'pa') return;
+    counts.cpu.pa++;
+    if (/^strikeout/.test(r.result)) counts.cpu.k++;
+    if (r.result === 'walk') counts.cpu.bb++;
+    if (r.result === 'hitByPitch') counts.cpu.hbp++;
+  });
   const byGrade = {};
-  e.on('result', (r) => { if (r.grade && r.result && r.kind !== 'pitch') { byGrade[r.grade] ||= {}; const k = ['homer','insideParkHomer'].includes(r.result) ? 'HR' : ['single','double','triple'].includes(r.result) ? 'hit' : 'out'; byGrade[r.grade][k] = (byGrade[r.grade][k] || 0) + 1; byGrade[r.grade].n = (byGrade[r.grade].n || 0) + 1; } });
+  e.on('result', (r) => { if (e.offense === 'player' && r.grade && r.result && r.kind !== 'pitch') { byGrade[r.grade] ||= {}; const k = ['homer','insideParkHomer'].includes(r.result) ? 'HR' : ['single','double','triple'].includes(r.result) ? 'hit' : 'out'; byGrade[r.grade][k] = (byGrade[r.grade][k] || 0) + 1; byGrade[r.grade].n = (byGrade[r.grade].n || 0) + 1; } });
   let violations = [];
   e.on('windup', () => counts.pitches++);
-  e.on('result', (r) => { counts.results[r.result || r.call || r.kind] = (counts.results[r.result || r.call || r.kind] || 0) + 1; });
+  e.on('result', (r) => { if (e.offense === 'player') counts.results[r.result || r.call || r.kind] = (counts.results[r.result || r.call || r.kind] || 0) + 1; });
   e.on('count', (c) => {
     if (c.balls < 0 || c.balls > 3 || c.strikes < 0 || c.strikes > 2 || c.outs < 0 || c.outs > 3) violations.push('bad count ' + JSON.stringify(c));
   });
@@ -35,6 +46,7 @@ function run(mode, seed, extra = {}) {
   return { e, fin, counts, violations, t, byGrade };
 }
 
+const cpu = { pa: 0, k: 0, bb: 0, hbp: 0, halves: 0, pitches: 0 };
 let totalPitches = 0, wins = 0, runsFor = 0, runsAgainst = 0, hrs = 0, hits = 0, ab = 0, so = 0, bb = 0, gameSecs = 0, allViol = [];
 const res = {};
 const byGrade = {};
@@ -47,11 +59,13 @@ for (let i = 0; i < games; i++) {
   hrs += r.e.stats.hr; hits += r.e.stats.hits; ab += r.e.stats.ab; so += r.e.stats.strikeouts; bb += r.e.stats.walks;
   gameSecs += r.t;
   for (const k in r.counts.results) res[k] = (res[k] || 0) + r.counts.results[k];
+  for (const k in cpu) cpu[k] += r.counts.cpu[k];
   for (const g in r.byGrade) { byGrade[g] ||= {}; for (const k in r.byGrade[g]) byGrade[g][k] = (byGrade[g][k] || 0) + r.byGrade[g][k]; }
 }
 console.log(`QUICK (${difficulty}, bot timing sd ${errSd}ms) ${games} games`);
 console.log(`  win% ${(100 * wins / games).toFixed(0)}  runs/g for ${(runsFor / games).toFixed(2)} against ${(runsAgainst / games).toFixed(2)}`);
 console.log(`  AVG ${(hits / ab).toFixed(3)}  HR/g ${(hrs / games).toFixed(2)}  K/g ${(so / games).toFixed(1)}  BB/g ${(bb / games).toFixed(1)}  pitches/g ${(totalPitches / games).toFixed(0)}  game length ${(gameSecs / games / 60).toFixed(1)} min`);
+console.log(`  the bot pitching (average person): runs/half ${(runsAgainst / Math.max(1, cpu.halves)).toFixed(2)}  K ${(100 * cpu.k / cpu.pa).toFixed(0)}%  BB ${(100 * cpu.bb / cpu.pa).toFixed(0)}%  HBP ${(100 * cpu.hbp / cpu.pa).toFixed(1)}%  of ${cpu.pa} batters  pitches/half ${(cpu.pitches / Math.max(1, cpu.halves)).toFixed(1)}`);
 console.log('  results:', Object.entries(res).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}:${v}`).join(' '));
 
 for (const g of ['perfect', 'good', 'early', 'late']) { const b = byGrade[g]; if (!b) continue; console.log(`  ${g.padEnd(8)} n=${String(b.n).padStart(4)}  HR ${((b.HR||0)/b.n*100).toFixed(0)}%  hit ${((b.hit||0)/b.n*100).toFixed(0)}%  out ${((b.out||0)/b.n*100).toFixed(0)}%`); }
