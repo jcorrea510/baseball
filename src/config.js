@@ -293,21 +293,23 @@ export const CONFIG = {
 
   // --------------------------------------------------------------------------
   //  The computer's batter when you pitch (game/cpuBatter.js). Shared numbers; each level's own are in difficulty.<level>.cpuBat.
-  //  First balance pass (scripts/pitchfeel.mjs: an average person gives up about the old simulated half's runs on each level).
+  //  Balanced with scripts/pitchfeel.mjs (the bands in tests/pitchfeel.test.js: an average person gives up about the old simulated half's
+  //  runs on each level, a good one clearly fewer, a new one clearly more, Pro strikeouts 20-35%).
   // --------------------------------------------------------------------------
   cpuBat: {
     readTime: 0.22, // s before the swing must start that he judges where the pitch will cross
     readGuide: 'pro', // ...starting from this level's pitch guide on every level (your guide changes with the level; his read only by his readSd)
     breakRead: 0.6, // his read gets this much worse per foot the pitch breaks (x(1 + this x break in ft))
-    // Share of his read / timing error each grade of YOUR pitch causes (the hang floats over the middle: easy to square up).
-    gradeFactor: { perfect: 1.35, good: 1.15, ok: 1, hang: 0.6, sail: 1 },
+    // Share of his read / timing error each grade of YOUR pitch causes (the hang floats over the middle: easy to square up). Wide on purpose:
+    // a PERFECT tap is clearly harder to hit than a GOOD one, so a good pitcher gives up clearly fewer runs (pitchfeel good <= .75 x average).
+    gradeFactor: { perfect: 2.0, good: 1.2, ok: 0.8, hang: 0.5, sail: 1 },
     fadeOut: 1.4, // x his read error on a pitch that starts in the zone and finishes outside it (the slider off the corner)
-    fadePull: 0.35, // ...and his read is also pulled this share of the way back toward where that pitch started (x the grade factor, at most all the way): he sees a strike and chases it
+    fadePull: 0.2, // ...and his read is also pulled this share of the way back toward where that pitch started (x the grade factor, at most all the way): he sees a strike and chases it
     // His chance to swing, by where he THINKS the pitch will cross (zoneBoxRatio bands in `bands`). "Two" = two strikes.
     swing: {
       zone: 0.72, zoneTwo: 0.9, // a strike
-      edge: 0.4, edgeTwo: 0.8, // on the corner
-      chase: 0.22, chaseTwo: 0.4, // tempting but out of the zone
+      edge: 0.18, edgeTwo: 0.45, // on the corner (a ball he reads as a ball: he mostly takes it - he still chases many he misreads as strikes)
+      chase: 0.08, chaseTwo: 0.22, // tempting but out of the zone
       waste: 0.03, // way out of reach
       threeOhHeart: 0.3, // 3-0: he takes everything except a pitch he thinks is right down the middle, and only a power hitter...
       threeOhPower: 70, // ...with at least this Power rating
@@ -488,9 +490,9 @@ export const CONFIG = {
       aimAssist: 0.85, // share of a badly aimed contact pulled back into the good part of the bat (swing.assist): a thumb a little off still makes good contact
       // The computer's batter when YOU pitch (game/cpuBatter.js): his own numbers, never your batting help (balanced with scripts/pitchfeel.mjs).
       cpuBat: {
-        readSd: 0.08, // ft: how far off his read of where the pitch will cross is (before break, grade and his ratings change it)
-        timingSd: 46, // ms: how far off his swing timing is
-        aimSd: 0.07, // ft: how far off he moves the bat from where he read the pitch
+        readSd: 0.06, // ft: how far off his read of where the pitch will cross is (before break, grade and his ratings change it)
+        timingSd: 44, // ms: how far off his swing timing is
+        aimSd: 0.055, // ft: how far off he moves the bat from where he read the pitch
         window: { up: 0.5, tip: 0.95, handle: 0.8, sweet: { up: 0.42, tip: 0.9, handle: 0.75 } }, // his bat's contact window (same on every level to start)
         windowScale: 1, // his timing windows (1 = as wide as the level's base)
         aimAssist: 0, // he gets no aim help
@@ -529,9 +531,9 @@ export const CONFIG = {
       aimAssist: 0.75,
       // The computer's batter when YOU pitch (game/cpuBatter.js): his own numbers, never your batting help (balanced with scripts/pitchfeel.mjs).
       cpuBat: {
-        readSd: 0.05, // ft: how far off his read of where the pitch will cross is (before break, grade and his ratings change it)
-        timingSd: 36, // ms: how far off his swing timing is
-        aimSd: 0.04, // ft: how far off he moves the bat from where he read the pitch
+        readSd: 0.035, // ft: how far off his read of where the pitch will cross is (before break, grade and his ratings change it)
+        timingSd: 32, // ms: how far off his swing timing is
+        aimSd: 0.03, // ft: how far off he moves the bat from where he read the pitch
         window: { up: 0.5, tip: 0.95, handle: 0.8, sweet: { up: 0.42, tip: 0.9, handle: 0.75 } }, // his bat's contact window (same on every level to start)
         windowScale: 1, // his timing windows (1 = as wide as the level's base)
         aimAssist: 0, // he gets no aim help
@@ -564,8 +566,8 @@ export const CONFIG = {
       aimAssist: 0.6,
       // The computer's batter when YOU pitch (game/cpuBatter.js): his own numbers, never your batting help (balanced with scripts/pitchfeel.mjs).
       cpuBat: {
-        readSd: 0.03, // ft: how far off his read of where the pitch will cross is (before break, grade and his ratings change it)
-        timingSd: 32, // ms: how far off his swing timing is
+        readSd: 0.025, // ft: how far off his read of where the pitch will cross is (before break, grade and his ratings change it)
+        timingSd: 30, // ms: how far off his swing timing is
         aimSd: 0.025, // ft: how far off he moves the bat from where he read the pitch
         window: { up: 0.5, tip: 0.95, handle: 0.8, sweet: { up: 0.42, tip: 0.9, handle: 0.75 } }, // his bat's contact window (same on every level to start)
         windowScale: 1, // his timing windows (1 = as wide as the level's base)

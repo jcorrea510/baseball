@@ -12,8 +12,11 @@ import { pitchGuide } from './pitchGuide.js';
 import { chooseSend } from './cpuRunner.js';
 
 /** A person pitching (scripts/pitchfeel.mjs PITCHERS has the new / average / good ones): ring tap spread (ms), hand shake on the
- * aim (ft), how often he throws a pitch he did not mean to (`wrongPitch`), whether he mixes speeds on purpose (`mixSpeeds`). */
-export const BOT_PITCHER = { tapSd: 50, shake: 0.12, wrongPitch: 0, mixSpeeds: false };
+ * aim (ft), how often he throws a pitch he did not mean to (`wrongPitch`), whether he mixes speeds on purpose (`mixSpeeds`).
+ * Where he aims when behind in the count (`behindX`: share of the zone's half-width toward a corner, `behindY`: ft from the middle of
+ * the zone - a person does not groove it, he aims low and toward a corner inside the zone, so a shaky hand still walks a batter now and then) and
+ * how far inside the edge he paints a corner (`paint`, ft). */
+export const BOT_PITCHER = { tapSd: 50, shake: 0.12, wrongPitch: 0, mixSpeeds: false, behindX: 0.7, behindY: -0.75, paint: 0.08 };
 const FAST = new Set(['fastball', 'sinker', 'heater']);
 
 export function createBot(engine, o = {}) {
@@ -51,7 +54,7 @@ export function createBot(engine, o = {}) {
     }
     return prng.chance(pFast) ? prng.pick(fast) : prng.pick(slow);
   }
-  // Where he aims (the dot = where the pitch should cross): behind in the count, over the plate; with two strikes usually off the
+  // Where he aims (the dot = where the pitch should cross): behind in the count, low and toward a corner inside the zone; with two strikes usually off the
   // plate (below the knees, up with a fastball, or off the outside corner); else a corner or the knees. Then his hand shakes.
   function chooseTarget(count, type) {
     const P = engine.cfg.pitch, zw = P.zoneHalfWidth, bottom = P.zoneBottom, top = P.zoneTop, mid = (bottom + top) / 2;
@@ -59,7 +62,7 @@ export function createBot(engine, o = {}) {
     const side = prng.chance(0.6) ? away : -away;
     const fast = FAST.has(type);
     let x, y;
-    if (count.balls >= 3 || count.balls - count.strikes >= 2) { x = side * zw * 0.4; y = mid - 0.25; } // (a strike, please)
+    if (count.balls >= 3 || count.balls - count.strikes >= 2) { x = side * zw * pitcher.behindX; y = mid + pitcher.behindY; } // (a strike, please)
     else if (count.strikes === 2 && prng.chance(0.6)) {
       const r = prng.next();
       if (r < 0.45) { x = side * zw * 0.5; y = bottom - (fast ? 0.25 : 0.45); } // below the knees
@@ -67,9 +70,9 @@ export function createBot(engine, o = {}) {
       else { x = away * (zw + 0.3); y = mid - 0.4; } // off the outside corner
     } else {
       const r = prng.next();
-      if (r < 0.55) { x = side * (zw - 0.08); y = bottom + 0.1; } // a low corner (on the black)
+      if (r < 0.55) { x = side * (zw - pitcher.paint); y = bottom + 0.1; } // a low corner (on the black)
       else if (r < 0.8) { x = side * zw * 0.3; y = bottom + 0.1; } // the knees
-      else { x = side * (zw - 0.08); y = top - 0.2; } // up in the zone, on a corner
+      else { x = side * (zw - pitcher.paint); y = top - 0.2; } // up in the zone, on a corner
     }
     return { x: x + prng.gauss(0, pitcher.shake), y: y + prng.gauss(0, pitcher.shake) };
   }
