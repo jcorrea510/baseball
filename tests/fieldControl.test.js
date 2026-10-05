@@ -315,3 +315,16 @@ describe('FieldControl: a play always ends', () => {
     expect(fc.outcome.t).toBeLessThan(pendingPickupTime(sim, defense.LF, CONFIG));
   });
 });
+
+describe('FieldControl: how fielding by hand feels (scripts/fieldfeel.mjs)', () => {
+  // a casual person (late reactions, a shaky stick, dives a little off) on Pro, on balls the automatic fielding catches: most of them,
+  // never all (a wide band, so tuning the aim help does not break it)
+  it('a casual person catches most catchable balls on Pro, but not all', async () => {
+    const { catchRate } = await import('../scripts/fieldfeel.mjs');
+    const r = catchRate(200, 'casual', 'pro');
+    console.log(`casual on Pro: ${(100 * r.rate).toFixed(1)}% of ${r.n}`);
+    expect(r.n).toBe(200);
+    expect(r.rate).toBeGreaterThan(0.75);
+    expect(r.rate).toBeLessThan(0.98);
+  }, 120000);
+});

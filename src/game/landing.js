@@ -7,10 +7,10 @@ const smooth = (x) => { const t = clamp(x, 0, 1); return t * t * (3 - 2 * t); };
 
 /**
  * Where does this batted ball come down on the field? Returns null when there is nothing to show: a grounder or low liner, a home run,
- * or a ball that ends up in the stands.
+ * or a ball that ends up in the stands. `controlled`: you field it yourself (the ring shows sooner).
  * @returns {{x:number, z:number, tLand:number, tEnd:number, caught:boolean, tStart:number}|null}  times are seconds after contact
  */
-export function landingSpot(sim, plan, cfg = CONFIG) {
+export function landingSpot(sim, plan, cfg = CONFIG, controlled = false) {
   const L = cfg.landing;
   if (!sim || !sim.firstBounce || sim.homerun || (plan && plan.homer)) return null;
   const fb = sim.firstBounce;
@@ -26,7 +26,7 @@ export function landingSpot(sim, plan, cfg = CONFIG) {
   // the picture).
   const x = caught ? plan.catchPos.x : wall ? wall.x : fb.x, z = caught ? plan.catchPos.z : wall ? wall.z : fb.z;
   const tEnd = caught ? plan.catchT : endT;
-  return { x, z, tLand: tEnd, tEnd, caught, tStart: Math.min(L.delay, tEnd * 0.5) };
+  return { x, z, tLand: tEnd, tEnd, caught, tStart: Math.min(controlled ? L.controlDelay : L.delay, tEnd * 0.5) };
 }
 
 /**

@@ -632,7 +632,8 @@ export class App {
     this.playOuts = 0;
     this.groaned = false;
     // (null for grounders, home runs and balls that hit the wall first; a ball you field yourself: where it really comes down)
-    this.landing = landingSpot(c.sim, e.play && e.play.control ? null : c.plan, CONFIG);
+    const steer = !!(e.play && e.play.control);
+    this.landing = landingSpot(c.sim, steer ? null : c.plan, CONFIG, steer);
     const grade = c.grade;
     if (c.contact && c.contact.bunt) {
       // a bunt: a soft tock off the bat, no sparks, no freeze-frame, no shake

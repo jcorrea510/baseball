@@ -910,6 +910,7 @@ export const CONFIG = {
     minApex: 14, // ft: only balls hit up into the air get a ring (not grounders or low liners)
     minFlight: 1.0, // s: ...and only if they stay up at least this long
     delay: 0.45, // s after contact before the ring appears (the ball has left the bat)
+    controlDelay: 0.15, // ...on a ball you field yourself: sooner (you need to know where to run)
     fadeIn: 0.3, // s the ring takes to fade in
     fadeOut: 0.18, // s it takes to fade away at the end of the flight (no pop)
     radiusStart: 18, // ft: how big the ring starts
