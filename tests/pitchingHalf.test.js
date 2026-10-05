@@ -814,14 +814,72 @@ describe('pitching badges in the gameOver payload', () => {
     expect(c.k).toBe(1);
     expect(c.bestK).toBe(1); // (the Sim's strikeouts never feed the best game)
     expect(c.games).toBe(1);
-    expect(c.pitches).toBe(s.pitches);
+    expect(c.pitches).toBe(s.pitches - s.sim.pitches);
+    expect(c.pitches).toBeGreaterThan(0);
   });
 
-  it('a game that was only Sim adds no outs and no strikeouts; a game with no pitch of yours is not a game pitched', () => {
-    const only = careerPitchingFrom({ outs: 3, h: 0, r: 1, er: 1, bb: 0, k: 2, hr: 0, pitches: 4, simmedOuts: 3, simmedKs: 2, badges: [] });
-    expect(only).toMatchObject({ outs: 0, k: 0, bestK: 0, r: 1, pitches: 4, games: 1 });
-    expect(careerPitchingFrom({ outs: 0, h: 0, r: 0, er: 0, bb: 0, k: 0, hr: 0, pitches: 0, simmedOuts: 0, simmedKs: 0, badges: [] }).games).toBe(0);
+  const line = (o) => ({ outs: 0, h: 0, r: 0, er: 0, bb: 0, k: 0, hr: 0, pitches: 0, ...o });
+  it('a game that was all Sim is not a game pitched and adds nothing', () => {
+    const sum = { ...line({ outs: 3, h: 2, r: 3, er: 3, bb: 1, k: 2, hr: 1, pitches: 14 }), simmedOuts: 3, simmedKs: 2, sim: line({ outs: 3, h: 2, r: 3, er: 3, bb: 1, k: 2, hr: 1, pitches: 14 }), badges: [] };
+    expect(careerPitchingFrom(sum)).toMatchObject({ games: 0, outs: 0, h: 0, r: 0, er: 0, bb: 0, k: 0, hr: 0, pitches: 0, bestK: 0 });
     expect(careerPitchingFrom(null)).toBeNull();
+  });
+
+  it('only what you pitched is career pitching: a Sim\'s runs, hits, walks and pitches come off too', () => {
+    const sim = line({ outs: 3, h: 4, r: 3, er: 3, bb: 1, k: 1, hr: 1, pitches: 20 });
+    const sum = { outs: 6, h: 5, r: 3, er: 3, bb: 2, k: 4, hr: 1, pitches: 30, simmedOuts: 3, simmedKs: 1, sim, badges: [] };
+    expect(careerPitchingFrom(sum)).toMatchObject({ games: 1, outs: 3, h: 1, r: 0, er: 0, bb: 1, k: 3, hr: 0, pitches: 10, bestK: 3 });
+    // (numbers from before the Sim fields existed count as no Sim: no NaN)
+    const old = careerPitchingFrom({ outs: 3, h: 1, r: 1, er: 1, bb: 0, k: 2, hr: 0, pitches: 12, badges: [] });
+    expect(old).toMatchObject({ games: 1, outs: 3, r: 1, k: 2, pitches: 12 });
+    for (const v of Object.values(old)) if (typeof v === 'number') expect(Number.isFinite(v)).toBe(true);
+  });
+
+  it('a real pitch or two then a Sim half: the career line is only what you pitched', () => {
+    let costly = 0;
+    for (let seed = 3; seed < 15; seed++) {
+      const e = make({ seed });
+      e.start();
+      e.cpuSwingOverride = whiff;
+      for (let k = 0; k < 40 && e.pitchStats.outs < 1 && !e.over; k++) pitchOne(e); // (one real strikeout, then the Sim)
+      e.cpuSwingOverride = null;
+      e.simHalf();
+      for (let k = 0; k < 400 && e.simStep(50); k++);
+      const c = careerPitchingFrom(e.pitchingSummary());
+      const ps = e.pitchStats, sim = ps.sim;
+      expect(sim.pitches).toBeGreaterThan(0);
+      expect(c.pitches).toBe(ps.pitches - sim.pitches);
+      expect(c.outs).toBe(ps.outs - ps.simmedOuts);
+      expect(c.r).toBe(ps.r - sim.r);
+      expect(c.er).toBe(ps.er - sim.er);
+      expect(c.h).toBe(ps.h - sim.h);
+      expect(c.bb).toBe(ps.bb - sim.bb);
+      if (sim.h + sim.r + sim.bb > 0) costly++;
+      expect(c.r).toBeLessThanOrEqual(ps.r);
+    }
+    expect(costly).toBeGreaterThan(0); // (some Sim half really cost hits, runs or walks, so the subtraction was tested)
+  });
+
+  it('a Sim half that gets 9 strikeouts of 10 does not earn 10 K; ten real strikeouts still do', () => {
+    const e = make({ seed: 3 });
+    e.start();
+    e.pitchStats.pitches = 40; e.pitchStats.outs = 12; e.pitchStats.k = 10; e.pitchStats.simmedOuts = 9; e.pitchStats.simmedKs = 9;
+    expect(finish(e).pitching.badges).not.toContain('tenK');
+    const f = make({ seed: 3 });
+    f.start();
+    f.pitchStats.pitches = 40; f.pitchStats.outs = 12; f.pitchStats.k = 12; f.pitchStats.simmedOuts = 3; f.pitchStats.simmedKs = 2;
+    expect(finish(f).pitching.badges).toContain('tenK');
+  });
+
+  it('a Sim-only game through the engine: no pitch of yours, not a game pitched', () => {
+    const e = make({ seed: 3 });
+    e.start();
+    e.cpuSwingOverride = whiff;
+    e.simHalf();
+    for (let k = 0; k < 200 && e.simStep(50); k++);
+    const sum = e.pitchingSummary();
+    expect(sum.sim.pitches).toBe(sum.pitches);
+    expect(careerPitchingFrom(sum)).toMatchObject({ games: 0, pitches: 0, outs: 0, k: 0 });
   });
 
   it('a run allowed: no Shutout', () => {

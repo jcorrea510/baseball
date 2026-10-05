@@ -194,6 +194,16 @@ describe('career pitching', () => {
     expect(p.data.career.pitching).toMatchObject({ games: 2, outs: 36, h: 6, r: 2, er: 1, bb: 2, k: 11, pitches: 160, bestK: 7, shutouts: 1 });
   });
 
+  it('a Sim does not touch the career line: a game that was all Sim adds no game, and a mixed one adds only your part', () => {
+    const p = new Progress(memStore());
+    const sim = { outs: 3, h: 4, r: 3, er: 3, bb: 1, k: 1, hr: 1, pitches: 20 };
+    p.recordGame(quickResult({ pitching: { ...sim, simmedOuts: 3, simmedKs: 1, sim, badges: [] } }));
+    expect(p.data.career.pitching).toMatchObject({ games: 0, outs: 0, r: 0, er: 0, h: 0, k: 0, bestK: 0, pitches: 0 });
+    p.recordGame(quickResult({ pitching: { outs: 6, h: 5, r: 3, er: 3, bb: 2, k: 4, hr: 1, pitches: 30, simmedOuts: 3, simmedKs: 1, sim, badges: [] } }));
+    expect(p.data.career.pitching).toMatchObject({ games: 1, outs: 3, h: 1, r: 0, er: 0, bb: 1, k: 3, hr: 0, pitches: 10, bestK: 3 });
+    expect(eraText(p.data.career.pitching.er, p.data.career.pitching.outs)).toBe('0.00');
+  });
+
   it('innings use thirds and ERA is earned runs x 9 per nine innings', () => {
     expect(inningsText(7)).toBe('2.1');
     expect(inningsText(8)).toBe('2.2');

@@ -23,22 +23,27 @@ export function newPitchLine() {
 }
 /** Your pitchers' numbers in a game: the whole staff's line plus one per pitcher (`byPitcher[id]`). */
 export function newPitchStats() {
-  // (`spent[id]` = the stamina a pitcher has used today; `simmedOuts` = outs the computer got for you in a Sim; `halfOuts` / `halfKs` /
-  //  `halfBad` follow the half in progress - three outs that were all your own strikeouts = a side struck out, counted in `sides`)
-  return { ...newPitchLine(), byPitcher: {}, spent: {}, simmedOuts: 0, simmedKs: 0, halfOuts: 0, halfKs: 0, halfBad: false, sides: 0 };
+  // (`spent[id]` = the stamina a pitcher has used today; `simmedOuts` / `simmedKs` = outs and strikeouts the computer got for you in a
+  //  Sim; `sim` = everything the Sim pitched (hits, runs, walks, pitches ... on the same line shape) - none of it is your career
+  //  pitching, and the 10 K badge counts real strikeouts only; `halfOuts` / `halfKs` / `halfBad` follow the half in progress - three
+  //  outs that were all your own strikeouts = a side struck out, counted in `sides`)
+  return { ...newPitchLine(), byPitcher: {}, spent: {}, sim: newPitchLine(), simmedOuts: 0, simmedKs: 0, halfOuts: 0, halfKs: 0, halfBad: false, sides: 0 };
 }
 
 /** What one finished game adds to your career pitching (progression.js folds it into the save), from `engine.pitchingSummary()`:
- *  the outs and strikeouts the computer got for you in a Sim are not yours, so they are left out of outs, K and the best-K game.
- *  `games` is 1 when you threw a pitch yourself, else 0. Null when you did not pitch. */
+ *  everything the computer pitched for you in a Sim (`sim`: hits, runs, walks, home runs, pitches; `simmedOuts`, `simmedKs`) is left
+ *  out, so the career line is only what you pitched. `games` is 1 when you threw a pitch yourself, else 0 (a game that was all Sim).
+ *  Old numbers without the Sim fields count as no Sim. Null when you did not pitch. */
 export function careerPitchingFrom(sum) {
   if (!sum) return null;
+  const sim = sum.sim || {};
   const real = (all, simmed) => Math.max(0, (all || 0) - (simmed || 0));
   const k = real(sum.k, sum.simmedKs);
+  const pitches = real(sum.pitches, sim.pitches);
   return {
-    games: (sum.pitches || 0) > 0 ? 1 : 0,
-    outs: real(sum.outs, sum.simmedOuts), h: sum.h || 0, r: sum.r || 0, er: sum.er || 0, bb: sum.bb || 0, k, hr: sum.hr || 0,
-    pitches: sum.pitches || 0, bestK: k, shutout: (sum.badges || []).includes('shutout'),
+    games: pitches > 0 ? 1 : 0,
+    outs: real(sum.outs, sum.simmedOuts), h: real(sum.h, sim.h), r: real(sum.r, sim.r), er: real(sum.er, sim.er), bb: real(sum.bb, sim.bb), k,
+    hr: real(sum.hr, sim.hr), pitches, bestK: k, shutout: (sum.badges || []).includes('shutout'),
   };
 }
 
@@ -271,6 +276,7 @@ const methods = {
     spent[pitcher.id] = (spent[pitcher.id] || 0) + cost;
     this.emit('stamina', { left: m.left, max: m.max });
     this.pitchStats.pitches++; this.pitchLine(pitcher.id).pitches++;
+    if (this.simming) this.pitchStats.sim.pitches++; // (a Sim's pitches are not yours)
     if (this.practicePitch) this.emit('practice', this.practiceState());
     // runners who broke during the delivery: the catcher's exchange and the throw are rolled now (engine.beginSteal)
     if (this.steal && !this.steal.plan) this.beginSteal(this.steal.bases, this.steal.start);
@@ -372,7 +378,7 @@ const methods = {
       if (rules.isHitResult(r.result)) add.h = 1;
       if (r.result === 'homer' || r.result === 'insideParkHomer') add.hr = 1;
     }
-    for (const [k, v] of Object.entries(add)) { ps[k] += v; line[k] += v; }
+    for (const [k, v] of Object.entries(add)) { ps[k] += v; line[k] += v; if (this.simming) ps.sim[k] += v; }
     if (outs > 0) {
       if (this.simming) { ps.simmedOuts += outs; ps.simmedKs += add.k || 0; }
       if (this.simming || outs !== 1 || add.k !== 1) ps.halfBad = true; else ps.halfKs++;

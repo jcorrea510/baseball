@@ -1069,12 +1069,12 @@ export class Engine {
   pitchingSummary() {
     const ps = this.pitchStats, g = this.game;
     if (this.mode !== 'quick' || !g || ps.pitches <= 0) return null;
-    const { outs, h, r, er, bb, k, hr, pitches, simmedOuts, simmedKs } = ps;
+    const { outs, h, r, er, bb, k, hr, pitches, simmedOuts, simmedKs, sim } = ps;
     const badges = [];
     if (ps.sides > 0) badges.push('side');
-    if (k >= this.cfg.pitching.badges.strikeouts) badges.push('tenK');
+    if (Math.max(0, k - (simmedKs || 0)) >= this.cfg.pitching.badges.strikeouts) badges.push('tenK'); // (strikeouts you got, not the Sim's)
     if (g.score[this.oppSide] === 0 && simmedOuts === 0 && outs > 0) badges.push('shutout');
-    return { outs, h, r, er, bb, k, hr, pitches, simmedOuts, simmedKs, badges };
+    return { outs, h, r, er, bb, k, hr, pitches, simmedOuts, simmedKs, sim: { ...sim }, badges };
   }
 
   // ------------------------------------------------------------------ snapshot for UI / tests
