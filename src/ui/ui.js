@@ -50,6 +50,7 @@ const ICONS = {
   flash: '<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/><circle cx="12" cy="12" r="3.2"/>',
   timing: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9.5 2.5h5"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>',
+  glove: '<path d="M7 20v-5L5 9.5a1.2 1.2 0 0 1 2.2-.8L8.5 12V5a1.2 1.2 0 0 1 2.4 0v5V4a1.2 1.2 0 0 1 2.4 0v6V5a1.2 1.2 0 0 1 2.4 0v6.5V8.5a1.2 1.2 0 0 1 2.4 0V15c0 3-2 5-5 5z"/>',
   bat: '<path d="M4 20l2-2M6.5 17.5l10.8-10.8a2.6 2.6 0 0 1 3.7 3.7L10.2 21.2"/>',
   crowd: '<circle cx="7" cy="9" r="2.4"/><circle cx="17" cy="9" r="2.4"/><circle cx="12" cy="7.5" r="2.8"/><path d="M2.5 19c.4-3 2.2-4.8 4.5-4.8M21.5 19c-.4-3-2.2-4.8-4.5-4.8M6.5 20c.5-3.8 2.8-6 5.5-6s5 2.2 5.5 6"/>',
   trash: '<path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13"/>',
@@ -487,6 +488,7 @@ export class UI {
       <div class="setgrid">
         ${seg('difficulty', 'star', 'Level · Quick, Derby, Practice', DIFFICULTIES.map((k) => [k, CONFIG.difficulty[k].label]), st.difficulty)}
         ${seg('hand', 'bat', 'Bats', [['auto', 'Mixed'], ['R', 'Right'], ['L', 'Left']], st.hand)}
+        ${seg('fielding', 'glove', 'Fielding', [['play', 'Play'], ['auto', 'Auto']], st.fielding === 'auto' ? 'auto' : 'play')}
         ${seg('tod', 'sun', 'Time', [['day', 'Day'], ['dusk', 'Dusk'], ['night', 'Night']], st.tod)}
         ${sw('zone', 'zone', 'Strike zone', st.zone)}
         ${sw('pitchGuide', 'guide', 'Pitch guide', st.pitchGuide)}

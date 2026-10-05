@@ -168,6 +168,19 @@ describe('reset stats', () => {
   });
 });
 
+describe('fielding setting', () => {
+  it('defaults to Play, and older or invalid saves load as Play', () => {
+    expect(DEFAULT_SAVE().settings.fielding).toBe('play');
+    const store = memStore();
+    store.set(CONFIG.storageKey, JSON.stringify({ v: 1, settings: { volume: 0.5 } }));
+    expect(new Progress(store).settings.fielding).toBe('play');
+    store.set(CONFIG.storageKey, JSON.stringify({ v: 1, settings: { fielding: 'x' } }));
+    expect(new Progress(store).settings.fielding).toBe('play');
+    store.set(CONFIG.storageKey, JSON.stringify({ v: 1, settings: { fielding: 'auto' } }));
+    expect(new Progress(store).settings.fielding).toBe('auto');
+  });
+});
+
 describe('first visit', () => {
   it('knows whether anything was saved before', () => {
     const store = memStore();
