@@ -396,7 +396,8 @@ function controlledPickup(sim, defense, cfg) {
 // longest straight line in the park at his top speed, plus `pendingAfter` for the braking and a detour round a corner of the wall.
 export function pendingPickupTime(sim, f, cfg = CONFIG) {
   const F = cfg.fielding, C = F.control;
-  return Math.max(sim.duration, airEnd(sim) + C.autoAfter) + timeToCover(f.speed, parkSpan(), F.accel) + C.pendingAfter;
+  const run = Math.max(sim.duration, airEnd(sim) + C.autoAfter) + timeToCover(f.speed, parkSpan(), F.accel);
+  return Math.max(run, airEnd(sim) + C.giveUpAfter) + C.pendingAfter; // (and never before the last resort, giveUpAfter)
 }
 // A ball he did not catch bounced over the wall: a ground-rule double, everybody awarded two bases. The runners did what they do on
 // any ball you steer for until it came down (the plan made before it came down is the same up to then): air legs and your orders

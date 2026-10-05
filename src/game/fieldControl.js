@@ -10,7 +10,8 @@
 //           around the moment the glove arrives. A press up to the level's diveWindow too early waits for the right moment; a press
 //           when he could simply run under the ball changes nothing; any other press is a dive that misses (he lies there, gets up);
 //   down    the ball touched the ground or the wall with no catch - he keeps chasing it;
-//   pickup  he is within groundGlove of the ball once it is low. `autoAfter` s after `down` without a pickup the auto-pilot takes over.
+//   pickup  he is within groundGlove of the ball once it is low (or at rest). `autoAfter` s after `down` without a pickup the auto-pilot
+//           takes over, and `giveUpAfter` s after it the play is ended with the pickup wherever the ball lies (a last resort).
 // What he did is recorded as samples [t, x, z, vx, vz] (one per 1/60 s) and handed out as runs the planner and the renderer play back.
 import { CONFIG } from '../config.js';
 import { sampleBall, airCatchable, airEnd, findAirCatch, findGroundPickup, effort, DIVE_HEIGHT } from './fielding.js';
@@ -173,7 +174,8 @@ export class FieldControl {
       if (!airCatchable(bn, F) || hd(s.x + s.vx * this.step, s.z + s.vz * this.step, bn.x, bn.z) > this.glove) return { kind: 'catch', b };
       return null;
     }
-    if (b.y <= F.groundHeight && hd(s.x, s.z, b.x, b.z) <= F.groundGlove) return { kind: 'pickup', b };
+    // (a ball at rest counts whatever its height - one that stopped on top of a low wall, say - as in the planner's findGroundPickup)
+    if ((b.y <= F.groundHeight || t >= this.sim.duration - EPS) && hd(s.x, s.z, b.x, b.z) <= F.groundGlove) return { kind: 'pickup', b };
     return null;
   }
 
@@ -201,6 +203,12 @@ export class FieldControl {
       this.done = true;
     }
     if (!this.done && this.downT !== null && !this.auto && t >= this.downT + this.C.autoAfter - EPS) this.auto = true;
+    // the last resort, never expected: a play can not run on forever - the ball is his where it lies
+    if (!this.done && this.downT !== null && t >= this.downT + this.C.giveUpAfter - EPS) {
+      const b = sampleBall(this.sim, t, {});
+      this._outcome = { kind: 'pickup', t, x: b.x, z: b.z, dive: false };
+      this.done = true;
+    }
   }
 
   // The dive he would make if he left his feet at tL from state s (stick held as `input`). A dive for a ball the planner would call a

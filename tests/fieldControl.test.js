@@ -1,10 +1,10 @@
 // The live fielder (game/fieldControl.js): the outfielder you steer when the computer hits a ball to the outfield. Movement, the catch /
 // dive / drop / pickup rules (the planner's own), the safety net and the auto-pilot that reproduces the automatic plan.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import { CONFIG } from '../src/config.js';
 import { simulateBattedBall } from '../src/physics/ballistics.js';
-import { isInsideField } from '../src/physics/field.js';
-import { createDefense, planPlay, sampleBall } from '../src/game/fielding.js';
+import { isInsideField, setPark } from '../src/physics/field.js';
+import { createDefense, planPlay, sampleBall, pendingPickupTime } from '../src/game/fielding.js';
 import { covered, samplePath } from '../src/game/fielderMotion.js';
 import { FieldControl, controlEligible } from '../src/game/fieldControl.js';
 import { createRng } from '../src/util/rng.js';
@@ -270,5 +270,48 @@ describe('controlEligible', () => {
     expect(controlEligible({ ...plan, groundRule: true }, base)).toBe(false);
     for (const pos of ['P', 'C', '1B', '2B', 'SS', '3B', null]) expect(controlEligible({ ...plan, fielder: pos }, base)).toBe(false);
     expect(controlEligible(null, base)).toBe(false);
+  });
+});
+
+describe('FieldControl: a play always ends', () => {
+  afterAll(() => setPark('sandlot'));
+  // Steered the wrong way until the safety net hands him to the auto-pilot. Fenway's and Comerica's low walls can stop a ball on
+  // top of them, several feet up: it is still his once he is next to it (it used to never count as picked up).
+  it('steered away in Fenway and Comerica: always a pickup, before the planner\'s pending pickup', () => {
+    const problems = [];
+    let n = 0;
+    for (const park of ['bos', 'det']) {
+      setPark(park);
+      const rng = createRng(11);
+      const defense = createDefense();
+      let k = 0;
+      while (k < 60) {
+        const sim = simOf(rng.range(85, 112), rng.range(8, 34), rng.range(-44, 44));
+        const old = planPlay({ sim, contact: contactOf(0, 0, 0), bases: [null, null, null], outs: 0, defense }, CONFIG);
+        if (!old.fair || old.homer || old.caught || !['LF', 'CF', 'RF'].includes(old.fielder)) continue;
+        k++; n++;
+        const rest = sampleBall(sim, sim.duration);
+        const pos = rest.x < 0 ? 'RF' : 'LF';
+        const fc = new FieldControl({ sim, defense, pos, cfg: CONFIG, level: 'pro' });
+        const T = pendingPickupTime(sim, defense[pos], CONFIG);
+        play(fc, T + 1, (c, t) => { if (c.auto) c.autoSteer(t); else c.setInput(c.state.x - rest.x, c.state.z - rest.z); });
+        if (!fc.outcome || fc.outcome.kind !== 'pickup') problems.push(`${park} ball ${k}: ${JSON.stringify(fc.outcome)}`);
+        else if (fc.outcome.t >= T) problems.push(`${park} ball ${k}: pickup at ${fc.outcome.t.toFixed(2)} s, pending ${T.toFixed(2)} s`);
+        else if (fc.outcome.t >= fc.downT + CONFIG.fielding.control.giveUpAfter - 1e-6) problems.push(`${park} ball ${k}: only the last resort`);
+      }
+    }
+    expect(n).toBe(120);
+    expect(problems).toEqual([]);
+  });
+
+  it('a fielder who never gets there: the last resort ends the play giveUpAfter s after the ball is down', () => {
+    const sim = simOf(95, 25, 10);
+    const defense = createDefense();
+    const fc = new FieldControl({ sim, defense, pos: 'LF', cfg: CONFIG, level: 'pro' });
+    fc.autoSteer = () => {}; // (nobody ever steers him)
+    play(fc, 120);
+    expect(fc.outcome.kind).toBe('pickup');
+    expect(fc.outcome.t).toBeCloseTo(fc.downT + CONFIG.fielding.control.giveUpAfter, 1);
+    expect(fc.outcome.t).toBeLessThan(pendingPickupTime(sim, defense.LF, CONFIG));
   });
 });
