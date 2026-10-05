@@ -99,9 +99,9 @@ after it (`plan.fielder`) is LF / CF / RF. That includes a grounder or liner tha
   3. **Pickup after a drop:** the engine re-plans once more at the real pickup time (and position). Invariant (tested): the runners' paths
      before the pickup are the same in both plans, because a runner only moves by himself when forced or when an order exists, and the
      computer's orders are logged with times like yours.
-- **Pure auto-pilot** `fieldControl.autoSteer(...)` = steer toward the planner's own best interception. Used by tests, `bot.js`, the
-  setting `Auto` and a controlled play that the player simply leaves alone; feeding it must reproduce the old automatic plan
-  (equivalence test, below).
+- **Pure auto-pilot** `fieldControl.autoSteer(...)` = steer toward the planner's own best interception. Used by tests, bots and the
+  safety net (3.4) only; feeding it must reproduce the old automatic plan (equivalence test, below). (As built: the setting `Auto` is
+  the old automatic planner with no controlled play at all, and a fielder the player leaves alone stands still until the safety net.)
 - **Presentation:** `actors` draws the controlled fielder from the live state during steps 1 and 3 (position, facing from velocity, the
   existing run / dive / catch poses) and from the plan after. `app.js` reads the keyboard / stick into `engine.fieldInput({ x, z, dive })`
   each frame (time comes from the engine, never from frame rate, like `swingPressed`).

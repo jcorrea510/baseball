@@ -1,5 +1,10 @@
 # Round fifteen - handoff (Oct 5, stopped by the owner mid-plan)
 
+> **Finished by the next session (Oct 5, evening).** f7179fa re-reviewed (park span cache, real pickups before the pending one, the
+> no-control planner byte-identical: realism 3000, groundcheck, sim 100 games unchanged); the hang fix and `giveUpAfter`; Tasks 8-12
+> (engine, view, controls, balance, notes). What was built and what is left is in CLAUDE.md ("Round fifteen" under Where things stand,
+> and Known issues). The rest of this file is the record of the first session.
+
 Read this first, then the spec (`docs/superpowers/specs/2026-10-05-pitching-polish-and-outfield-design.md`) and the plan
 (`docs/superpowers/plans/2026-10-05-pitching-polish-and-outfield.md`). The full running log of every decision is the ledger next to this file
 (`2026-10-05-pitching-polish-and-outfield-ledger.md`, a committed copy of the git-ignored `.superpowers/sdd/2026-10-05-pitching-polish-and-outfield/progress.md`
