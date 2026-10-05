@@ -217,6 +217,11 @@ player's batting help (`windowScale`, `aimAssist`, `batBonus`, the level's conta
   20-35% of batters for the average pitcher on Pro; walks under 12%.
 - `scripts/sim.mjs` gains a bot pitcher (the `average` pitchfeel player) so whole games still run headless; its baseline is
   re-recorded in CLAUDE.md.
+- As built (balance stage, Oct 4): the batter's take / swing bands use `cpuBatter.zoneBoxRatio` (the umpire's box, not the oval
+  `zoneRatio`), he reads with the 'pro' pitch guide on every level (`cpuBat.readGuide`; his level shows only in his own numbers),
+  and the starting values above were tuned (final numbers in `config.js` and CLAUDE.md's tuning table): `gradeFactor` perfect 2 /
+  good 1.2 / ok .8 / hang .5, swing edge .18 (two strikes .45) / chase .08 (.22), `fadePull` .2, `changeBias` 6 / cap 70, per-level
+  read / aim / timing spreads. The simulated person aims low toward a corner (inside the zone) when behind in the count.
 
 ## Testing
 - `tests/pitching.test.js`: ring grades at the edges of each window; early / late miss directions; WILD splits into sail / hang;
