@@ -265,7 +265,7 @@ export class App {
       case 'quit': this.audio.uiBack(); this.quitToMenu(); break;
       case 'mute': this.toggleMute(); break;
       case 'fullscreen': this.toggleFullscreen(); break;
-      case 'skipSummary': if (this.engine) this.engine.skipSummary(); this.hideSimSummary(); break;
+      case 'skipRecap': this.hideSimSummary(); break;
       case 'sim': this.pressSim(); break;
       case 'bullpen': this.openBullpen(); break;
       case 'bullpenPick': this.pickReliever(d.id); break;
@@ -576,20 +576,13 @@ export class App {
     on('playEvent', (ev) => this.onPlayEvent(ev));
     on('result', (r) => { this.onResult(r); this.groaned = false; });
     on('derby', (d) => { ui.setDerby(d); this.updateScoreboard(); });
-    on('aiHalf', (s) => {
-      ui.hideBanner(); ui.hideCallout();
-      ui.showSummary(s, e.opponent.name, CONFIG.pace.aiSummaryLine);
-      this.updateScoreboard();
-      const scored = s.runs > 0;
-      if (scored) { audio.crowdGroan(0.5); } else audio.crowdSwell(0.3, 1.5);
-    });
     on('ringTap', ({ grade }) => this.pitchAim.flash(grade, e.ring && e.ring.aim)); // (how well the ring was tapped)
     on('pitchGrade', ({ grade }) => { if (!e.ring || !e.ring.tapped) this.pitchAim.flash(grade, e.ring && e.ring.aim); }); // (no tap at all: WILD)
     on('simDone', (s) => {
       // the half you simmed: its highlights, with Skip (the engine is already on to your turn at bat, held at Ready)
       ui.hideBanner(); ui.hideCallout();
-      ui.showSummary(s, e.opponent.name, CONFIG.pace.aiSummaryLine);
-      this.simSummary = { until: this.time + Math.max(CONFIG.pace.summaryMin, Math.max(1, s.events.length) * CONFIG.pace.aiSummaryLine + CONFIG.pace.summaryTail) };
+      ui.showSummary(s, e.opponent.name, CONFIG.pace.recapLine);
+      this.simSummary = { until: this.time + Math.max(CONFIG.pace.summaryMin, Math.max(1, s.events.length) * CONFIG.pace.recapLine + CONFIG.pace.summaryTail) };
       this.updateScoreboard();
       if (s.runs > 0) audio.crowdGroan(0.5); else audio.crowdSwell(0.3, 1.5);
     });
@@ -1411,7 +1404,6 @@ export class App {
         break;
       case 'delivery': if (e.pitching && !this.bot) e.ringTap(sinceTap()); break; // (graded against the engine's own clock)
       case 'play': if (ev && ev.type === 'keydown') this.fast = true; break; // (only the Space bar speeds a play up: a stray click or tap never does)
-      case 'aiSummary': e.skipSummary(); break;
       case 'result': if (e.time - e.phaseSince > 0.12) { e.resultUntil = Math.min(e.resultUntil, e.time); } break;
       default: break;
     }
@@ -1477,7 +1469,7 @@ export class App {
             if (s.t >= s.dur) this.slowMo = null;
           }
         }
-        if (this.fast && (e.phase === 'play' || e.phase === 'aiSummary')) scale = CONFIG.pace.fastForward;
+        if (this.fast && e.phase === 'play') scale = CONFIG.pace.fastForward;
         else if (e.phase !== 'play') this.fast = false;
         simDt = realDt * scale;
       }

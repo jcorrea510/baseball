@@ -540,12 +540,12 @@ export class UI {
     s.onclick = (e) => { const b = e.target.closest('[data-a]'); if (b) this.act(b.dataset.a); };
   }
 
-  // ---------------- computer's half-inning
+  // ---------------- the recap of a half you simmed
   showSummary(data, teamName, lineStart = 0.55) {
     const s = this.fresh('summary');
     const d = h('div', 'summary panel rise');
     // (Skip sits in the header: always on screen, however many lines the inning had)
-    d.innerHTML = `<div class="sumhead"><div><div class="label">${data.half === 'top' ? 'Top' : 'Bottom'} ${data.inning}</div><h2>${teamName}</h2></div><button class="btn small" data-a="skipSummary">${icon('ff')}Skip</button></div><div class="lines"></div><div class="total"></div>`;
+    d.innerHTML = `<div class="sumhead"><div><div class="label">${data.half === 'top' ? 'Top' : 'Bottom'} ${data.inning}</div><h2>${teamName}</h2></div><button class="btn small" data-a="skipRecap">${icon('ff')}Skip</button></div><div class="lines"></div><div class="total"></div>`;
     s.appendChild(d);
     const lines = $(d, '.lines');
     data.events.forEach((ev, i) => {

@@ -53,8 +53,8 @@ for (const sz of sizes) {
       // Sim for real, then skip the highlights
       await press('.hud .simbtn');
       await page.evaluate(() => { const a = window.__app, e = a.engine; for (let i = 0; i < 4000 && e.simming; i++) a.tick(1 / 60, false); a.tick(0.001, true); });
-      await page.waitForSelector('#ui .screen.show [data-a=skipSummary]', { timeout: 8000 });
-      await press('#ui .screen.show [data-a=skipSummary]');
+      await page.waitForSelector('#ui .screen.show [data-a=skipRecap]', { state: 'attached', timeout: 8000 }); // (attached: the recap panel rises in with an animation that crawls in headless Chrome)
+      await press('#ui .screen.show [data-a=skipRecap]');
       await page.waitForTimeout(300);
     }
     // a quick game waits for the Ready button before the first pitch: press it for real

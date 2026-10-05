@@ -169,7 +169,6 @@ export class CameraRig {
     } else if (E && (phase === 'ready' || phase === 'result' || phase === 'windup')) {
       posL = 6; lookL = 9; fovL = 6;
     }
-    if (cfg && E && E.phase === 'aiSummary') { posL = 5; }
 
     if (this.followK !== undefined && E && E.phase === 'play' && this.followK < 1) {
       const bl = this.batterLook(new THREE.Vector3());

@@ -11,7 +11,6 @@ import { computeSwing, computeBunt, derbyBatting, contactWindow, contactPoint, s
 import { choosePitch, pitchWindowScale } from './pitcherAI.js';
 import { createDefense, alignDefense, planPlay, sendOptions, runnerOptions, tapOptions, planSteal, planWildPitch, fielderBackTime } from './fielding.js';
 import * as rules from './rules.js';
-import { simulateHalf } from './aiHalf.js';
 import { makeLineup, makePitcher, makeStaff, PLAYER_TEAM } from './teams.js';
 import { MLB_TEAMS, teamName, uniformFor, teamLineup, armsOf } from './mlb.js';
 import { ratingEffects } from './season.js';
@@ -106,17 +105,15 @@ export class Engine {
     this.lastType = null;
     this.readyUntil = 0;
     this.resultUntil = 0;
-    this.summaryUntil = 0;
     this.pendingNext = null;
     this.paEnded = false;
     this.lastPA = null;
     this.pitchOverride = null;
     this.contactOverride = null; // QA / demo hook: (engine) => ({ exitVelocity, launchAngle, sprayAngle, backspin, hook }) forces an exact batted ball
-    this.aiSummary = null;
     this.lastPlayResult = null;
     this.over = false;
 
-    // You are the home team: the computer bats first (its half is played out instantly) and you always get the last at-bat.
+    // You are the home team: the computer bats first (you pitch its half) and you always get the last at-bat.
     this.playerSide = this.mode === 'quick' ? (o.playerSide || 'bottom') : 'top';
     this.oppSide = this.playerSide === 'top' ? 'bottom' : 'top';
     this.game = this.mode === 'quick' ? rules.createGame({ innings: o.innings ?? cfg.modes.quick.innings, extraRunner: cfg.modes.quick.extraInningRunner }) : null;
@@ -297,9 +294,6 @@ export class Engine {
         break;
       case 'result':
         if (this.time >= this.resultUntil) this.afterResult();
-        break;
-      case 'aiSummary':
-        if (this.time >= this.summaryUntil) this.afterAiSummary();
         break;
       default:
         break;
@@ -1048,33 +1042,6 @@ export class Engine {
     if (this.offense === 'cpu') return this.beginCpuHalf(true); // (the computer bats: you pitch)
     this.emit('inningChange', { inning: g.inning, half: g.half, newInning: true });
     this.setPhase('halfBreak');
-    this.beginPlateAppearance(true);
-  }
-
-  // The computer bats: simulate its half-inning at once and show a short highlights summary.
-  runAiHalf() {
-    const g = this.game;
-    this.emit('inningChange', { inning: g.inning, half: g.half });
-    const before = { ...g.score };
-    const sim = simulateHalf(g, { difficulty: this.difficulty, rng: this.rng, lineup: this.oppLineup }, this.cfg);
-    this.aiSummary = { events: sim.events, runs: sim.runs, inning: g.inning, half: g.half, score: { ...g.score }, before, over: g.over };
-    this.setPhase('aiSummary');
-    const lines = Math.max(1, sim.events.length);
-    this.summaryUntil = this.time + Math.max(1.6, lines * this.cfg.pace.aiSummaryLine + 0.9);
-    this.emit('aiHalf', this.aiSummary);
-  }
-
-  // The summary screen can be skipped.
-  skipSummary() {
-    if (this.phase === 'aiSummary') this.summaryUntil = this.time;
-  }
-
-  afterAiSummary() {
-    const g = this.game;
-    this.aiSummary = null;
-    const res = rules.advanceHalf(g, (half) => this.extraRunner(half));
-    if (res.gameOver) return this.finishGame();
-    this.emit('inningChange', { inning: g.inning, half: g.half, newInning: true });
     this.beginPlateAppearance(true);
   }
 

@@ -218,8 +218,7 @@ describe('what strength and ratings do', () => {
   it('a strong team throws harder, hits better and fields better than a weak one', () => {
     const weak = S.gameConfig('pro', 35).difficulty.pro, strong = S.gameConfig('pro', 68).difficulty.pro;
     expect(strong.fastball[0]).toBeGreaterThan(weak.fastball[0]);
-    expect(strong.ai.single).toBeGreaterThan(weak.ai.single);
-    expect(strong.ai.k).toBeLessThan(weak.ai.k);
+    expect(strong.cpuStrength).toBeGreaterThan(weak.cpuStrength); // (their batters: smaller errors, more exit speed - cpuBatter)
     expect(strong.errorScale).toBeLessThan(weak.errorScale);
     // the level you picked is untouched for other modes
     expect(CONFIG.difficulty.pro.fastball).toEqual([80, 90]);

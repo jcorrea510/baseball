@@ -520,8 +520,6 @@ export const CONFIG = {
       windup: 1.3,
       stealBreak: 1.03, // s before the pitch is released that a runner takes off on a steal (the pitcher's first move)
       derbyFoulIsOut: false,
-      // Odds for each plate appearance when the computer bats (its half-innings are simulated). error = safe on a misplay by your fielders.
-      ai: { k: 0.26, bb: 0.06, groundout: 0.198, flyout: 0.18, error: 0.012, single: 0.15, double: 0.04, triple: 0.005, hr: 0.02 },
     },
     pro: {
       label: 'Pro',
@@ -556,7 +554,6 @@ export const CONFIG = {
       stealBreak: 0.9,
       derbyFoulIsOut: true,
       swingCue: false,
-      ai: { k: 0.22, bb: 0.08, groundout: 0.178, flyout: 0.16, error: 0.012, single: 0.19, double: 0.06, triple: 0.008, hr: 0.035 },
     },
     allstar: {
       label: 'All-Star',
@@ -591,7 +588,6 @@ export const CONFIG = {
       stealBreak: 0.83,
       derbyFoulIsOut: true,
       swingCue: false,
-      ai: { k: 0.19, bb: 0.09, groundout: 0.158, flyout: 0.15, error: 0.012, single: 0.21, double: 0.075, triple: 0.01, hr: 0.05 },
     },
   },
 
@@ -600,9 +596,6 @@ export const CONFIG = {
   // `rollTime` s; runners see it get by and go `react` s after it reaches the catcher; the man on third goes only if he beats the
   // throw home by `homeMargin` s.
   wildPitch: { lowY: 0.75, wideX: 2.1, chance: { rookie: 0.14, pro: 0.1, allstar: 0.08 }, rollTo: 48, rollTime: 1.25, react: 0.25, homeMargin: 0.2, coverAt: [0.9, 0.9] }, // coverAt: where the pitcher covering home stands (x, z ft: on the plate, a step to the first-base side)
-
-  // the computer's simulated half-innings: the share of its free passes that are a hit batsman rather than a walk
-  ai: { hbpShare: 0.1 },
 
   // --------------------------------------------------------------------------
   //  Pacing (seconds). Keep these short: the game is meant to feel snappy.
@@ -617,7 +610,7 @@ export const CONFIG = {
     fastForward: 4.5, // speed multiplier when you tap to skip a play
     summaryMin: 1.6, // seconds the highlights of a Sim stay up at least (then they go by themselves)
     summaryTail: 0.9, // ...plus this long after the last line has shown
-    aiSummaryLine: 0.55, // seconds per line of the computer's half-inning highlights
+    recapLine: 0.55, // seconds per line of the highlights of a half you simmed
   },
 
   // --------------------------------------------------------------------------
@@ -1000,7 +993,6 @@ export const CONFIG = {
       fastballMph: 2.4, // their pitcher throws this much harder per unit of s
       heartShift: 0.07, // share of pitches moved from the heart of the zone to the edges/chase per unit of s
       commandSigma: 0.15, // x(1 - this*s): better teams hit their spots
-      offense: 0.25, // their hits x(1 + this*s) when they bat, strikeouts x(1 - this*s/1.5)
       errors: 0.35, // their fielding errors x(1 - this*s)
       catcher: 0.07, // their catcher's exchange x(1 - this*s) (quicker against steals)
     },

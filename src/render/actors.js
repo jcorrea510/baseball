@@ -591,7 +591,7 @@ export class Actors {
     const lastKind = paDone && E.lastPA ? E.lastPA.result : '';
     const isK = /strikeout/.test(lastKind);
     const isWalk = lastKind === 'walk' || (lastKind === 'hitByPitch' && E.time - E.phaseSince > 0.6); // (hit by pitch: a moment to shake it off, then he walks to first)
-    let showBatter = phase !== 'aiSummary' && phase !== 'idle' && phase !== 'gameOver';
+    let showBatter = phase !== 'idle' && phase !== 'gameOver';
     if (paDone) showBatter = isWalk || (isK && E.time - E.phaseSince < 0.55);
     batterP.active = showBatter;
     if (showBatter) {
@@ -647,11 +647,6 @@ export class Actors {
       this.walkPlan = null; this.playRunnerP = {};
     }
     this.updateWalkers(E, dt, time);
-
-    // --- players who reached base on this play stay visible after it (result phase) as runners
-    if (game && !inPlay && phase !== 'aiSummary') {
-      // (covered by game.bases above: applyPlay places the batter on base)
-    }
     for (const c of this.coaches) {
       const st = { };
       void st;

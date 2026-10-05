@@ -559,19 +559,14 @@ export function gameConfig(level, rating, cfg = CONFIG) {
   const loc = { ...d.locations };
   const move = Math.min(loc.heart * 0.5, loc.heart * T.heartShift * k);
   loc.heart -= move; loc.edge += move * 0.4; loc.chase += move * 0.6;
-  const hit = 1 + T.offense * k;
-  const ai = { ...d.ai };
-  for (const key of ['single', 'double', 'triple', 'hr']) ai[key] *= Math.max(0.3, hit);
-  ai.k *= Math.max(0.3, 1 - (T.offense * k) / 1.5);
   const dd = {
     ...d,
     fastball: [d.fastball[0] + T.fastballMph * k, d.fastball[1] + T.fastballMph * k],
     locations: loc,
     commandSigma: d.commandSigma * Math.max(0.4, 1 - T.commandSigma * k),
-    ai,
     errorScale: (d.errorScale ?? 1) * Math.max(0.2, 1 - T.errors * k),
     catcherArm: (d.catcherArm ?? 1) * Math.max(0.6, 1 - T.catcher * k),
-    cpuStrength: k, // (when you pitch: how good their batters are - see cpuBatter)
+    cpuStrength: k, // (when you pitch: how good their batters are - cpuBatter scales their errors and exit speed by it, cpuBat.strengthSd / strengthEv)
   };
   return { ...cfg, difficulty: { ...cfg.difficulty, [level]: dd } };
 }
