@@ -313,7 +313,10 @@ const methods = {
       // (everything up to this moment has happened: the events of the play so far are out before a send re-plans the rest)
       while (p.nextEvent < p.events.length && p.events[p.nextEvent].t <= t) this.emit('playEvent', p.events[p.nextEvent++]);
       const targets = tapOptions(p.plan, t);
-      const base = chooseSend({ planIn: p.planIn, t, targets, rng: this.rng }, this.cfg);
+      // (while you are still after the ball, they judge it as if you get to it as quickly as you can from where you are)
+      const fc = p.control && !p.control.finished ? p.control : null;
+      const planIn = fc && targets.length ? { ...p.planIn, control: { pos: fc.pos, ...fc.project() } } : p.planIn;
+      const base = chooseSend({ planIn, t, targets, rng: this.rng }, this.cfg);
       if (base !== null) {
         const opt = targets.find((q) => q.base === base);
         this.applyRunnerOrder({ base, t, from: opt.from });

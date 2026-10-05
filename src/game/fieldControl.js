@@ -291,6 +291,21 @@ export class FieldControl {
     this.samples = [[t, x, z, 0, 0]];
   }
 
+  /**
+   * What would come of the play if the computer ran him from here (the auto-pilot, from where he is now): { runs, outcome } - for the
+   * computer's runners, who judge a send while you are still after the ball. He himself is not moved.
+   */
+  project() {
+    const c = new FieldControl({ sim: this.sim, defense: this.defense, pos: this.pos, cfg: this.cfg, heading: this.s.heading });
+    Object.assign(c, {
+      glove: this.glove, diveWindow: this.diveWindow, n: this.n, s: { ...this.s }, input: { ...this.input },
+      _outcome: this._outcome, downT: this.downT, done: this.done, pieces: this.pieces.slice(),
+      samples: this.samples && this.samples.slice(), dive: this.dive, press: this.press && { ...this.press }, diveAt: this.diveAt, auto: true,
+    });
+    while (!c.done) c.advance(c.t + this.step);
+    return { runs: c.runs, outcome: c.outcome };
+  }
+
   // ------------------------------------------------------------------------------------------------------------------------------
   // The auto-pilot: steers toward the planner's own interception and dives when the planner would.
   /** Sets the stick (and presses Dive) for play time t as the computer would play it. */

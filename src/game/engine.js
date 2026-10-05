@@ -17,6 +17,7 @@ import { ratingEffects } from './season.js';
 import { staminaMax } from './pitching.js';
 import { cpuSwingInputs } from './cpuBatter.js';
 import { installPitchingHalf, newPitchStats } from './pitchingHalf.js';
+import { FieldControl, controlEligible } from './fieldControl.js';
 
 export class Engine {
   /**
@@ -38,6 +39,8 @@ export class Engine {
    *                                    computer pitches it for you, live (tests and bots)
    * @param {Array}  [o.staff]          your pitchers (pitching.js shape), the starter first (default: Sandlot's own, teams.makeStaff)
    * @param {object} [o.oppPitcher]     the other team's pitcher when you bat (default: a made-up one)
+   * @param {'play'|'auto'} [o.fielding] while you pitch, a ball an outfielder goes after: 'play' = you steer him (engine.control,
+   *                                    fieldInput); 'auto' (default) = the automatic fielding (tests, bots, Derby)
    * (and the config itself - `cfg` - is the Season's one for this opponent: see season.gameConfig)
    */
   constructor(o = {}, cfg = CONFIG) {
@@ -73,6 +76,7 @@ export class Engine {
     this.cpuHalf = o.cpuHalf || 'auto';
     this.simming = false; // Sim pressed: the computer pitches the rest of this half (pitchingHalf.simHalf)
     this.simRecap = null;
+    this.fielding = o.fielding === 'play' ? 'play' : 'auto'; // (steering the outfielder yourself while you pitch: see resolveContact)
     this.staff = o.staff || makeStaff(this.seed, cfg);
     if (this.practicePitch) {
       // a neutral pitcher who throws every pitch there is (the heater too); his tank is never used (see releaseCpuPitch)
@@ -736,6 +740,14 @@ export class Engine {
         plan.ballHitEnd = tTip; plan.endTime = tTip + 0.5;
       }
     }
+    // a ball an outfielder goes after while you pitch, with Fielding on Play: you steer him (game/fieldControl.js). The play is planned
+    // as still open (plan.pending: nobody has the ball yet) and planned again when he catches it or picks it up (updatePlay).
+    let control = null, played = plan;
+    if (!plan.foulTip && controlEligible(plan, { mode: this.mode, offense: this.offense, fielding: this.fielding, simming: this.simming })) {
+      control = new FieldControl({ sim, defense: this.defense, pos: plan.fielder, cfg: this.cfg, level: this.difficulty });
+      planIn.control = controlInput(control);
+      played = planPlay(planIn, this.cfg);
+    }
     const proj = projectDistance(params, this.cfg);
     const fb = sim.firstBounce;
     const distance = plan.homer ? proj.distance : fb ? Math.hypot(fb.x, fb.z) : proj.distance;
@@ -747,11 +759,12 @@ export class Engine {
     this.tally.evSum += c.exitVelocity; this.tally.evN++;
     this.tally.maxEV = Math.max(this.tally.maxEV, c.exitVelocity);
     this.play = {
-      t0: s.tHit, sim, plan, planIn, contact: c, pitch, distance, projected: proj, start,
-      events: buildEventList(sim, plan), nextEvent: 0, prevT: 0, landedReported: false,
+      t0: s.tHit, sim, plan: played, planIn, contact: c, pitch, distance, projected: proj, start,
+      events: buildEventList(sim, played), nextEvent: 0, prevT: 0, landedReported: false, control,
     };
     if (this.offense === 'cpu') this.play.cpuLook = this.rng.range(...this.cfg.cpuRun.look); // (s after contact the computer first looks at sending a runner)
     this.setPhase('play');
+    if (control) this.emit('controlStart', { pos: control.pos });
     this.emit('contact', {
       swing: s, pitch, contact: c, sim, plan, distance, projected: proj,
       hangTime: proj.hangTime, apex: sim.apex.y, exitVelocity: c.exitVelocity, launchAngle: c.launchAngle,
@@ -763,13 +776,49 @@ export class Engine {
   updatePlay() {
     const p = this.play;
     const t = this.time - p.t0;
+    const fc = p.control;
+    if (fc && !fc.finished) {
+      if (this.simming && !fc.auto) fc.auto = true; // (Sim pressed during the play: the computer runs him down)
+      fc.advance(t);
+      if (fc.finished) this.controlDone(p);
+    }
     if (!(p.plan.endTime >= 0)) p.plan.endTime = 6; // safety net: never let a play run forever
     while (p.nextEvent < p.events.length && p.events[p.nextEvent].t <= t) {
       const ev = p.events[p.nextEvent++];
       this.emit('playEvent', ev);
     }
     p.prevT = t;
-    if (t >= Math.min(p.plan.endTime, 30)) this.finishPlay();
+    if (fc && !fc.finished) return; // (still open: nobody has the ball - the plan's end is a made-up one)
+    if (t >= Math.min(p.plan.endTime, (fc ? fc.outcome.t : 0) + 30)) this.finishPlay();
+  }
+
+  // ------------------------------------------------------------------ the outfielder you steer
+  /** The outfielder you are steering right now (game/fieldControl.js), or null. */
+  get control() {
+    const p = this.play;
+    return this.phase === 'play' && p && p.control && !p.control.finished ? p.control : null;
+  }
+
+  /** The stick (field coordinates: +x toward right field, -z toward center, length <= 1) and Dive (true = pressed now). */
+  fieldInput(dx, dz, dive = false) {
+    const fc = this.control;
+    if (!fc || fc.auto) return false;
+    fc.setInput(dx, dz);
+    if (dive) fc.pressDive(this.time - this.play.t0);
+    return true;
+  }
+
+  // He caught it or picked it up: the play is planned again from that moment with what really happened (everything before it, the
+  // runners included, stays as it was), and goes on as any other play.
+  controlDone(p) {
+    const fc = p.control, o = fc.outcome;
+    p.planIn.control = controlInput(fc);
+    const plan = planPlay({ ...p.planIn, prev: { paths: p.plan.paths, t: o.t } }, this.cfg);
+    p.plan = plan;
+    p.events = buildEventList(p.sim, plan);
+    p.nextEvent = p.events.findIndex((e) => e.t > p.prevT + 1e-9); // (what came before has been shown already)
+    if (p.nextEvent < 0) p.nextEvent = p.events.length;
+    this.emit('controlEnd', { outcome: o, plan });
   }
 
   // ------------------------------------------------------------------ sending runners
@@ -834,6 +883,7 @@ export class Engine {
     const base = o.base;
     const opt = { kind: o.tag !== undefined ? 'tag' : o.back ? 'back' : 'send' };
     p.planIn.orders.push(o);
+    if (p.control) p.planIn.control = controlInput(p.control); // (the outfielder you steer: what he has done so far)
     const plan = planPlay({ ...p.planIn, prev: { paths: p.plan.paths, t } }, this.cfg);
     // a foul tip is decided by the engine, not the planner: keep it (the catcher still holds it)
     if (p.plan.foulTip) { plan.foulTip = p.plan.foulTip; plan.ballHitEnd = p.plan.ballHitEnd; plan.endTime = p.plan.endTime; }
@@ -1121,6 +1171,11 @@ function derbyOutText(plan, c) {
 const NO_FLIGHT = { firstBounce: null, wallHit: null, homerun: null, standsLanding: null, duration: 0, apex: { y: 0 } };
 
 // Everything that will happen during a play at a fixed time (seconds after contact), for sound / effects.
+// What the planner needs about the outfielder you steer: who he is, what he did, and what came of it (null = nothing yet).
+function controlInput(fc) {
+  return { pos: fc.pos, runs: fc.runs, outcome: fc.outcome };
+}
+
 function buildEventList(sim, plan) {
   const ev = [];
   if (plan.foulTip) return ev; // (straight into the catcher's mitt: nothing else happens to the ball)
