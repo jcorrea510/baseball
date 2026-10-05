@@ -402,7 +402,7 @@ export const CONFIG = {
     reach: { x: 1.9, yMin: 0.85, yMax: 4.5 },
   },
 
-  // The pitching picture (render/pitchAim.js): the target dot, the faint arc of the chosen pitch's break, the shrinking timing ring and
+  // The pitching picture (render/pitchAim.js): the target dot, the shrinking timing ring and
   // the grade flash. All of it is picture only.
   pitchAim: {
     dot: 0.42, // ft: radius of the target dot (the ring shrinks to exactly this size when you should tap)
@@ -410,8 +410,6 @@ export const CONFIG = {
     ringWidth: 0.12, // ft: how thick the timing ring is
     ringColor: 0xffffff, ringOpacity: 0.95,
     ringPerfect: 0xffd24a, // the ring turns this colour while a tap would be PERFECT
-    arcSteps: 14, arcFrom: 0.6, // the arc: this many points over the last 40% of the flight (from 60% of it onward)
-    arcColor: 0x7fd8ff, arcOpacity: 0.85, arcPointPx: 5,
     flashTime: 1.1, // seconds the grade stays up
     flashRise: 0.7, // ft the word floats up while it fades
     flashSize: [2.6, 0.95], // ft: the word's width and height

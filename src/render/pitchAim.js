@@ -1,10 +1,7 @@
-// What you see while you pitch (picture only - the engine decides everything): the target dot you aim, a faint arc of how the chosen
-// pitch will bend over its last stretch, the ring that shrinks onto the dot (tap when it meets it) and the grade word that pops up
-// after the tap. Everything lies in the plane over the front of the plate (like the bat in batAim.js), drawn over the field.
+// What you see while you pitch (picture only - the engine decides everything): the target dot you aim, the ring that shrinks onto
+// the dot (tap when it meets it) and the grade word that pops up after the tap. Everything lies in the plane over the front of the plate (like the bat in batAim.js), drawn over the field.
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
-import { buildPitch } from '../physics/pitch.js';
-import { pitchTopMph, pitcherStuff } from '../game/pitching.js';
 import { clamp } from '../util/math.js';
 
 const SEG = 72; // segments round the timing ring
@@ -52,18 +49,6 @@ export class PitchAim {
     this.ring.renderOrder = 32;
     this.group.add(this.ring);
     this.ring.visible = false;
-
-    // the break arc: a line and beads over the last stretch of the flight
-    const n = A.arcSteps + 1;
-    this.arcGeo = own(new THREE.BufferGeometry());
-    this.arcGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
-    this.arcMat = own(new THREE.LineBasicMaterial(flat({ color: A.arcColor, opacity: A.arcOpacity * 0.6 })));
-    this.arcLine = new THREE.Line(this.arcGeo, this.arcMat);
-    this.arcBeadMat = own(new THREE.PointsMaterial(flat({ color: A.arcColor, opacity: A.arcOpacity, size: A.arcPointPx, sizeAttenuation: false })));
-    this.arcBeads = new THREE.Points(this.arcGeo, this.arcBeadMat);
-    for (const o of [this.arcLine, this.arcBeads]) { o.frustumCulled = false; o.renderOrder = 27; }
-    this.group.add(this.arcLine, this.arcBeads);
-    this.arcKey = '';
 
     // the grade word: a flat label, turned to face the pitcher's camera (it looks toward the plate from the pitcher's side)
     this.labels = {};
@@ -115,22 +100,6 @@ export class PitchAim {
     if (aim) this.flashAim = { x: aim.x, y: aim.y };
   }
 
-  // the arc of the chosen pitch for this pitcher and aim (rebuilt only when one of them changes)
-  updateArc(pitcher, type, aim, hand) {
-    const key = `${pitcher.id}|${type}|${hand}|${aim.x.toFixed(3)}|${aim.y.toFixed(3)}|${pitcher.stf}|${pitcher.vel}`;
-    if (key === this.arcKey) return;
-    this.arcKey = key;
-    const A = this.A;
-    const f = buildPitch({ type, speedMph: pitchTopMph(pitcher, type), hand, target: aim, movementScale: pitcherStuff(pitcher), pace: 1 });
-    const p = this.arcGeo.attributes.position, o = { x: 0, y: 0, z: 0 };
-    const n = A.arcSteps;
-    for (let i = 0; i <= n; i++) {
-      f.at(f.T * (A.arcFrom + (1 - A.arcFrom) * (i / n)), o);
-      p.setXYZ(i, o.x, o.y, 0); // (flattened onto the plane the dot is on)
-    }
-    p.needsUpdate = true;
-  }
-
   setRing(radius, width) {
     const p = this.ringGeo.attributes.position, r1 = Math.max(0, radius), r0 = Math.max(0, radius - width);
     for (let i = 0; i <= SEG; i++) {
@@ -158,13 +127,6 @@ export class PitchAim {
       this.group.position.x = aim.x; this.group.position.y = aim.y;
       const f = this.fade;
       this.dotMat.opacity = A.dotOpacity * f; this.rimMat.opacity = 0.95 * f; this.outMat.opacity = 0.6 * f;
-      this.arcMat.opacity = A.arcOpacity * 0.6 * f; this.arcBeadMat.opacity = A.arcOpacity * f;
-      const pitcher = e.mound.pitcher;
-      const type = pitcher.pitches.includes(e.pitchType) ? e.pitchType : pitcher.pitches[0];
-      // (the arc is built in world coordinates; the group moves with the dot, so offset it back)
-      this.arcLine.position.set(-aim.x, -aim.y, 0); this.arcBeads.position.copy(this.arcLine.position);
-      this.updateArc(pitcher, type, aim, pitcher.hand || 'R');
-      this.arcLine.visible = this.arcBeads.visible = true;
       // the ring: radius = dot at the moment to tap, 0 when the ring has closed
       if (ring) {
         const t = clamp(e.time - ring.tStart, 0, ring.time);

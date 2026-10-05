@@ -19,4 +19,8 @@ describe('config sanity', () => {
     expect(t.goodMs).toBeLessThan(t.earlyMs);
     expect(t.goodMs).toBeLessThan(t.lateMs);
   });
+
+  it('the pitching screen has no break arc', () => {
+    expect(Object.keys(CONFIG.pitchAim).filter((k) => k.startsWith('arc'))).toEqual([]);
+  });
 });
