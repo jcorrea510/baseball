@@ -892,6 +892,18 @@ export const CONFIG = {
     // the catcher's view you bat from (after Ready): through the catcher's eyes, over his glove (the rest of him is hidden)
     catcher: { pos: [0, 3.3, 7.0], look: [0, 1.2, -30], fov: 42, zoom: 5, clearDist: 6, umpireHead: 4.2, mittY: 1.75, mittReach: 0.16, firstDelay: 0.5 }, // zoom = how quickly it moves in; clearDist = the catcher and umpire are hidden while the camera is closer than this (ft) to them (the batting view, and the pull-back after a swing) (umpireHead = his head's height); the catcher's mitt waits low at mittY and reaches for the ball in the last mittReach s
     pitcher: { pos: [-2.4, 8, -67], look: [0, 1.0, 0], fov: 24, ease: 4 }, // the pitching view: behind and above the throwing shoulder (x is for a right-hander; a left-hander is mirrored), looking in at the plate; ease = how quickly it moves in (bigger = quicker)
+    pitchHit: { // while you pitch and the computer hits the ball: the eye starts where the pitching view was and follows the ball
+      rise: [34, 50], // ft the camera climbs (up, toward the outfield) from the pitching view while it follows the ball
+      riseTime: 1.4, // s after contact that climb takes
+      fovNear: 46, // deg of view while the ball is close
+      fovFar: 30, // deg of view once the ball is farFeet or more away (narrower, so a far ball stays big)
+      farFeet: 300, // ft from the camera at which the view is at its narrowest
+      lowLook: 0.5, // a ball high in the air: how far (0-1) the camera aims down from the ball toward the grass under it, so the field stays in the picture
+      lowFrom: [20, 80], // ft of ball height at which that downward aim starts / is at full
+      fitMarginDeg: 5, // the ball always stays this many degrees inside the edge of the picture
+      fovMax: 62, // the widest view (deg) the camera uses to keep a high ball in the picture
+      homerLook: 18, // ft above a home run in the seats that the camera looks (up at the crowd and fireworks)
+    },
     minHorizontalFov: 38, // narrow (portrait) screens widen the view to keep this
     keepBall: { marginDeg: 7, maxFov: 64 }, // a ball high in the air stays this far inside the top of the picture (the view widens up to maxFov deg, then tilts up to it)
     highHome: { up: 36, back: 40 }, // ft the camera climbs / backs up from its spot behind the plate while it follows a deep ball

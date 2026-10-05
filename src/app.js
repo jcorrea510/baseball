@@ -1309,7 +1309,9 @@ export class App {
   updateBatting(e, dt) {
     const batting = this.isBatting(e) && !this.paused;
     this.cam.batting = batting;
-    this.cam.pitching = !!e && !this.paused && this.isPitchView(e);
+    // (the pitcher's camera also stays up through the computer's play, rising to follow the ball: only the camera, never the pitch controls)
+    const pitchPlay = !!(e && this.screen === 'game' && !e.over && e.pitching && !e.simming && e.play && (e.phase === 'play' || e.phase === 'result'));
+    this.cam.pitching = !!e && !this.paused && (this.isPitchView(e) || pitchPlay);
     this.cam.pitcherHand = (e && e.mound && e.mound.pitcher && e.mound.pitcher.hand) || 'R';
     this.actors.cameraCatcherDist = this.cam.catcherDist;
     this.actors.cameraPos = this.S.camera.position;

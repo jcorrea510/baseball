@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { damp, clamp, lerp, smoothstep, DEG } from '../util/math.js';
+import { pitchHitView } from './cameraViews.js';
 
 const FIELD_CAM = new THREE.Vector3(0, 44, 58);
 const _look = new THREE.Vector3();
@@ -81,6 +82,27 @@ export class CameraRig {
       tPos = _tmp.set(C.pos[0], C.pos[1], C.pos[2]).clone();
       look.set(C.look[0], C.look[1], C.look[2]);
       tFov = C.fov; posL = C.zoom; lookL = C.zoom * 1.4; fovL = C.zoom;
+    } else if (this.pitching && E && E.play && !this.title && (phase === 'play' || phase === 'result')) {
+      // pitching, the computer has hit it: the eye starts where the pitching view was and rises up and back, following the ball
+      // (see cameraViews.pitchHitView). It never cuts to home plate.
+      const ball = actors.ballPos;
+      const plan = E.play.plan;
+      const t = E.time - E.play.t0;
+      const V = pitchHitView(ball, t, plan, this.pitcherHand, CONFIG);
+      tPos = _tmp.set(V.pos[0], V.pos[1], V.pos[2]).clone();
+      look.set(V.look[0], V.look[1], V.look[2]);
+      tFov = V.fov; posL = 4; lookL = 6; fovL = 4;
+      this.interest.set(ball.x, Math.max(1.5, ball.y), ball.z);
+      // a ball high in the air never leaves the picture (same rule as the batting views)
+      this.keepBallOn = ball.y > 12 && !(plan.homer && t > plan.ballHitEnd) && t < plan.ballHitEnd;
+      if (this.keepBallOn) {
+        const K = cfg.keepBall;
+        _a.subVectors(ball, this.pos); _b.subVectors(look, this.pos);
+        const off = _a.angleTo(_b) / DEG + K.marginDeg;
+        if (2 * off > tFov) tFov = Math.min(K.maxFov, 2 * off);
+        const over = off - K.maxFov / 2;
+        if (over > 0) look.lerp(_c.copy(ball), clamp(over / Math.max(1, off), 0, 1));
+      }
     } else if (this.pitching && E && !this.title) {
       // pitching: behind and above the throwing shoulder (mirrored for a left-hander)
       const P = cfg.pitcher, m = this.pitcherHand === 'L' ? -1 : 1;
