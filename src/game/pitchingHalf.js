@@ -25,7 +25,21 @@ export function newPitchLine() {
 export function newPitchStats() {
   // (`spent[id]` = the stamina a pitcher has used today; `simmedOuts` = outs the computer got for you in a Sim; `halfOuts` / `halfKs` /
   //  `halfBad` follow the half in progress - three outs that were all your own strikeouts = a side struck out, counted in `sides`)
-  return { ...newPitchLine(), byPitcher: {}, spent: {}, simmedOuts: 0, halfOuts: 0, halfKs: 0, halfBad: false, sides: 0 };
+  return { ...newPitchLine(), byPitcher: {}, spent: {}, simmedOuts: 0, simmedKs: 0, halfOuts: 0, halfKs: 0, halfBad: false, sides: 0 };
+}
+
+/** What one finished game adds to your career pitching (progression.js folds it into the save), from `engine.pitchingSummary()`:
+ *  the outs and strikeouts the computer got for you in a Sim are not yours, so they are left out of outs, K and the best-K game.
+ *  `games` is 1 when you threw a pitch yourself, else 0. Null when you did not pitch. */
+export function careerPitchingFrom(sum) {
+  if (!sum) return null;
+  const real = (all, simmed) => Math.max(0, (all || 0) - (simmed || 0));
+  const k = real(sum.k, sum.simmedKs);
+  return {
+    games: (sum.pitches || 0) > 0 ? 1 : 0,
+    outs: real(sum.outs, sum.simmedOuts), h: sum.h || 0, r: sum.r || 0, er: sum.er || 0, bb: sum.bb || 0, k, hr: sum.hr || 0,
+    pitches: sum.pitches || 0, bestK: k, shutout: (sum.badges || []).includes('shutout'),
+  };
 }
 
 /** The recap line for a finished plate appearance of the computer's half, from the real result and where the ball went (spray angle,
@@ -360,7 +374,7 @@ const methods = {
     }
     for (const [k, v] of Object.entries(add)) { ps[k] += v; line[k] += v; }
     if (outs > 0) {
-      if (this.simming) ps.simmedOuts += outs;
+      if (this.simming) { ps.simmedOuts += outs; ps.simmedKs += add.k || 0; }
       if (this.simming || outs !== 1 || add.k !== 1) ps.halfBad = true; else ps.halfKs++;
       ps.halfOuts += outs;
       if (ps.halfOuts >= 3) { // (the half is over)

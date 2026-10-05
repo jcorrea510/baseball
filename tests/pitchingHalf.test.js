@@ -5,6 +5,7 @@ import { CONFIG } from '../src/config.js';
 import { Engine } from '../src/game/engine.js';
 import { auditPlan } from '../src/game/playAudit.js';
 import { staminaMax } from '../src/game/pitching.js';
+import { careerPitchingFrom } from '../src/game/pitchingHalf.js';
 
 const DT = 1 / 120;
 const OPTS = { mode: 'quick', seed: 11, cpuHalf: 'pitch' };
@@ -794,6 +795,33 @@ describe('pitching badges in the gameOver payload', () => {
     expect(e.pitchStats.outs).toBe(3);
     expect(e.pitchStats.simmedOuts).toBe(3);
     expect(finish(e).pitching.badges).toEqual([]);
+  });
+
+  it('outs from a Sim do not count toward the career pitching outs', () => {
+    const e = make({ seed: 3 });
+    e.start();
+    e.cpuSwingOverride = whiff;
+    for (let k = 0; k < 40 && e.pitchStats.outs < 1 && !e.over; k++) pitchOne(e); // (one real out: a strikeout)
+    expect(e.pitchStats.outs).toBe(1);
+    expect(e.simHalf()).toBe(true);
+    for (let k = 0; k < 200 && e.simStep(50); k++);
+    expect(e.pitchStats.simmedOuts).toBe(2);
+    expect(e.pitchStats.outs).toBe(3);
+    const s = e.pitchingSummary();
+    expect(s.simmedKs).toBeGreaterThan(0); // (the Sim struck batters out too)
+    const c = careerPitchingFrom(s);
+    expect(c.outs).toBe(1);
+    expect(c.k).toBe(1);
+    expect(c.bestK).toBe(1); // (the Sim's strikeouts never feed the best game)
+    expect(c.games).toBe(1);
+    expect(c.pitches).toBe(s.pitches);
+  });
+
+  it('a game that was only Sim adds no outs and no strikeouts; a game with no pitch of yours is not a game pitched', () => {
+    const only = careerPitchingFrom({ outs: 3, h: 0, r: 1, er: 1, bb: 0, k: 2, hr: 0, pitches: 4, simmedOuts: 3, simmedKs: 2, badges: [] });
+    expect(only).toMatchObject({ outs: 0, k: 0, bestK: 0, r: 1, pitches: 4, games: 1 });
+    expect(careerPitchingFrom({ outs: 0, h: 0, r: 0, er: 0, bb: 0, k: 0, hr: 0, pitches: 0, simmedOuts: 0, simmedKs: 0, badges: [] }).games).toBe(0);
+    expect(careerPitchingFrom(null)).toBeNull();
   });
 
   it('a run allowed: no Shutout', () => {

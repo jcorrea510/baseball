@@ -3,6 +3,7 @@
 // it just does not remember anything.
 import { CONFIG } from '../config.js';
 import { ensureStaff } from './season.js';
+import { careerPitchingFrom } from './pitchingHalf.js';
 
 export const DEFAULT_SAVE = () => ({
   v: 1,
@@ -116,11 +117,13 @@ export class Progress {
     if (st.maxEV > c.maxEV) { if (c.maxEV > 0) records.push(`Exit velo ${Math.round(st.maxEV)} mph`); c.maxEV = st.maxEV; }
     if (st.longestHR > c.longestHR) { if (c.longestHR > 0 || st.longestHR > 0) records.push(`Longest HR ${st.longestHR} ft`); c.longestHR = st.longestHR; }
     if (res.mode === 'quick' && res.pitching) {
-      const pc = c.pitching, pt = res.pitching;
-      pc.games++;
-      for (const k of ['outs', 'h', 'r', 'er', 'bb', 'k', 'hr', 'pitches']) pc[k] += pt[k] || 0;
-      pc.bestK = Math.max(pc.bestK, pt.k || 0);
-      if ((pt.badges || []).includes('shutout')) pc.shutouts++;
+      const pc = c.pitching, pt = careerPitchingFrom(res.pitching); // (outs and strikeouts from a Sim are left out)
+      if (pt && pt.games > 0) {
+        pc.games++;
+        for (const k of ['outs', 'h', 'r', 'er', 'bb', 'k', 'hr', 'pitches']) pc[k] += pt[k];
+        pc.bestK = Math.max(pc.bestK, pt.bestK);
+        if (pt.shutout) pc.shutouts++;
+      }
     }
     if (res.mode === 'quick') {
       c.games++;
