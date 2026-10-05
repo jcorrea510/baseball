@@ -9,7 +9,7 @@
 //   result   - your pitcher's line is credited (creditPitching); the next pitch is aimed `pitching.nextPitch` s after the call
 // With `cpuHalf: 'auto'` the computer pitches for you (choosePitch with your pitcher's arsenal, a ring grade from `pitching.sim.grades`).
 import { clamp } from '../util/math.js';
-import { buildPitch, isStrike, hitsBatter } from '../physics/pitch.js';
+import { buildPitch, isStrike, hitsBatter, releasePoint } from '../physics/pitch.js';
 import { alignDefense, tapOptions } from './fielding.js';
 import * as rules from './rules.js';
 import { ringTiming, throwPitch, gradeTap, fatigue, pitchCost, staminaMax } from './pitching.js';
@@ -122,13 +122,14 @@ const methods = {
     return this.pitchAim;
   },
 
-  // Start the delivery: the pitch and the aim are locked and the ring starts to shrink. Only at the aiming screen. True when started.
-  startDelivery() {
-    if (this.phase !== 'aim' || !this.pitching) return false;
+  // Start the delivery: the pitch and the aim are locked and the ring starts to shrink. Only at the aiming screen, once the pitcher and
+  // fielders are set again, and never while simming (only the auto pitcher, `auto`, starts one then). True when started.
+  startDelivery({ auto = false } = {}) {
+    if (this.phase !== 'aim' || !this.pitching || (this.simming && !auto) || this.time < this.fieldersSetAt) return false;
     const P = this.cfg.pitching, pitcher = this.mound.pitcher;
     const type = pitcher.pitches.includes(this.pitchType) ? this.pitchType : pitcher.pitches[0];
     alignDefense(this.defense, this.bases, this.outs, this.cfg); // (a steal may have changed the situation)
-    this.ring = { tStart: this.time, ...ringTiming(pitcher, type, this.fatigueF(), this.cfg), tapped: false, errMs: null, type, aim: { ...this.pitchAim } };
+    this.ring = { tStart: this.time, ...ringTiming(pitcher, type, this.fatigueF(), this.cfg), tapped: false, errMs: null, type, aim: { ...this.pitchAim }, release: releasePoint(type, pitcher.hand || 'R', this.cfg) }; // (release: where the hand lets go - drawn from the first move)
     this.setPhase('delivery');
     // their runners may go with your delivery: they break `stealBreak` before the release (the rest is rolled at the release)
     this.steal = null;
@@ -225,7 +226,7 @@ const methods = {
     const band = { perfect: [0, W.perfect], good: [W.perfect, W.good], ok: [W.good, W.ok], wild: [W.ok, P.sim.wildMax] }[grade];
     const mag = this.rng.range(band[0], band[1]);
     const errMs = this.rng.chance(0.5) ? -mag : mag;
-    if (this.startDelivery()) this.ring.autoErrMs = errMs;
+    if (this.startDelivery({ auto: true })) this.ring.autoErrMs = errMs;
   },
 
   // The ball leaves your pitcher's hand: the pitch you aimed, as well as you tapped (pitching.throwPitch), at full real speed.

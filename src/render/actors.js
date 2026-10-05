@@ -384,30 +384,41 @@ export class Actors {
     if (this.planSwap) this.planSwap = null; // (handled: every fielder has his offset)
   }
 
+  // The pitch whose windup is being drawn. In the batting half the engine already has it; in your pitching half the pitch only exists
+  // from the release, so the delivery is drawn from the ring: the same times, and the release point worked out when it began (the
+  // id is the one the pitch will get, so the pose carries straight on into it).
+  windupPitch(E, pitch) {
+    if (E.phase !== 'delivery' || !E.ring || !E.ring.release) return pitch;
+    const r = E.ring, D = E.cfg.pitching.delivery;
+    return r.view || (r.view = { id: E.pitchCount + 1, tWindup: r.tStart, windupDur: D, tRelease: r.tStart + D, flight: { release: r.release }, tell: undefined, target: r.aim });
+  }
+
   pitcherPoseUpdate(E, person, P, time, pitch, plan, playT, move, moving, speed, st, dt) {
     if (move && playT >= 0 && (moving || playT > move.keys[1].t)) return false; // fielding the ball: generic fielder logic
     if (speed > 1.0) return false; // jogging back to the rubber: he runs, he does not glide in his set pose
     const phase = E.phase;
+    pitch = this.windupPitch(E, pitch);
+    const winding = phase === 'windup' || phase === 'delivery'; // (your pitching half calls it 'delivery')
     // One continuous delivery (poses.pitcherPose): the windup, the release, the follow-through and the walk back up onto the rubber.
     // The last pitch is remembered so that the walk back carries on after the engine has forgotten it (the next pitch's 'ready').
     if (st.lastEngine !== E) { st.lastEngine = E; st.lastPitch = st.lastDone = null; } // (a new game: nothing to finish)
     if (pitch) st.lastPitch = pitch;
     const last = st.lastPitch;
     let u = 0, post = 0;
-    if (pitch && phase === 'windup') u = clamp((time - pitch.tWindup) / pitch.windupDur, 0, 1);
+    if (pitch && winding) u = clamp((time - pitch.tWindup) / pitch.windupDur, 0, 1);
     else if (last && time >= last.tRelease) { u = 1; post = time - last.tRelease; }
-    const src = phase === 'windup' ? pitch : last;
+    const src = winding ? pitch : last;
     const R = src ? src.flight.release : { x: -1.55, y: 5.75, z: CONFIG.pitch.releaseZ };
     person.root.updateMatrixWorld(true);
     const rel = person.root.worldToLocal(this.tmpV.set(R.x, R.y, R.z));
     pitcherPose(P, u, post, [rel.x, rel.y, rel.z], src ? src.tell : undefined, src ? src.windupDur : undefined);
     // a new windup that starts before he is quite set again blends in from where he was (never a jump)
-    if (phase === 'windup' && pitch && st.pitchId !== pitch.id) {
+    if (winding && pitch && st.pitchId !== pitch.id) {
       st.pitchId = pitch.id;
       const prev = st.lastDone;
       st.pitchLabel = prev && prev.tRelease < pitch.tWindup && pitch.tWindup - prev.tRelease < pitcherSetAfter(prev.windupDur) ? 'pitching-' + pitch.id : st.pitchLabel || 'pitching';
     }
-    if (phase !== 'windup' && last) st.lastDone = last;
+    if (!winding && last) st.lastDone = last;
     // stay on the ground of the mound slope (a foot in the air is left where the pose put it)
     const gy = (f) => Math.max(-0.3, moundY(person.root.position.x + f[0], person.root.position.z + f[2]) - person.root.position.y);
     P.footL[1] += gy(P.footL) * (P.footL[1] < 0.5 ? 1 : 0);
@@ -974,7 +985,7 @@ export class Actors {
       st.sliding = false; st.getT = undefined;
       // after a play every runner stands ON his bag; once the pitcher is back on the rubber with the ball he walks out to his lead
       // (a runner who went with the pitch comes back to it) - at a walk or a jog, never a glide
-      const leadOK = E.phase === 'windup' || E.phase === 'pitch' || (E.phase === 'ready' && E.time >= Math.max(E.fieldersSetAt || 0, E.phaseSince) + R.leadAfterSet);
+      const leadOK = E.phase === 'windup' || E.phase === 'delivery' || E.phase === 'pitch' || ((E.phase === 'ready' || E.phase === 'aim') && E.time >= Math.max(E.fieldersSetAt || 0, E.phaseSince) + R.leadAfterSet);
       const [tx, tz] = leadOK ? [leadX, leadZ] : BASE_XZ[base];
       const dx = tx - st.x, dz = tz - st.z, d = Math.hypot(dx, dz);
       const v = Math.min(d > 0.05 ? Math.max(4.5, d * 1.6) : 0, 16);
@@ -1007,9 +1018,10 @@ export class Actors {
     const pitcherP = this.fielders.P;
     const catcherP = this.fielders.C;
 
-    if (phase === 'ready' || phase === 'windup') {
+    if (phase === 'ready' || phase === 'windup' || phase === 'aim' || phase === 'delivery') {
       // in the pitcher's hands
-      const u = pitch && phase === 'windup' ? clamp((time - pitch.tWindup) / pitch.windupDur, 0, 1) : 0;
+      pitch = this.windupPitch(E, pitch);
+      const u = pitch && (phase === 'windup' || phase === 'delivery') ? clamp((time - pitch.tWindup) / pitch.windupDur, 0, 1) : 0;
       pitcherP.root.updateMatrixWorld(true);
       const rh = pitcherP.handWorld('R', this.tmpV);
       // hands together: the ball is in the glove; as the hands break it goes with the throwing hand (smoothly - it never jumps)
