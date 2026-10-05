@@ -3,7 +3,8 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { damp, clamp, lerp, smoothstep, DEG } from '../util/math.js';
-import { pitchHitView } from './cameraViews.js';
+import { pitchHitView, chaseView, chaseYaw } from './cameraViews.js';
+import { landingSpot } from '../game/landing.js';
 
 const FIELD_CAM = new THREE.Vector3(0, 44, 58);
 const _look = new THREE.Vector3();
@@ -53,6 +54,14 @@ export class CameraRig {
     return (2 * Math.atan(Math.tan(h / 2) / aspect)) / DEG;
   }
 
+  /** A play in which you steer an outfielder has begun: fix the chase camera's direction (and so the stick's) for the whole play. */
+  startChase(play) {
+    if (this.chasePlay === play) return;
+    this.chasePlay = play;
+    this.chaseLand = landingSpot(play.sim, null, CONFIG);
+    this.chaseYaw = chaseYaw(this.chaseLand || play.control.state);
+  }
+
   update(dt, E, actors, aspect) {
     this.aspect = aspect;
     const cam = this.camera;
@@ -82,6 +91,17 @@ export class CameraRig {
       tPos = _tmp.set(C.pos[0], C.pos[1], C.pos[2]).clone();
       look.set(C.look[0], C.look[1], C.look[2]);
       tFov = C.fov; posL = C.zoom; lookL = C.zoom * 1.4; fovL = C.zoom;
+    } else if (this.pitching && E && E.play && E.play.control && !this.title && (phase === 'play' || phase === 'result')) {
+      // you are steering the outfielder: the chase camera (see cameraViews.chaseView) - up on the screen is away from home, fixed for
+      // the whole play (this.chaseYaw, which the app turns the stick by)
+      const fc = E.play.control;
+      this.startChase(E.play);
+      const ball = actors.ballPos, s = fc.state;
+      const V = chaseView(s, ball, fc.finished ? null : this.chaseLand, CONFIG, this.chaseYaw);
+      tPos = _tmp.set(V.pos[0], V.pos[1], V.pos[2]).clone();
+      look.set(V.look[0], V.look[1], V.look[2]);
+      tFov = V.fov; posL = cfg.chase.ease; lookL = cfg.chase.ease * 1.4; fovL = cfg.chase.ease;
+      this.interest.set(ball.x, Math.max(1.5, ball.y), ball.z);
     } else if (this.pitching && E && E.play && !this.title && (phase === 'play' || phase === 'result')) {
       // pitching, the computer has hit it: the eye starts where the pitching view was and rises up and back, following the ball
       // (see cameraViews.pitchHitView). It never cuts to home plate.

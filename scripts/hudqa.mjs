@@ -1,5 +1,6 @@
 // HUD overlap check in the real game: every pop-up (pitch pill, exit-speed readout, timing meter, banner, score bug, aim
-// controls, practice drawer; and, as a second state, the base diamond you send runners with during a play) forced on at once, in each mode, at each screen size; prints any two that overlap or leave the screen.
+// controls, practice drawer; and, as a second state, the base diamond you send runners with during a play; while you pitch, the pitching
+// controls, the bullpen, and the thumb stick + Dive button you steer an outfielder with) forced on at once, in each mode, at each screen size; prints any two that overlap or leave the screen.
 //   npm run dev  then  node scripts/hudqa.mjs [sizes e.g. 568x320,844x390] [url]      (screenshots in qa-output/)
 import fs from 'node:fs';
 import { chromium } from 'playwright-core';
@@ -11,7 +12,7 @@ const report = [];
 for (const sz of sizes) {
   const [w, h] = sz.split('x').map(Number);
   const touch = w < 900;
-  for (const [mode, state] of (process.env.ONLY ? [[process.env.ONLY === 'ppitch' ? 'practice' : 'quick', process.env.ONLY]] : [['quick', 'pitch'], ['derby', 'pitch'], ['practice', 'pitch'], ['practice', 'ppitch'], ['quick', 'play'], ['practice', 'play'], ['quick', 'field'], ['quick', 'field5'], ['quick', 'fieldplay'], ['quick', 'fieldbull']])) {
+  for (const [mode, state] of (process.env.ONLY ? [[process.env.ONLY === 'ppitch' ? 'practice' : 'quick', process.env.ONLY]] : [['quick', 'pitch'], ['derby', 'pitch'], ['practice', 'pitch'], ['practice', 'ppitch'], ['quick', 'play'], ['practice', 'play'], ['quick', 'field'], ['quick', 'field5'], ['quick', 'fieldplay'], ['quick', 'fieldbull'], ['quick', 'fieldchase']])) {
     const ctx = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: touch, isMobile: touch });
     const page = await ctx.newPage();
     await page.goto(`${process.argv[3] || 'http://localhost:5173/'}?mode=${mode}&seed=4`, { waitUntil: 'load' });
@@ -47,9 +48,18 @@ for (const sz of sizes) {
         if (state === 'fieldbull') ui.setFast(false, false), ui.q.callout.classList.remove('show'), ui.showBullpen([{ id: 'a', name: 'A. Hollis-Castellanos', hand: 'L', rating: 61, pitches: ['Fastball', 'Curveball', 'Slider'], stamina: 1 }, { id: 'b', name: 'T. Okafor', hand: 'R', rating: 55, pitches: ['Fastball', 'Changeup'], stamina: 1 }, { id: 'c', name: 'D. Reyes', hand: 'R', rating: 48, pitches: ['Fastball', 'Slider'], stamina: 1 }]); // (the Bullpen panel open)
         ui.setBasePad(null); // (you never send the computer's runners)
         if (state === 'fieldplay') ui.setFast(true, false);
+        if (state === 'fieldchase') {
+          // you steer an outfielder: the pitching controls are away (a play), Dive is up and the thumb stick shows where a left thumb lands
+          ui.setPitching({ open: false, selected: 'slider', canSim: true, canBullpen: true, pitches: [] });
+          ui.setFast(false, false);
+          a.updateFielding = () => {}; // (no real play: keep the frame loop from putting them away before the screenshot)
+          ui.setFielding({ active: true });
+          const fs = document.querySelector('.hud .fieldstick'), base = fs.querySelector('.fsbase');
+          fs.classList.add('on'); base.style.left = `${Math.max(80, innerWidth * 0.16)}px`; base.style.top = `${innerHeight * 0.5}px`;
+        }
       }
       // overlap check between visible HUD boxes
-      const sel = ['.lineup', '.pitchinfo', '.callout', '.meter', '.batterup', '.bugwrap', '.derbybox', '.practbox', '.practice', '.hudbtns', '.acts', '.swingbtn', '.basepad', '.ffbtn', '.pitchbar', '.pitchside', '.bullpanel'];
+      const sel = ['.lineup', '.pitchinfo', '.callout', '.meter', '.batterup', '.bugwrap', '.derbybox', '.practbox', '.practice', '.hudbtns', '.acts', '.swingbtn', '.basepad', '.ffbtn', '.pitchbar', '.pitchside', '.bullpanel', '.divebtn', '.fsbase'];
       const boxes = [];
       for (const s of sel) { const e = document.querySelector('.hud ' + s); if (!e) continue; const cs = getComputedStyle(e); if (cs.display === 'none' || +cs.opacity === 0) continue; const b = e.getBoundingClientRect(); if (b.width && b.height) boxes.push({ s, b }); }
       const hits = [];

@@ -127,6 +127,7 @@ export class UI {
     const hud = h('div', 'hud');
     hud.innerHTML = `
       <div class="vignette"></div>
+      <div class="fieldstick" aria-hidden="true"><div class="fsbase"><div class="fsknob"></div></div></div>
       <div class="hudbtns"><button class="iconbtn" data-a="pause" aria-label="Pause" title="Pause (Esc)">${icon('pause')}</button><button class="iconbtn" data-a="mute" aria-label="Sound" title="Mute (M)">${icon('soundOn')}</button><button class="iconbtn" data-a="fullscreen" data-fs aria-label="Full screen" title="Full screen (F)">${icon('full')}</button></div>
       <div class="lineup"><div class="lh"><span>Batting order</span></div><ol></ol></div>
       <div class="pitchinfo"><span class="cnt"></span><span class="type"></span><span class="mph"></span></div>
@@ -171,6 +172,7 @@ export class UI {
       <div class="batterup"><div class="bcard"><div class="who"></div><div class="line"></div></div><div class="bextra"></div><button class="btn" data-a="batterReady">${icon('play')}Ready</button></div>
       <div class="meter"><div class="bar"><div class="tick"></div><div class="mark"></div></div><div class="lab"><span>EARLY</span><span>LATE</span></div><div class="txt"></div></div>
       <button class="swingbtn" data-swing aria-label="Swing">${icon('bat')}<span>Swing</span></button>
+      <button class="divebtn" aria-label="Dive">${icon('go')}<span>Dive</span></button>
       <div class="basepad" aria-label="Runners">
         <svg class="bpfield" viewBox="0 0 160 160" aria-hidden="true"><path class="lines" d="M80 140 L140 80 L80 20 L20 80 Z"/></svg>
         <button class="bpbase" data-base="1" tabindex="-1" aria-label="1st"></button><button class="bpbase" data-base="2" tabindex="-1" aria-label="2nd"></button><button class="bpbase" data-base="3" tabindex="-1" aria-label="3rd"></button><button class="bpbase home" data-base="4" tabindex="-1" aria-label="Home"></button>
@@ -221,6 +223,34 @@ export class UI {
     // the Swing button (phones): it swings the moment it is touched (timed from the touch, like a key)
     this.q.swingBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); this.q.swingBtn.classList.add('on'); this.act('swing', e); });
     for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) this.q.swingBtn.addEventListener(ev, () => this.q.swingBtn.classList.remove('on'));
+    // steering your outfielder on a phone: a thumb stick that appears where the thumb lands (left half of the screen), and Dive
+    this.fieldStick = { x: 0, y: 0 };
+    const fs = $(hud, '.fieldstick'), fsBase = $(hud, '.fsbase'), fsKnob = $(hud, '.fsknob');
+    let fsId = null, fsX = 0, fsY = 0;
+    const fsMove = (e) => {
+      const R = CONFIG.fieldStick.radius;
+      let dx = (e.clientX - fsX) / R, dy = (fsY - e.clientY) / R;
+      const l = Math.hypot(dx, dy);
+      if (l > 1) { dx /= l; dy /= l; }
+      this.fieldStick.x = l < CONFIG.fieldStick.dead ? 0 : dx; this.fieldStick.y = l < CONFIG.fieldStick.dead ? 0 : dy;
+      fsKnob.style.transform = `translate(${dx * R}px, ${-dy * R}px)`;
+    };
+    this.fieldStickEnd = () => { fsId = null; this.fieldStick.x = this.fieldStick.y = 0; fs.classList.remove('on'); fsKnob.style.transform = ''; };
+    fs.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      if (fsId !== null) return;
+      fsId = e.pointerId; fsX = e.clientX; fsY = e.clientY;
+      try { fs.setPointerCapture(e.pointerId); } catch (err) { /* (a synthetic event has no capture) */ }
+      const r = fs.getBoundingClientRect();
+      fsBase.style.left = `${e.clientX - r.left}px`; fsBase.style.top = `${e.clientY - r.top}px`;
+      fs.classList.add('on');
+      fsMove(e);
+    });
+    fs.addEventListener('pointermove', (e) => { if (e.pointerId === fsId) fsMove(e); });
+    for (const ev of ['pointerup', 'pointercancel']) fs.addEventListener(ev, (e) => { if (e.pointerId === fsId) this.fieldStickEnd(); });
+    const dive = $(hud, '.divebtn');
+    dive.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); dive.classList.add('on'); this.act('dive'); });
+    for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) dive.addEventListener(ev, () => dive.classList.remove('on'));
     // practice panel
     const pt = $(hud, '.practice .pt');
     for (const k of ['fastball', 'changeup', 'curveball', 'slider', 'heater', 'mixed']) {
@@ -1059,6 +1089,13 @@ export class UI {
   setPitchCount(text) { this.q.pitchinfo.querySelector('.cnt').textContent = text || ''; }
   // the Swing button shows (phones) while you are up
   setSwingButton(on) { this.q.swingBtn.classList.toggle('show', !!on); }
+  /** You are steering an outfielder: the thumb stick and Dive (phones) are up. Turning it off lets go of the stick. */
+  setFielding({ active }) {
+    if (!!active === !!this.fieldingOn) return;
+    this.fieldingOn = !!active;
+    this.hud.classList.toggle('fielding', !!active);
+    if (!active) this.fieldStickEnd();
+  }
   // The base diamond while you can send runners: o = null hides it, else { open: [bases that light up], dots: [{ x, z, sent, from,
   // canBack }] } (canBack: a runner you sent - his dot wears a ring and a tap on it calls him back).
   setBasePad(o) {

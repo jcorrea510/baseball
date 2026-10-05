@@ -44,6 +44,64 @@ export function pitchHitView(ball, t, plan, hand, cfg = CONFIG) {
   return { pos, look, fov };
 }
 
+// You are steering an outfielder: the camera stands on the home-plate side of him, high, and looks out the way the ball went - so up on
+// the screen is away from home (toward the wall) and left / right are left / right. That direction (`yaw`) is fixed for the whole play
+// (from home toward where the ball comes down, `landing`); the camera only slides along with him. It keeps him, the ball and the
+// landing spot in the picture, widening as needed.
+//   fielder = {x, z}, ball = {x, y, z}, landing = {x, z} | null (none: toward the fielder), heading = optional fixed yaw (radians).
+// -> { pos, look, fov, yaw }   (yaw = 0 is straight out to center field; screenToField turns the stick by it)
+export function chaseView(fielder, ball, landing, cfg = CONFIG, heading) {
+  const C = cfg.camera.chase, K = cfg.camera.keepBall;
+  const yaw = heading ?? chaseYaw(landing || fielder);
+  const ux = Math.sin(yaw), uz = -Math.cos(yaw);
+  const g = landing || ball;
+  // aim between him and where the ball comes down (or the ball itself, on the ground), a little ahead of him
+  const aim0 = [lerp(fielder.x, g.x, 0.5) + ux * C.ahead, 2, lerp(fielder.z, g.z, 0.5) + uz * C.ahead];
+  let best = null;
+  // when he is far from the landing spot the camera backs up and climbs (steps of `pullStep`) until both fit
+  for (let k = 0; k <= C.pullSteps; k++) {
+    const grow = 1 + C.pullStep * k;
+    const pos = [fielder.x - ux * C.back * grow, C.up * grow, fielder.z - uz * C.back * grow];
+    // (early in its flight the ball is still behind the camera, on its way out over it: it is kept in the picture once it is out in front)
+    const ahead = (ball.x - pos[0]) * ux + (ball.z - pos[2]) * uz > C.ballAhead;
+    const pts = [[fielder.x, 3, fielder.z]];
+    if (landing) pts.push([landing.x, 0, landing.z]);
+    const ground = fitHalf(pos, pts, aim0);
+    if (ground + C.marginDeg > K.maxFov / 2 && k < C.pullSteps) continue;
+    let aim = aim0, fov = Math.max(C.fovMin, 2 * (ground + C.marginDeg));
+    if (ahead) {
+      // the ball too: widen, and if even the widest view cannot hold it, tilt toward it (it matters most)
+      const all = pts.concat([[ball.x, Math.max(0.5, ball.y), ball.z]]);
+      for (let i = 0; i < 16; i++) {
+        const need = 2 * (fitHalf(pos, all, aim) + C.marginDeg);
+        if (need <= K.maxFov) { fov = Math.max(C.fovMin, need); break; }
+        fov = K.maxFov;
+        aim = [lerp(aim[0], ball.x, 0.25), lerp(aim[1], ball.y, 0.25), lerp(aim[2], ball.z, 0.25)];
+      }
+    }
+    best = { pos, look: aim, fov: Math.min(K.maxFov, fov), yaw };
+    break;
+  }
+  return best;
+}
+// the widest angle (degrees) from the view axis (pos -> aim) to any of the points
+function fitHalf(pos, pts, aim) {
+  let half = 0;
+  for (const q of pts) half = Math.max(half, angleBetween(pos, q, aim));
+  return half;
+}
+
+/** The fixed direction of the chase camera: from home plate toward a spot on the field (radians, 0 = straight out to center). */
+export function chaseYaw(spot) {
+  return Math.hypot(spot.x, spot.z) > 1 ? Math.atan2(spot.x, -spot.z) : 0;
+}
+
+/** The stick (sx right, sy up on the screen, length <= 1) in field coordinates for a chase camera turned by `yaw`: [dx, dz]. */
+export function screenToField(sx, sy, yaw) {
+  const ux = Math.sin(yaw), uz = -Math.cos(yaw); // up on the screen
+  return [sx * -uz + sy * ux, sx * ux + sy * uz]; // (right on the screen = (-uz, ux))
+}
+
 // the angle (degrees) at `from` between the directions to two points
 function angleBetween(from, a, b) {
   const u = [a[0] - from[0], a[1] - from[1], a[2] - from[2]];

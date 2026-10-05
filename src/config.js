@@ -896,6 +896,16 @@ export const CONFIG = {
   //  Landing spot ring: a ring lying on the grass where a ball hit in the air comes down (or under the spot where a fielder will catch
   //  it); it shrinks as the ball falls and is at its smallest the moment the flight ends. (Hidden once the ball lands or is caught.)
   // --------------------------------------------------------------------------
+  fieldStick: { // the thumb stick that steers your outfielder on a phone
+    radius: 54, // px the thumb moves from where it landed for full speed
+    dead: 0.12, // share of that a thumb can wobble without moving him
+  },
+  fielderRing: { // the ring at the feet of the outfielder you are steering (picture only)
+    inner: 2.6, outer: 3.4, // ft: its inside and outside radius
+    color: 0xffc23a, // the logo's gold
+    alpha: 0.9, // how solid it is
+    pulse: 0.08, pulseRate: 1.4, // it grows and shrinks by this share, this many times a second
+  },
   landing: {
     minApex: 14, // ft: only balls hit up into the air get a ring (not grounders or low liners)
     minFlight: 1.0, // s: ...and only if they stay up at least this long
@@ -927,6 +937,16 @@ export const CONFIG = {
       pullFrom: [40, 110], // ft of ball height at which that extra pull starts / is at full
       pullNear: [110, 200], // ft the ball is from home at which that extra pull starts to fade out / is gone (a deep fly keeps the normal view)
       homerLook: 18, // ft above a home run in the seats that the camera looks (up at the crowd and fireworks)
+    },
+    chase: { // you steer an outfielder: the camera behind him (on the home-plate side), high, looking out the way the ball went
+      back: 55, // ft behind him (toward home plate)
+      up: 38, // ft above the grass
+      ahead: 6, // ft past the middle of him and the landing spot that it aims (a little more of the field in front of him)
+      fovMin: 34, // deg: the narrowest view
+      marginDeg: 5, // he, the ball and the landing spot stay at least this many degrees inside the edge of the picture
+      pullStep: 0.25, pullSteps: 6, // he is far from the landing spot: the camera backs up and climbs by this share of back / up at a time (at most pullSteps times) until both fit
+      ballAhead: 30, // ft: the ball is kept in the picture once it is this far out in front of the camera (before that it is on its way out over it)
+      ease: 4, // how quickly it follows him and widens (bigger = quicker)
     },
     minHorizontalFov: 38, // narrow (portrait) screens widen the view to keep this
     keepBall: { marginDeg: 7, maxFov: 64 }, // a ball high in the air stays this far inside the top of the picture (the view widens up to maxFov deg, then tilts up to it)

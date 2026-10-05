@@ -1,7 +1,11 @@
 // The camera that follows the ball after the computer's contact while you pitch (pure maths, no three.js).
 import { describe, it, expect } from 'vitest';
 import { CONFIG } from '../src/config.js';
-import { pitchHitView } from '../src/render/cameraViews.js';
+import { pitchHitView, chaseView, chaseYaw, screenToField } from '../src/render/cameraViews.js';
+import { simulateBattedBall } from '../src/physics/ballistics.js';
+import { createDefense, sampleBall } from '../src/game/fielding.js';
+import { landingSpot } from '../src/game/landing.js';
+import { createRng } from '../src/util/rng.js';
 
 const DEG = Math.PI / 180;
 const balls = [
@@ -81,5 +85,57 @@ describe('pitchHitView', () => {
       }
     }
     expect(bad).toEqual([]);
+  });
+});
+
+describe('chaseView (you steer an outfielder)', () => {
+  // a dozen fly balls to the outfield; the fielder runs straight from his spot toward the landing spot
+  const rng = createRng(4);
+  const defense = createDefense();
+  const plays = [];
+  while (plays.length < 12) {
+    const la = rng.range(18, 45), ev = rng.range(78, 100), spray = rng.range(-42, 42);
+    const sim = simulateBattedBall({ exitVelocity: ev, launchAngle: la, sprayAngle: spray, backspin: 900 + 55 * la, hook: 0, start: { x: 0, y: 2.6, z: -1 } });
+    const land = landingSpot(sim, null);
+    if (!land || Math.hypot(land.x, land.z) < 180) continue;
+    const pos = land.x < -60 ? 'LF' : land.x > 60 ? 'RF' : 'CF';
+    plays.push({ sim, land, f: defense[pos] });
+  }
+  it('keeps him, the landing spot and (once it is out in front) the ball in the picture, and never turns', () => {
+    const bad = [];
+    let seen = 0;
+    for (const [n, p] of plays.entries()) {
+      const yaw0 = chaseView(p.f, sampleBall(p.sim, 0), p.land).yaw;
+      for (const t of [0, 1, 2.5, p.land.tLand - 0.6, p.land.tLand - 0.2]) {
+        const k = Math.min(1, t / p.land.tLand);
+        const fielder = { x: p.f.x + (p.land.x - p.f.x) * k, z: p.f.z + (p.land.z - p.f.z) * k };
+        const ball = sampleBall(p.sim, Math.min(t, p.sim.duration));
+        const v = chaseView(fielder, ball, p.land);
+        if (Math.abs(v.yaw - yaw0) > 1e-9) bad.push(`ball ${n} t=${t}: it turned`);
+        const out = (ball.x - v.pos[0]) * Math.sin(v.yaw) - (ball.z - v.pos[2]) * Math.cos(v.yaw) > CONFIG.camera.chase.ballAhead + 1;
+        const must = [['fielder', { x: fielder.x, y: 3, z: fielder.z }], ['landing', { x: p.land.x, y: 0, z: p.land.z }]];
+        if (out) { must.push(['ball', ball]); seen++; }
+        for (const [name, q] of must) {
+          const off = angleFromAxis(v, q);
+          if (!(off < v.fov / 2 - 4)) bad.push(`ball ${n} t=${t} ${name}: ${off.toFixed(1)} deg of ${v.fov.toFixed(1)}`);
+        }
+        if (!(v.pos[2] > fielder.z)) bad.push(`ball ${n} t=${t}: the camera is not on the home side of him`);
+      }
+    }
+    expect(bad).toEqual([]);
+    expect(seen).toBeGreaterThan(8); // (the ball out in front in a fair share of the moments checked)
+  });
+  it('up on the screen points from home toward the landing spot; the stick turns with it', () => {
+    for (const p of plays) {
+      const yaw = chaseYaw(p.land);
+      const [ux, uz] = screenToField(0, 1, yaw);
+      const d = Math.hypot(p.land.x, p.land.z);
+      expect((ux * p.land.x + uz * p.land.z) / d).toBeGreaterThan(0.99);
+      const [rx, rz] = screenToField(1, 0, yaw);
+      expect(Math.abs(rx * ux + rz * uz)).toBeLessThan(1e-9); // (right is square to up)
+      expect(rx * -uz + rz * ux).toBeGreaterThan(0); // ...and to the right of it as seen from home (toward right field for a ball to center)
+    }
+    const [x, z] = screenToField(1, 0, 0);
+    expect(x).toBeCloseTo(1, 9); expect(z).toBeCloseTo(0, 9);
   });
 });
