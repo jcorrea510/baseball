@@ -109,8 +109,9 @@ after it (`plan.fielder`) is LF / CF / RF. That includes a grounder or liner tha
   you simply field it again. Nothing about the fielding is stored.
 
 ### 3.4 Failure modes decided now
-- Leaving the fielder alone: he stands still (a controlled play is not secretly automatic - that is the Auto setting). To protect a new
-  player there is no timeout; the usual ball logic applies and a ball he never reaches is a hit.
+- Leaving the fielder alone: he stands still (a controlled play is not secretly automatic - that is the Auto setting) and a ball he never
+  reaches is a hit. One safety net so a play can never hang: `fielding.control.autoAfter` (8 s) after the ball is down without a pickup,
+  the auto-pilot takes over and runs it down.
 - Pause during a controlled play: the engine already stops its clock; the input is dropped.
 - Two outfielders near the ball: the planner's `plan.fielder` is yours; the other one runs its `chase` / `backup` support path as now.
 - The fielder reaches the wall while steering: clamped by the field, no penetration (`scripts/wallcheck.mjs` covers it).
