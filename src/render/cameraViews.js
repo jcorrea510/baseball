@@ -12,7 +12,10 @@ export function pitchHitView(ball, t, plan, hand, cfg = CONFIG) {
   const m = hand === 'L' ? -1 : 1;
   const k = smoothstep(0, H.riseTime, t);
   // toward the outfield = more negative z, so the eye stays in front of home plate (z < 0) however far it climbs
-  const pos = [P[0] * m, P[1] + H.rise[0] * k, P[2] - H.rise[1] * k];
+  // a ball way up and not far from home (a pop-up, a high fly) also pulls the eye further up and back, scaled by the same climb so
+  // t = 0 is still exactly the pitching view: from higher and further away the ball and the grass under it fit in one picture
+  const pull = smoothstep(H.pullFrom[0], H.pullFrom[1], ball.y) * (1 - smoothstep(H.pullNear[0], H.pullNear[1], Math.hypot(ball.x, ball.z))) * k;
+  const pos = [P[0] * m, P[1] + H.rise[0] * k + H.pull[0] * pull, P[2] - H.rise[1] * k - H.pull[1] * pull];
   let look = [ball.x, Math.max(1.5, ball.y), ball.z];
   if (plan && plan.homer && t > plan.ballHitEnd) {
     // the ball is in the seats: look up at the crowd and the fireworks
@@ -21,17 +24,22 @@ export function pitchHitView(ball, t, plan, hand, cfg = CONFIG) {
   const dist = Math.hypot(ball.x - pos[0], ball.y - pos[1], ball.z - pos[2]);
   let fov = lerp(H.fovNear, H.fovFar, smoothstep(0, H.farFeet, dist));
   // a ball high in the air: aim part of the way down toward the grass under it, so the ballpark stays in the picture and not only sky;
-  // the view widens until the ball still fits (with `fitMarginDeg` to spare), and if even the widest view (`fovMax`) cannot hold it
-  // the aim creeps back toward the ball
+  // the view widens until the ball AND that grass still fit (with keepBall's margin to spare), and if even the widest view
+  // (keepBall's maxFov) cannot hold them the aim creeps back toward the ball
   if (!(plan && plan.homer && t > plan.ballHitEnd)) {
+    const K = cfg.camera.keepBall;
+    const high = ball.y > H.lowFrom[0];
+    let found = false;
     let low = H.lowLook * smoothstep(H.lowFrom[0], H.lowFrom[1], ball.y);
-    for (let i = 0; i < 6; i++) {
-      const ly = lerp(ball.y, 4, low);
-      const off = angleBetween(pos, [ball.x, ball.y, ball.z], [ball.x, Math.max(1.5, ly), ball.z]);
-      const need = 2 * (off + H.fitMarginDeg);
-      if (need <= H.fovMax || low < 0.01) { look = [ball.x, Math.max(1.5, ly), ball.z]; fov = Math.min(H.fovMax, Math.max(fov, need)); break; }
-      low *= 0.6;
+    for (let i = 0; i < 12; i++) {
+      const aim = [ball.x, Math.max(1.5, lerp(ball.y, 4, low)), ball.z];
+      let half = angleBetween(pos, [ball.x, ball.y, ball.z], aim) + K.marginDeg;
+      if (high) half = Math.max(half, angleBetween(pos, [ball.x, 0, ball.z], aim) + H.grassMarginDeg);
+      const need = 2 * half;
+      if (need <= K.maxFov || low < 0.01) { look = aim; fov = Math.min(K.maxFov, Math.max(fov, need)); found = true; break; }
+      low *= 0.8;
     }
+    if (!found) { look = [ball.x, Math.max(1.5, ball.y), ball.z]; fov = Math.min(K.maxFov, Math.max(fov, 2 * (K.marginDeg))); }
   }
   return { pos, look, fov };
 }

@@ -65,4 +65,21 @@ describe('pitchHitView', () => {
     const flying = pitchHitView(seats, 4, { homer: true, ballHitEnd: 5 }, 'R', CONFIG);
     expect(up.look[1]).toBeGreaterThan(flying.look[1] + 10);
   });
+
+  it('a high pop-up over the infield keeps the grass under it in the picture too (not only sky)', () => {
+    const bad = [];
+    const plan = { homer: false, ballLandDistance: 60, ballHitEnd: 5 };
+    for (const ball of [{ x: 0, y: 110, z: -60 }, { x: 10, y: 90, z: -45 }, { x: -15, y: 100, z: -80 }]) {
+      for (const t of [1, 2.5]) for (const hand of ['R', 'L']) {
+        const v = pitchHitView(ball, t, plan, hand, CONFIG);
+        const ground = { x: ball.x, y: 0, z: ball.z };
+        for (const [what, pt] of [['ball', ball], ['grass', ground]]) {
+          const off = angleFromAxis(v, pt);
+          if (!(off < v.fov / 2)) bad.push(`${what} at (${ball.x},${ball.y},${ball.z}) t=${t} ${hand}: ${off.toFixed(1)} deg of ${(v.fov / 2).toFixed(1)}`);
+        }
+        if (!(v.pos[2] < 0)) bad.push(`behind the plate at t=${t}`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
 });

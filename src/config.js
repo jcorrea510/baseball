@@ -900,8 +900,10 @@ export const CONFIG = {
       farFeet: 300, // ft from the camera at which the view is at its narrowest
       lowLook: 0.5, // a ball high in the air: how far (0-1) the camera aims down from the ball toward the grass under it, so the field stays in the picture
       lowFrom: [20, 80], // ft of ball height at which that downward aim starts / is at full
-      fitMarginDeg: 5, // the ball always stays this many degrees inside the edge of the picture
-      fovMax: 62, // the widest view (deg) the camera uses to keep a high ball in the picture
+      grassMarginDeg: 2, // the grass under a high ball must be at least this many degrees inside the edge of the picture
+      pull: [50, 120], // extra ft up and toward the outfield the camera pulls for a ball way up and near home (a pop-up), so the ball and the grass under it fit together
+      pullFrom: [40, 110], // ft of ball height at which that extra pull starts / is at full
+      pullNear: [110, 200], // ft the ball is from home at which that extra pull starts to fade out / is gone (a deep fly keeps the normal view)
       homerLook: 18, // ft above a home run in the seats that the camera looks (up at the crowd and fireworks)
     },
     minHorizontalFov: 38, // narrow (portrait) screens widen the view to keep this
