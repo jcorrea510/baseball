@@ -690,6 +690,9 @@ export const CONFIG = {
       airTime: 0.32, // s airborne before the glove meets the ball
       landAfter: 0.12, // s after the catch that his body touches down
       armReach: 3.4, // ft the glove reaches in front of a layed-out body
+      catchRadius: 1.6, // ft: how close the ball must be to the glove (which is armReach ahead of the body) at the moment of a dive you steer yourself
+      liveLunge: 3, // ft: the least a steered dive carries him through the air (a dive from standing still)
+      liveCarry: 0.8, // share of his running speed x airTime a steered dive carries him through the air
       slideDecel: 30, // ft/s^2 sliding along the grass
       landSpeed: 11, // ft/s, top touchdown speed
       hold: 0.1, // s lying with the ball
