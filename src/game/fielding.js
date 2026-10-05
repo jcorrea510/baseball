@@ -8,9 +8,13 @@ import { BASE_XZ, polar, fenceDistance, sprayOf, clampToField, distanceToWall, i
 import { runnerArrival, runnerFinish, runnerState, runnerProfile, retreatArrival, moveArrival, moveFinish, extendLegs, backLegs } from './runnerMotion.js';
 import { planRun, planDiveRun, sampleRun, samplePath, covered, timeToCover, moverReturnTime, TAIL_MAX } from './fielderMotion.js';
 
+export { sampleBall }; // (where the ball is t s after contact - the live fielder in fieldControl.js reads it too)
+
 export const POSITIONS = ['P', 'C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF'];
 const INFIELDERS = ['1B', '2B', 'SS', '3B'];
 const STEP = 1 / 60;
+/** ft: a fielder only dives for a ball this low or lower (the planner's rule; the live fielder in fieldControl.js uses it too). */
+export const DIVE_HEIGHT = 5.2;
 
 export function fielderType(pos) {
   if (pos === 'LF' || pos === 'CF' || pos === 'RF') return 'OF';
@@ -72,7 +76,7 @@ export function alignDefense(defense, bases, outs, cfg = CONFIG) {
 // (covered / timeToCover - the movement model - live in fielderMotion.js so the planner and the renderer share them)
 
 // Fielders run in easier than back: a ball hit over their head is harder to run down.
-function effort(f, bx, bz) {
+export function effort(f, bx, bz) {
   const dBall = Math.hypot(bx, bz);
   const dF = Math.hypot(f.x, f.z);
   if (dBall > dF + 8) return 0.8;
@@ -91,30 +95,37 @@ function throwTime(d, f, cfg) {
 // ---------------------------------------------------------------------------
 // Air catch: earliest moment any fielder can be under the ball while it is still catchable.
 // ---------------------------------------------------------------------------
-function findAirCatch(sim, defense, cfg) {
+/** Can a ball at this spot be caught in the air at all? (glove height, not over the wall, not in the seats) - the planner's rule, shared
+ *  with the live fielder (fieldControl.js). */
+export function airCatchable(b, F) {
+  if (b.y > F.reachHeight || b.y < 0.5) return false;
+  const spray = sprayOf(b.x, b.z);
+  if (b.z < 0 && Math.abs(spray) <= 45 && Math.hypot(b.x, b.z) > fenceDistance(spray) - 0.5) return false; // over the wall
+  return isInsideField(b.x, b.z, -0.5); // (a foul ball over a foul-territory wall or the backstop)
+}
+/** The last moment a ball can be caught in the air: when it first touches the ground, the wall or the seats. */
+export const airEnd = (sim) => Math.min(sim.contactTime, sim.duration);
+
+/** `positions` (optional): only these fielders are considered (the live fielder's auto-pilot asks about one man). */
+export function findAirCatch(sim, defense, cfg, positions = POSITIONS) {
   const F = cfg.fielding;
   const STEP = 1 / 240; // (a fast ball is only within a fielder's reach for a moment: look at it finely so a real chance is never stepped over)
-  const tEnd = Math.min(sim.contactTime, sim.duration);
+  const tEnd = airEnd(sim);
   // Could this fielder be under the ball at time t? (a fielder who has to dive counts only if nobody can get there running)
-  const catchableBall = (b) => {
-    if (b.y > F.reachHeight || b.y < 0.5) return false;
-    const spray = sprayOf(b.x, b.z);
-    if (b.z < 0 && Math.abs(spray) <= 45 && Math.hypot(b.x, b.z) > fenceDistance(spray) - 0.5) return false; // over the wall
-    return isInsideField(b.x, b.z, -0.5); // (a foul ball over a foul-territory wall or the backstop)
-  };
+  const catchableBall = (b) => airCatchable(b, F);
   const tryFielder = (f, b, t) => {
     const d = dist(f.x, f.z, b.x, b.z);
     const avail = covered(f.speed * effort(f, b.x, b.z), t - f.react, F.accel);
     const need = d - F.glove;
     if (need <= avail) return { f, need, dive: false, slack: avail - need, avail, ball: { ...b } };
-    if (b.y <= 5.2 && need - F.diveExtra <= avail) return { f, need, dive: true, slack: -1, avail, ball: { ...b } };
+    if (b.y <= DIVE_HEIGHT && need - F.diveExtra <= avail) return { f, need, dive: true, slack: -1, avail, ball: { ...b } };
     return null;
   };
   const candidate = (t) => {
     const b = sampleBall(sim, t);
     if (!catchableBall(b)) return null;
     let best = null;
-    for (const pos of POSITIONS) {
+    for (const pos of positions) {
       const c = tryFielder(defense[pos], b, t);
       if (!c) continue;
       if (!c.dive) { if (!best || best.dive || c.need < best.need) best = c; }
@@ -164,7 +175,7 @@ function airShortfall(sim, defense, cfg) {
     if (b.y > F.reachHeight || b.y < 0.5) continue;
     for (const pos of POSITIONS) {
       const f = defense[pos];
-      const short = dist(f.x, f.z, b.x, b.z) - F.glove - (b.y <= 5.2 ? F.diveExtra : 0) - covered(f.speed * effort(f, b.x, b.z), t - f.react, F.accel);
+      const short = dist(f.x, f.z, b.x, b.z) - F.glove - (b.y <= DIVE_HEIGHT ? F.diveExtra : 0) - covered(f.speed * effort(f, b.x, b.z), t - f.react, F.accel);
       if (short < best) best = short;
     }
   }
@@ -174,7 +185,7 @@ function airShortfall(sim, defense, cfg) {
 // ---------------------------------------------------------------------------
 // Ground pickup: the ball is low; find the first moment a fielder can reach it.
 // ---------------------------------------------------------------------------
-function findGroundPickup(sim, defense, cfg) {
+export function findGroundPickup(sim, defense, cfg, positions = POSITIONS) {
   const F = cfg.fielding;
   const t0 = Math.max(0.25, sim.contactTime);
   const tEnd = sim.duration;
@@ -188,7 +199,7 @@ function findGroundPickup(sim, defense, cfg) {
     const b = sampleBall(sim, t);
     if (b.y > F.groundHeight) return null;
     let best = null;
-    for (const pos of POSITIONS) {
+    for (const pos of positions) {
       if (pos === 'C' && sim.firstBounce && -sim.firstBounce.z > 20) continue; // catcher stays home on deep balls
       const f = defense[pos];
       const d = dist(f.x, f.z, b.x, b.z);
@@ -221,8 +232,8 @@ function findGroundPickup(sim, defense, cfg) {
   // Ball came to rest (or hit the wall and stopped): the nearest fielder runs it down.
   const b = sampleBall(sim, tEnd);
   let best = null;
-  for (const pos of POSITIONS) {
-    if (pos === 'C' || pos === 'P') continue;
+  for (const pos of positions) {
+    if ((pos === 'C' || pos === 'P') && positions === POSITIONS) continue;
     const f = defense[pos];
     const need = Math.max(0, dist(f.x, f.z, b.x, b.z));
     // same movement model as everywhere else (acceleration, and slower when running back), so the fielder really gets there
