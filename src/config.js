@@ -709,9 +709,13 @@ export const CONFIG = {
     // Fielding the ball yourself (game/fieldControl.js): the outfielder you steer is moved in fixed steps of `step` s (never per frame),
     // and if the ball has been on the ground `autoAfter` s without him getting to it the computer runs it down for you (a play never hangs).
     // A steered dive catches the ball if it is within dive.catchRadius of his glove at any step `diveSlack` s either side of the moment
-    // the glove arrives. The auto-pilot (also the Auto setting) runs at the planner's spot, braking with `autoBrake` of his braking power
-    // so he never overshoots it, and aims to have the ball within `autoReach` of his glove reach by the time it gets there.
-    control: { step: 1 / 120, autoAfter: 8, diveSlack: 0.05, autoBrake: 0.75, autoReach: 0.5 },
+    // the glove arrives. The auto-pilot (the computer running him down for you: the safety net above, the test bots, and a play you
+    // simply leave alone - the Auto setting is something else, the old automatic fielding with nobody steered) runs at the planner's spot,
+    // braking with `autoBrake` of his braking power so he never overshoots it, and aims to have the ball within `autoReach` of his glove
+    // reach by the time it gets there. Planned at contact, before anybody knows what he will do, the play has him pick the ball up where
+    // it comes to rest `pendingAfter` s after the safety net would have taken over (the game plans it again at the real catch or pickup,
+    // so that moment is never reached; it only has to be later than any real one).
+    control: { step: 1 / 120, autoAfter: 8, diveSlack: 0.05, autoBrake: 0.75, autoReach: 0.5, pendingAfter: 4 },
     // Covering a base: an out needs a fielder standing on the bag WITH the ball before the runner gets there. Whoever is not fielding
     // the ball and is nearest to the play breaks for the bag; the fielder with the ball either carries it there himself (when he
     // is close) or throws to the covering man, and the throw is timed to reach the bag when he does.
