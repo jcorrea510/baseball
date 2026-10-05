@@ -712,9 +712,11 @@ export const CONFIG = {
     // the glove arrives. The auto-pilot (the computer running him down for you: the safety net above, the test bots, and a play you
     // simply leave alone - the Auto setting is something else, the old automatic fielding with nobody steered) runs at the planner's spot,
     // braking with `autoBrake` of his braking power so he never overshoots it, and aims to have the ball within `autoReach` of his glove
-    // reach by the time it gets there. Planned at contact, before anybody knows what he will do, the play has him pick the ball up where
-    // it comes to rest `pendingAfter` s after the safety net would have taken over (the game plans it again at the real catch or pickup,
-    // so that moment is never reached; it only has to be later than any real one).
+    // reach by the time it gets there. Planned at contact, before anybody knows what he will do, the play has him pick the ball up
+    // where it comes to rest later than he possibly can: once the ball is at rest and the safety net has taken over, the time to run the
+    // longest straight line in the ballpark, plus `pendingAfter` s for braking and a detour round a corner of the wall (the game plans
+    // the play again at the real catch or pickup, so that moment is never reached). On a ball you steer for, the runners wait until it
+    // is down before they read it, and your pickup is always a hit (no fumble, no throw-out at first from the outfield).
     control: { step: 1 / 120, autoAfter: 8, diveSlack: 0.05, autoBrake: 0.75, autoReach: 0.5, pendingAfter: 4 },
     // Covering a base: an out needs a fielder standing on the bag WITH the ball before the runner gets there. Whoever is not fielding
     // the ball and is nearest to the play breaks for the bag; the fielder with the ball either carries it there himself (when he
