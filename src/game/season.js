@@ -571,13 +571,23 @@ export function gameConfig(level, rating, cfg = CONFIG) {
   return { ...cfg, difficulty: { ...cfg.difficulty, [level]: dd } };
 }
 
+/** Your staff as fresh copies for a one-off game: the best starter (overall) first, then the rest in their order. */
+function freshStaff(s, cfg) {
+  const list = (s.staff || []).map((p) => ({ ...p, unavailable: false }));
+  if (!list.length) return armsOf(teamById(s.teams[0].id), cfg);
+  const sp = list.filter((p) => p.role === 'SP');
+  const best = sp.length ? sp.reduce((a, b) => (overall(b) > overall(a) ? b : a)) : list[0];
+  return [best, ...list.filter((p) => p !== best)];
+}
+
 /** Your League club for the other modes (Quick Game, Derby, Practice): the same team in its home jersey, the same nine batters. */
 export function clubSetup(s, cfg = CONFIG) {
   const club = teamById(s.teams[0].id);
   return {
     playerTeam: { id: club.id, name: s.teams[0].name, abbr: s.teams[0].abbr, color: s.teams[0].color, uniform: uniformFor(club, 'home') },
     lineup: lineup(s, cfg).map((p, i) => ({ ...p, order: i })),
-    staff: armsOf(club, cfg), // (a Quick Game with your club: its five real arms, fresh)
+    // (a Quick Game with your club: your League staff - bought pitchers too - all fresh copies, the best starter first)
+    staff: freshStaff(s, cfg),
   };
 }
 

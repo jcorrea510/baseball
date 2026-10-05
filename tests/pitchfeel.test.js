@@ -6,7 +6,9 @@
 import { describe, it, expect } from 'vitest';
 import { runHalves, targetFor } from '../scripts/pitchfeel.mjs';
 
-const N = 400;
+// (the balance bands are opt-in - they take minutes: `PITCH_BANDS=1 npx vitest run tests/pitchfeel.test.js`; the referee check always runs, on fewer halves)
+const BANDS = !!process.env.PITCH_BANDS;
+const N = BANDS ? 400 : 150;
 const cache = {};
 const get = (player, level) => (cache[player + level] ||= runHalves({ halves: N, player, level, seed: 5 }));
 
@@ -18,7 +20,7 @@ describe('a person pitching the computer\'s half', () => {
   }, 300000);
 });
 
-describe('pitching balance bands', () => {
+describe.skipIf(!BANDS)('pitching balance bands', () => {
   for (const level of ['rookie', 'pro', 'allstar']) {
     it(`an average person gives up about today's runs per half on ${level}`, () => {
       const r = get('average', level), t = targetFor(level);

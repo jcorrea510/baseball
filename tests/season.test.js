@@ -395,6 +395,19 @@ describe('pitchers', () => {
     e.start();
     expect(e.bullpenOptions().some((o) => o.pitcher.id === r1.id)).toBe(false);
   });
+  it('clubSetup gives your League staff (a bought arm too), fresh, best starter first', () => {
+    const s = S.newSeason(null, { team: 'nym', seed: 3 });
+    S.ensureStaff(s);
+    const extra = { ...s.staff[0], id: 'bought1', name: 'Bought Arm', role: 'SP', vel: 99, ctl: 99, stf: 99, sta: 99 };
+    s.staff.push(extra);
+    s.staff[1].unavailable = true;
+    const c = S.clubSetup(s);
+    expect(c.staff.length).toBe(s.staff.length);
+    expect(c.staff[0].id).toBe('bought1');
+    expect(c.staff.every((p) => !p.unavailable)).toBe(true);
+    expect(c.staff[0]).not.toBe(extra);
+  });
+
   it('clubSetup gives the club has five real arms, fresh, for a Quick Game', () => {
     const s = S.newSeason(null, { team: 'nym', seed: 32 });
     const c = S.clubSetup(s);

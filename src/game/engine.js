@@ -671,7 +671,7 @@ export class Engine {
     const base = lead.out ? lead.outBase : lead.to;
     const result = plan.result === 'caughtStealing' ? 'caughtStealing' : plan.doubleSteal ? 'doubleSteal' : 'stolenBase';
     this.emitCount();
-    this.emit('result', { kind: 'steal', result, text: rules.RESULT_TEXT[result], base, outs: g.outs, halfOver: r.halfOver, runs: 0, plan });
+    this.emit('result', { kind: 'steal', result, text: rules.RESULT_TEXT[result], base, outs: g.outs, halfOver: r.halfOver, runs: r.runs || 0, scoredRunners: r.scoredRunners, plan });
     const halfOver = res.halfOver || r.halfOver;
     this.finishPitch(this.cfg.pace.playEndPause, halfOver, res.paEnded || halfOver, res.paEnded ? res.result : result);
   }

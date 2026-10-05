@@ -197,11 +197,12 @@ export function applySteal(g, moves) {
   const newBases = [null, null, null];
   let outs = 0;
   const scoredRunners = [];
+  let runs = 0;
   for (const m of moves) {
     const runner = g.bases[m.from - 1];
     if (!runner) continue;
     if (m.out) { outs++; continue; }
-    if (m.to >= 4) { scoredRunners.push(runner); } else placeRunner(newBases, Math.min(3, m.to), runner);
+    if (m.to >= 4) { runs++; scoredRunners.push(runner); } else placeRunner(newBases, Math.min(3, m.to), runner);
   }
   for (let b = 3; b >= 1; b--) {
     const runner = g.bases[b - 1];
@@ -209,7 +210,9 @@ export function applySteal(g, moves) {
   }
   g.bases = newBases;
   recordOut(g, outs);
-  return { outs, scoredRunners, halfOver: halfIsOver(g) };
+  const over = halfIsOver(g);
+  if (runs && !over) addRuns(g, runs); // (no run when the third out came on the same play)
+  return { outs, runs: over ? 0 : runs, scoredRunners: over ? [] : scoredRunners, halfOver: over, walkOff: g.walkOff };
 }
 
 /**

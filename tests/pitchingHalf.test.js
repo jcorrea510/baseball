@@ -35,6 +35,29 @@ function strikeOutTheSide(e) {
   e.pitchOverride = null;
 }
 
+describe('starting the delivery', () => {
+  it('is refused before the pitcher and fielders are set, and the ring carries the release point', () => {
+    const e = make({ seed: 21 });
+    e.start();
+    e.fieldersSetAt = e.time + 2;
+    expect(e.startDelivery()).toBe(false);
+    expect(e.phase).toBe('aim');
+    e.update(2.1);
+    expect(e.startDelivery()).toBe(true);
+    expect(e.ring.release).toBeTruthy();
+    expect(e.ring.release.z).toBe(CONFIG.pitch.releaseZ);
+  });
+
+  it('is refused while simming (only the auto pitcher starts one)', () => {
+    const e = make({ seed: 22 });
+    e.start();
+    e.simming = true;
+    expect(e.startDelivery()).toBe(false);
+    expect(e.startDelivery({ auto: true })).toBe(true);
+    e.simming = false;
+  });
+});
+
 describe('whose half it is', () => {
   it('the computer bats first and you pitch', () => {
     const e = make();

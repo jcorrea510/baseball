@@ -399,4 +399,19 @@ describe('who scored', () => {
     const res = rules.applySteal(g, [{ from: 3, to: 4 }]);
     expect(res.scoredRunners).toEqual([r3]);
   });
+
+  it('a stolen home counts the run (and not when the third out came on the same play)', () => {
+    const g = g0();
+    g.bases = [null, null, runner(3)];
+    const res = rules.applySteal(g, [{ from: 3, to: 4 }]);
+    expect(res.runs).toBe(1);
+    expect(g.score.top).toBe(1);
+    expect(g.bases).toEqual([null, null, null]);
+    const h = g0();
+    h.outs = 2; h.bases = [runner(1), null, runner(3)];
+    const r2 = rules.applySteal(h, [{ from: 1, to: 2, out: true }, { from: 3, to: 4 }]);
+    expect(r2.halfOver).toBe(true);
+    expect(r2.runs).toBe(0);
+    expect(h.score.top).toBe(0);
+  });
 });
