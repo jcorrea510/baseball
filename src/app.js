@@ -524,7 +524,7 @@ export class App {
     });
     on('count', (c) => { ui.setCount(c.balls, c.strikes, c.outs); this.updateScoreboard(); });
     on('batterReady', () => ui.hideBatterUp());
-    on('checkpoint', (st) => this.saveSeasonGame(st));
+    on('checkpoint', (st) => { if (!e.simming) this.saveSeasonGame(st); }); // (a Sim: one save when it ends - the next plate appearance - not one per pitch)
     on('buntStance', ({ on }) => ui.setBunt(on));
     on('practice', (st) => { ui.setPracticeState(st); this.updateScoreboard(); });
     on('result', () => { if (e.practicePitch) ui.setPracticeState(e.practiceState()); }); // (your strikeouts, walks and hits)
@@ -966,16 +966,13 @@ export class App {
     this.audio.crowdSwell(C.level, C.seconds);
   }
 
-  // Your strikeout: the crowd roars, and an inning-ending one is celebrated (the stands cheer, the home crowd's apple).
+  // Your strikeout: the crowd roars, and an inning-ending one is celebrated (the stands cheer).
   strikeoutMoment(r) {
-    const e = this.engine, M = CONFIG.pitching.moments;
+    const M = CONFIG.pitching.moments;
     this.groaned = true;
     this.audio.crowdSwell(M.roar.level, M.roar.seconds);
     this.audio.applause(1.6, 0.7);
-    if (r.halfOver) {
-      this.S.stadium.crowd.cheer(1);
-      if (e.playerSide === 'bottom') this.S.stadium.celebrate(); // (the home team's moment: Citi Field's apple)
-    }
+    if (r.halfOver) this.S.stadium.crowd.cheer(1); // (the apple is for home-team homers only)
   }
 
   onGameOver(p) {
@@ -1233,10 +1230,17 @@ export class App {
     return e.phase === 'aim' || e.phase === 'delivery' || (e.phase === 'pitch' && !e.play);
   }
 
+  // The pitcher's view stays up between pitches too: the result of a take / swing-and-miss with no play (the camera never flies to the plate
+  // and back, the pitch bar does not blink).
+  isPitchView(e) {
+    if (this.isPitching(e)) return true;
+    return !!(e && this.screen === 'game' && !e.over && e.pitching && !e.simming && e.phase === 'result' && !e.play);
+  }
+
   // Every frame: the pitch buttons, the Sim button, the aim (cursor on the plane over the plate, keys, a finger) handed to the
   // engine while you are aiming, and the plain aim dot.
   updatePitching(e) {
-    const active = this.isPitching(e) && !this.paused && !this.ui.current;
+    const active = this.isPitchView(e) && !this.paused && !this.ui.current;
     if (active && e.phase === 'aim' && !this.bot) {
       if (this.aimMode === 'mouse' && this.mouse) this.aimOnCursor();
       this.clampAimTarget();
@@ -1305,7 +1309,7 @@ export class App {
   updateBatting(e, dt) {
     const batting = this.isBatting(e) && !this.paused;
     this.cam.batting = batting;
-    this.cam.pitching = !!e && !this.paused && this.isPitching(e);
+    this.cam.pitching = !!e && !this.paused && this.isPitchView(e);
     this.cam.pitcherHand = (e && e.mound && e.mound.pitcher && e.mound.pitcher.hand) || 'R';
     this.actors.cameraCatcherDist = this.cam.catcherDist;
     this.actors.cameraPos = this.S.camera.position;
@@ -1404,7 +1408,7 @@ export class App {
         break;
       case 'delivery': if (e.pitching && !this.bot) e.ringTap(sinceTap()); break; // (graded against the engine's own clock)
       case 'play': if (ev && ev.type === 'keydown') this.fast = true; break; // (only the Space bar speeds a play up: a stray click or tap never does)
-      case 'result': if (e.time - e.phaseSince > 0.12) { e.resultUntil = Math.min(e.resultUntil, e.time); } break;
+      case 'result': if (e.time - e.phaseSince > 0.12) { e.resultUntil = Math.min(e.resultUntil, Math.max(e.time, e.pitching ? e.fieldersSetAt : 0)); } break; // (pitching: never before the pitcher and fielders are back)
       default: break;
     }
   }
