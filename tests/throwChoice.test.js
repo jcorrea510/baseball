@@ -1,18 +1,17 @@
-// You pitch and you are in the field (Fielding on Play): the fielder who gets the ball runs to it by himself and YOU pick where his
-// first throw goes (engine.throwChoice / chooseThrow, fielding's i.throwTo). No pick = the throw he would have made anyway.
+// You pitch and you are in the field (Fielding on Play): the fielders run to the ball and field it by themselves, and then EVERY
+// throw is yours - whoever has the ball holds it until you tap a base (engine.throwChoice / chooseThrow, fielding's MANUAL).
 import { describe, it, expect } from 'vitest';
 import { CONFIG } from '../src/config.js';
 import { Engine } from '../src/game/engine.js';
 import { auditPlan } from '../src/game/playAudit.js';
 import { createRng } from '../src/util/rng.js';
-import { firstThrow } from '../src/game/fielding.js';
 
 const DT = 1 / 120;
 const swingMiddle = () => ({ swing: true, errorMs: 0, aim: { x: 0, y: 2.4 }, protect: false });
 const ball = (ev, la, spray) => () => ({ exitVelocity: ev, launchAngle: la, sprayAngle: spray, backspin: 900 + 55 * Math.max(la, 0), hook: 0 });
 const GROUNDER_SS = ball(78, -6, -14);
 const LINER_LEFT_CENTER = ball(96, 12, -22);
-const DEEP_FLY_CF = ball(90, 30, 8); // (caught ~345 ft out: deep enough that a man on second tags up too)
+const DEEP_FLY_CF = ball(90, 30, 8); // (caught ~345 ft out)
 
 const make = (o = {}, bases = [null, null, null], outs = 0) => {
   const e = new Engine({ mode: 'quick', seed: 11, cpuHalf: 'pitch', fielding: 'play', ...o });
@@ -23,10 +22,10 @@ const make = (o = {}, bases = [null, null, null], outs = 0) => {
   return e;
 };
 
-// Pitch one ball he hits (`contact`) and run the play to its end. `pick(choice, t)` is asked every step while a throw can be chosen
+// Pitch one ball he hits (`contact`) and run the play to its end. `tap(choice, t, taps)` is asked every step while you can throw
 // (return a base to throw there, or nothing). Returns what happened.
-function hitOne(e, contact, pick = () => null) {
-  const got = { choices: [], picked: null, results: [], contactPlan: null };
+function hitOne(e, contact, tap = () => null) {
+  const got = { choices: [], taps: [], results: [], contactPlan: null };
   const offs = [e.on('contact', (d) => { got.contactPlan = d.plan; }), e.on('result', (d) => got.results.push(d))];
   e.cpuSwingOverride = swingMiddle;
   e.contactOverride = contact;
@@ -41,8 +40,8 @@ function hitOne(e, contact, pick = () => null) {
     const c = e.throwChoice;
     if (c) {
       got.choices.push({ ...c, now: e.time - e.play.t0 });
-      const b = pick(c, e.time - e.play.t0);
-      if (b && e.chooseThrow(b)) got.picked = b;
+      const b = tap(c, e.time - e.play.t0, got.taps);
+      if (b && e.chooseThrow(b)) got.taps.push(b);
     }
     if (e.play) got.plan = e.play.plan;
     e.update(DT);
@@ -52,117 +51,105 @@ function hitOne(e, contact, pick = () => null) {
   for (const off of offs) if (typeof off === 'function') off();
   return got;
 }
+// tap these bases in turn, as soon as each can be tapped
+const inTurn = (...bases) => (c, t, taps) => (taps.length < bases.length ? bases[taps.length] : null);
+const outsAt = (plan) => plan.events.filter((ev) => ev.type === 'out').sort((a, b) => a.t - b.t).map((ev) => ev.base);
 
-describe('choosing the throw: when it is offered', () => {
-  it('a grounder to short with a man on first: offered before he throws (and only then), second (the double play) is his own pick', () => {
-    const got = hitOne(make({}, [1, null, null]), GROUNDER_SS);
+describe('your throws: when you can throw', () => {
+  it('from a moment before he has the ball until the play is over; never with Fielding on Auto or while you bat', () => {
+    const got = hitOne(make(), GROUNDER_SS);
     expect(got.choices.length).toBeGreaterThan(0);
     const c = got.choices[0];
-    expect(c.pos).toBe('SS');
-    expect(c.base).toBe(2);
-    for (const q of got.choices) { expect(q.now).toBeLessThan(q.t); expect(q.now).toBeGreaterThanOrEqual(q.opens - 1e-9); }
-    expect(c.t - c.opens).toBeCloseTo(Math.min(CONFIG.fielding.throwChoice.lead, c.t - CONFIG.fielding.throwChoice.earliest), 6);
-    expect(c.bases.filter((q) => q.ok).map((q) => q.base)).toEqual([1, 2]);
-    expect(got.contactPlan.result).toBe('doublePlay');
-  });
-
-  it('never with Fielding on Auto, never while you bat', () => {
-    expect(hitOne(make({ fielding: 'auto' }, [1, null, null]), GROUNDER_SS).choices).toEqual([]);
+    expect(c.holder).toBe('SS');
+    expect(c.first).toBe(true);
+    const tHave = got.plan.pickupT;
+    expect(c.now).toBeGreaterThanOrEqual(Math.max(CONFIG.fielding.throwChoice.earliest, tHave - CONFIG.fielding.throwChoice.lead) - 1e-9);
+    expect(c.bases.map((q) => q.ok)).toEqual([true, true, true, true]);
+    expect(hitOne(make({ fielding: 'auto' }), GROUNDER_SS).choices).toEqual([]);
     const e = new Engine({ mode: 'quick', seed: 3, fielding: 'play', playerSide: 'top' });
     e.start();
     expect(e.offense).toBe('player');
     expect(e.throwChoice).toBeNull();
   });
-
-  it('no pick: exactly the play the automatic fielding makes', () => {
-    for (const [bases, contact] of [[[null, null, null], GROUNDER_SS], [[1, null, null], GROUNDER_SS], [[null, 1, null], LINER_LEFT_CENTER], [[null, null, 1], DEEP_FLY_CF]]) {
-      const mine = hitOne(make({}, bases), contact);
-      const auto = hitOne(make({ fielding: 'auto' }, bases), contact);
-      expect(mine.plan.result).toBe(auto.plan.result);
-      expect(mine.plan.outsMade).toBe(auto.plan.outsMade);
-      expect(mine.plan.throws.map((t) => [t.toBase, t.t0.toFixed(3)])).toEqual(auto.plan.throws.map((t) => [t.toBase, t.t0.toFixed(3)]));
-    }
-  });
 });
 
-describe('choosing the throw: what it does', () => {
-  it('a grounder to short with a man on first: second starts the double play, first gets only the batter', () => {
-    const two = hitOne(make({}, [1, null, null]), GROUNDER_SS, () => 2);
-    expect(two.picked).toBe(2);
-    expect(two.plan.outsMade).toBeGreaterThanOrEqual(1);
-    expect(firstThrow(two.plan).base).toBe(2);
-    const one = hitOne(make({}, [1, null, null]), GROUNDER_SS, () => 1);
-    expect(one.picked).toBe(1);
-    expect(firstThrow(one.plan).base).toBe(1);
-    const outs = one.plan.events.filter((ev) => ev.type === 'out').sort((a, b) => a.t - b.t);
-    expect(outs[0].base).toBe(1); // (the batter first - the man with the ball may still go after the runner, no longer forced, at second)
-  });
-
-  it('a routine grounder with nobody on: nothing to choose (only the batter is running - to first)', () => {
+describe('your throws: nothing is automatic', () => {
+  it('a grounder to short and no tap: he holds it, nobody is thrown out, the batter is safe', () => {
     const got = hitOne(make(), GROUNDER_SS);
-    expect(got.choices).toEqual([]);
+    expect(got.plan.throws).toEqual([]);
+    expect(got.plan.outsMade || 0).toBe(0);
+    expect(got.plan.batterDest).toBeGreaterThanOrEqual(1);
+    expect(got.phaseAfter).not.toBe('play');
+  });
+
+  it('tap first (even before he has the ball): the batter is out at first', () => {
+    const got = hitOne(make(), GROUNDER_SS, inTurn(1));
+    expect(got.taps).toEqual([1]);
     expect(got.plan.result).toBe('groundout');
+    expect(outsAt(got.plan)).toEqual([1]);
   });
 
-  it('a hit to left-center with a man on second who holds: first (the batter) and his own pick are offered; the throw goes where you pick', () => {
-    const offered = hitOne(make({}, [null, 1, null]), LINER_LEFT_CENTER).choices[0];
-    const ok = offered.bases.filter((q) => q.ok).map((q) => q.base);
-    expect(ok).toContain(1);
-    expect(ok).toContain(offered.base);
-    expect(ok.length).toBeGreaterThanOrEqual(2);
-    for (const b of ok) {
-      const got = hitOne(make({}, [null, 1, null]), LINER_LEFT_CENTER, () => b);
-      expect(got.picked).toBe(b);
-      expect(firstThrow(got.plan).base).toBe(b);
-    }
+  it('a man on first: second, then first, is a double play you turned yourself; second alone only gets the lead runner', () => {
+    const two = hitOne(make({}, [1, null, null]), GROUNDER_SS, inTurn(2, 1));
+    expect(two.taps).toEqual([2, 1]);
+    expect(outsAt(two.plan)).toEqual([2, 1]);
+    expect(two.plan.result).toBe('doublePlay');
+    const one = hitOne(make({}, [1, null, null]), GROUNDER_SS, inTurn(2));
+    expect(outsAt(one.plan)).toEqual([2]);
+    expect(one.plan.result).toBe('fieldersChoice');
+    expect(one.plan.batterDest).toBe(1);
   });
 
-  it('whatever is offered can be picked, and the first throw goes there (grounders, liners, a deep fly with men tagging up)', () => {
-    const cases = [[[1, null, null], GROUNDER_SS], [[1, 1, null], GROUNDER_SS], [[null, 1, null], LINER_LEFT_CENTER], [[1, null, 1], LINER_LEFT_CENTER], [[null, 1, 1], DEEP_FLY_CF], [[1, null, 1], DEEP_FLY_CF]];
-    let tried = 0;
-    for (const [bases, contact] of cases) {
-      const offered = hitOne(make({}, bases), contact).choices[0];
-      if (!offered) continue;
-      for (const b of offered.bases.filter((q) => q.ok).map((q) => q.base)) {
-        const got = hitOne(make({}, bases), contact, () => b);
-        expect(got.picked).toBe(b);
-        expect(firstThrow(got.plan).base).toBe(b);
-        tried++;
-      }
-    }
-    expect(tried).toBeGreaterThanOrEqual(8);
+  it('a deep fly with a man on third: no tap and he scores with nobody throwing; tap home and the throw goes home', () => {
+    const none = hitOne(make({}, [null, null, 1]), DEEP_FLY_CF);
+    expect(none.contactPlan.caught).toBe(true);
+    expect(none.plan.throws).toEqual([]);
+    expect(none.plan.moves.find((m) => m.from === 3).to).toBe(4);
+    const home = hitOne(make({}, [null, null, 1]), DEEP_FLY_CF, inTurn(4));
+    expect(home.taps).toEqual([4]);
+    expect(home.plan.throws[0].toBase).toBe(4);
   });
 
-  it('a pick changes nothing that already happened, and one pick per play', () => {
-    let first = null;
-    const got = hitOne(make({}, [1, null, null]), GROUNDER_SS, (c, t) => { if (!first) { first = t; return 1; } return 2; });
-    expect(got.picked).toBe(1); // (the second try was refused)
-    expect(got.choices.length).toBe(1); // (once you pick, the choice is gone)
+  it('a hit to the outfield: the throws go where you tap, in turn (a relay you make yourself)', () => {
+    const got = hitOne(make({}, [null, 1, null]), LINER_LEFT_CENTER, inTurn(2, 3));
+    expect(got.taps).toEqual([2, 3]);
+    expect(got.plan.throws.map((t) => t.toBase)).toEqual([2, 3]);
+  });
+
+  it('the base the man with the ball stands on is not offered', () => {
+    const got = hitOne(make(), GROUNDER_SS, inTurn(1));
+    const after = got.choices.filter((c) => !c.first);
+    expect(after.length).toBeGreaterThan(0);
+    for (const c of after) expect(c.bases.find((q) => q.base === 1).ok).toBe(false);
   });
 });
 
-describe('choosing the throw: the referee over many plays', () => {
-  it('random balls, random runners, random picks: every out is a real one and every play ends', () => {
+describe('your throws: the referee over many plays', () => {
+  it('random balls, runners and taps: every out is a real one and every play ends', () => {
     const rng = createRng(21);
     const bad = [];
-    let picked = 0, offered = 0;
+    let tapped = 0, outs = 0;
     for (let n = 0; n < 70; n++) {
       const bases = [rng.chance(0.4) ? 1 : null, rng.chance(0.35) ? 1 : null, rng.chance(0.3) ? 1 : null];
       const e = make({ seed: 100 + n }, bases, n % 3);
       const contact = ball(rng.range(60, 104), rng.range(-14, 36), rng.range(-40, 40));
-      const when = rng.range(0, 1);
-      const got = hitOne(e, contact, (c, t) => {
-        if ((t - c.opens) / (c.t - c.opens) < when) return null;
+      const gap = rng.range(0.1, 1.5), count = Math.floor(rng.range(0, 4));
+      let next = null;
+      const got = hitOne(e, contact, (c, t, taps) => {
+        if (taps.length >= count) return null;
+        if (next === null) next = t + (taps.length ? gap : rng.range(0, 0.8));
+        if (t < next) return null;
+        next = null;
         const ok = c.bases.filter((q) => q.ok);
-        return ok.length ? ok[Math.floor(rng.next() * ok.length)].base : null;
+        return ok[Math.floor(rng.next() * ok.length)].base;
       });
-      if (got.choices.length) offered++;
-      if (got.picked) picked++;
+      tapped += got.taps.length;
+      outs += got.plan.outsMade || 0;
       if (got.phaseAfter === 'play') bad.push(`ball ${n}: the play never ended`);
       for (const p of auditPlan(got.plan, e.defense, CONFIG)) bad.push(`ball ${n}: ${p}`);
     }
     expect(bad).toEqual([]);
-    expect(offered).toBeGreaterThan(25);
-    expect(picked).toBeGreaterThan(15);
-  }, 120000);
+    expect(tapped).toBeGreaterThan(40);
+    expect(outs).toBeGreaterThan(10);
+  }, 180000);
 });

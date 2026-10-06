@@ -313,7 +313,7 @@ const methods = {
       // (everything up to this moment has happened: the events of the play so far are out before a send re-plans the rest)
       while (p.nextEvent < p.events.length && p.events[p.nextEvent].t <= t) this.emit('playEvent', p.events[p.nextEvent++]);
       const targets = tapOptions(p.plan, t);
-      const planIn = p.planIn;
+      const planIn = p.planIn.manual ? { ...p.planIn, manual: false } : p.planIn; // (they judge a send against a sharp defense, not against your taps)
       const base = chooseSend({ planIn, t, targets, rng: this.rng }, this.cfg);
       if (base !== null) {
         const opt = targets.find((q) => q.base === base);

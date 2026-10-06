@@ -194,7 +194,8 @@ export class UI {
           <div class="seg loc"><button data-loc="random" class="on">Any</button><button data-loc="center">Middle</button><button data-loc="edges">Edges</button></div>
         </div>
       </div>
-      <div class="flash"></div>`;
+      <div class="flash"></div>
+      <div class="cutfade"></div>`;
     r.appendChild(hud);
     this.hud = hud;
     this.q = {
@@ -1120,6 +1121,13 @@ export class UI {
     if (ms) this.hintTimer = setTimeout(() => el.classList.remove('show'), ms);
   }
   hideHint() { this.q.hint.classList.remove('show'); }
+  // The camera has cut to another view: the picture comes up out of the dark over `s` seconds (never skipped - it is not a flash).
+  cutFade(s = 0.28) {
+    const f = this.hud.querySelector('.cutfade');
+    if (!f) return;
+    f.style.transition = 'none'; f.style.opacity = '0.92'; void f.offsetWidth;
+    f.style.transition = `opacity ${Math.round(s * 1000)}ms ease-out`; f.style.opacity = '0';
+  }
   flash(a = 0.5, ms = 120) {
     if (this.noFlashes) return;
     const f = this.q.flash;

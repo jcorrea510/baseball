@@ -9,7 +9,7 @@ import { simulateBattedBall, projectDistance } from '../physics/ballistics.js';
 import { resolveSwingTimes, describeError } from './timing.js';
 import { computeSwing, computeBunt, derbyBatting, contactWindow, contactPoint, scaleWindow } from './contact.js';
 import { choosePitch, pitchWindowScale } from './pitcherAI.js';
-import { createDefense, alignDefense, planPlay, sendOptions, runnerOptions, tapOptions, planSteal, planWildPitch, fielderBackTime, firstThrow } from './fielding.js';
+import { createDefense, alignDefense, planPlay, sendOptions, runnerOptions, tapOptions, planSteal, planWildPitch, fielderBackTime } from './fielding.js';
 import * as rules from './rules.js';
 import { makeLineup, makePitcher, makeStaff, PLAYER_TEAM } from './teams.js';
 import { MLB_TEAMS, teamName, uniformFor, teamLineup, armsOf } from './mlb.js';
@@ -17,7 +17,6 @@ import { ratingEffects } from './season.js';
 import { staminaMax } from './pitching.js';
 import { cpuSwingInputs } from './cpuBatter.js';
 import { installPitchingHalf, newPitchStats } from './pitchingHalf.js';
-import { runnerState } from './runnerMotion.js';
 
 export class Engine {
   /**
@@ -39,8 +38,8 @@ export class Engine {
    *                                    computer pitches it for you, live (tests and bots)
    * @param {Array}  [o.staff]          your pitchers (pitching.js shape), the starter first (default: Sandlot's own, teams.makeStaff)
    * @param {object} [o.oppPitcher]     the other team's pitcher when you bat (default: a made-up one)
-   * @param {'play'|'auto'} [o.fielding] while you pitch: 'play' = you choose where the fielder who gets the ball throws (throwChoice,
-   *                                    chooseThrow); 'auto' (default) = the automatic fielding throws by itself (tests, bots, Derby)
+   * @param {'play'|'auto'} [o.fielding] while you pitch: 'play' = every throw is yours (throwChoice, chooseThrow); 'auto' (default) =
+   *                                    the automatic fielding throws by itself (tests, bots, Derby)
    * (and the config itself - `cfg` - is the Season's one for this opponent: see season.gameConfig)
    */
   constructor(o = {}, cfg = CONFIG) {
@@ -76,7 +75,7 @@ export class Engine {
     this.cpuHalf = o.cpuHalf || 'auto';
     this.simming = false; // Sim pressed: the computer pitches the rest of this half (pitchingHalf.simHalf)
     this.simRecap = null;
-    this.fielding = o.fielding === 'play' ? 'play' : 'auto'; // (choosing the throws yourself while you pitch: see throwChoice)
+    this.fielding = o.fielding === 'play' ? 'play' : 'auto'; // (making the throws yourself while you pitch: see throwChoice)
     this.staff = o.staff || makeStaff(this.seed, cfg);
     if (this.practicePitch) {
       // a neutral pitcher who throws every pitch there is (the heater too); his tank is never used (see releaseCpuPitch)
@@ -727,7 +726,8 @@ export class Engine {
     const running = this.steal && !simple ? Object.fromEntries(this.steal.bases.map((b) => [b, this.steal.start[b] - s.tHit])) : null; // runners going with the pitch
     this.rng.next(); // (kept so a game's random numbers stay in step with older saves)
     const planIn = { sim, contact: c, bases: this.bases.slice(), outs: this.outs, defense: this.defense, simple, errorRoll, errorScale: this.fieldErrorScale, running, speeds: this.runnerSpeeds(), orders: [] };
-    if (this.fielding === 'play' && this.offense === 'cpu' && !simple) planIn.batterThrough = true; // (you choose the throws: see fielding.planPlay)
+    // you make every throw (Fielding on Play while you pitch): the fielders field it, then hold it until you tap a base (fielding MANUAL)
+    if (this.fielding === 'play' && this.offense === 'cpu' && !simple && !this.simming) Object.assign(planIn, { manual: true, throws: [], batterThrough: true });
     const plan = planPlay(planIn, this.cfg);
     // a foul tip: straight back into the catcher's mitt (he holds it)
     const FT = this.cfg.pitch.foulTip;
@@ -769,6 +769,14 @@ export class Engine {
   updatePlay() {
     const p = this.play;
     const t = this.time - p.t0;
+    if (this.simming && p.planIn && p.planIn.manual) {
+      // (Sim pressed while you were fielding: the automatic defense takes the ball from here)
+      p.planIn.manual = false;
+      p.plan = planPlay({ ...p.planIn, prev: { paths: p.plan.paths, t } }, this.cfg);
+      p.events = buildEventList(p.sim, p.plan);
+      p.nextEvent = p.events.findIndex((e) => e.t > t + 1e-9);
+      if (p.nextEvent < 0) p.nextEvent = p.events.length;
+    }
     if (!(p.plan.endTime >= 0)) p.plan.endTime = 6; // safety net: never let a play run forever
     while (p.nextEvent < p.events.length && p.events[p.nextEvent].t <= t) {
       const ev = p.events[p.nextEvent++];
@@ -778,65 +786,39 @@ export class Engine {
     if (t >= p.plan.endTime) this.finishPlay();
   }
 
-  // ------------------------------------------------------------------ choosing the throw (you are in the field)
-  // While you pitch with Fielding on Play, the fielder who gets the ball runs to it by himself, and you pick where his first throw
-  // goes: from `fielding.throwChoice.lead` s before he lets it go until he does, the bases he could throw to are offered (the app
-  // slows the game down meanwhile). No pick = the planner's own throw, at the same moment. The play is planned again with
-  // `planIn.throwTo` (everything up to the tap stays exactly as it was) and goes on as any other play.
+  // ------------------------------------------------------------------ your throws (you are in the field)
+  // While you pitch with Fielding on Play, the fielders run to the ball and field it by themselves, and then every throw is yours:
+  // whoever has the ball holds it until you tap a base (planIn.manual / planIn.throws, fielding.js MANUAL). A tap while a throw is
+  // in the air is made as soon as it is caught. The play is planned again with every tap (everything before it stays as it was).
 
-  /** The throw you can choose right now: { pos, t, base, opens, bases: [{ base, ok }] } (t / opens in play time), or null (also when
-   *  only one base is on: nothing to choose). */
+  /**
+   * Can you throw right now? { holder (position), onBag (the base he stands on, or null), first (no throw made yet), opens (play time
+   * from when taps count), bases: [{ base, ok }] } or null (not your play, before the ball is nearly his, the inning is over ...).
+   */
   get throwChoice() {
     const p = this.play;
-    if (this.phase !== 'play' || !p || p.steal || p.wild || p.throwPicked || this.paused || this.simming) return null;
-    if (this.fielding !== 'play' || this.offense !== 'cpu' || this.mode === 'derby') return null;
-    const t = this.time - p.t0;
-    if (!p.throwInfo || p.throwInfo.plan !== p.plan) p.throwInfo = { plan: p.plan, first: firstThrow(p.plan), cands: null, at: -1 };
-    const ft = p.throwInfo.first;
-    if (!ft) return null;
-    const opens = Math.max(this.cfg.fielding.throwChoice.earliest, ft.t - this.cfg.fielding.throwChoice.lead);
-    if (t < opens || t >= ft.t) return null;
-    if (!p.throwInfo.cands) { p.throwInfo.cands = this.throwCandidates(t); p.throwInfo.at = t; }
-    // (only one base he can throw to - a routine grounder with nobody on: nothing to choose, the play just goes on)
-    if (p.throwInfo.cands.filter((c) => c.ok).length < 2) return null;
-    return { pos: ft.pos, t: ft.t, base: ft.base, opens, bases: p.throwInfo.cands.map((c) => ({ base: c.base, ok: c.ok })) };
+    if (this.phase !== 'play' || !p || p.steal || p.wild || !p.planIn || !p.planIn.manual || this.paused || this.simming) return null;
+    const plan = p.plan, m = plan.manual;
+    if (!m || this.outs + (plan.outsMade || 0) >= 3) return null;
+    const t = this.time - p.t0, W = this.cfg.fielding.throwChoice;
+    const tHave = plan.caught ? plan.catchT : plan.pickupT;
+    const opens = Math.max(W.earliest, tHave - W.lead);
+    if (!(t >= opens) || t >= plan.endTime - W.closeBefore) return null;
+    return { holder: m.holder, onBag: m.onBag, first: p.planIn.throws.length === 0, opens, bases: [1, 2, 3, 4].map((base) => ({ base, ok: base !== m.onBag })) };
   }
 
-  // Each base, planned as if you sent the throw there at time t: is it a throw that really goes there, with nothing before the tap
-  // changed (no runner who jumps or changes his stride: a base that would need that is not offered)?
-  // Only bases that matter are offered: where a runner (the batter too) is heading right now, and where he would throw anyway.
-  throwCandidates(t) {
-    const p = this.play, out = [];
-    const ft = firstThrow(p.plan), matter = new Set(ft ? [ft.base] : []);
-    for (const m of p.plan.moves) {
-      if (m.back && m.from === 0) continue;
-      const to = m.out && m.to === 0 ? m.outBase : m.to;
-      if (to > m.from) matter.add(Math.min(4, to));
-    }
-    for (let base = 1; base <= 4; base++) {
-      if (!matter.has(base)) { out.push({ base, ok: false }); continue; }
-      let plan = null;
-      try { plan = planPlay({ ...p.planIn, throwTo: { base, t }, prev: { paths: p.plan.paths, t } }, this.cfg); } catch (err) { plan = null; }
-      const ft = plan && firstThrow(plan);
-      out.push({ base, ok: !!(ft && ft.base === base && ft.t >= t - 1e-6 && sameRunnersUntil(p.plan, plan, t, this.cfg)) });
-    }
-    return out;
-  }
-
-  /** Throw to `base` (1..4). True when taken. */
+  /** Throw to `base` (1..4) - from whoever has the ball, as soon as he can. True when taken. */
   chooseThrow(base) {
     const c = this.throwChoice;
     if (!c || !c.bases.some((q) => q.base === base && q.ok)) return false;
     const p = this.play, t = this.time - p.t0;
-    p.throwPicked = { base, t };
-    if (base === c.base) { this.emit('throwChosen', { base, t, pos: c.pos }); return true; } // (the throw he was going to make anyway)
-    p.planIn.throwTo = { base, t };
+    p.planIn.throws.push({ base, t });
     const plan = planPlay({ ...p.planIn, prev: { paths: p.plan.paths, t } }, this.cfg);
     p.plan = plan;
     p.events = buildEventList(p.sim, plan);
     p.nextEvent = p.events.findIndex((e) => e.t > t + 1e-9);
     if (p.nextEvent < 0) p.nextEvent = p.events.length;
-    this.emit('throwChosen', { base, t, pos: c.pos, plan });
+    this.emit('throwChosen', { base, t, plan });
     return true;
   }
 
@@ -1189,19 +1171,6 @@ function derbyOutText(plan, c) {
 const NO_FLIGHT = { firstBounce: null, wallHit: null, homerun: null, standsLanding: null, duration: 0, apex: { y: 0 } };
 
 // Everything that will happen during a play at a fixed time (seconds after contact), for sound / effects.
-// Do two plans of the same play put every runner in the same place (and moving the same way) up to a moment just after t?
-function sameRunnersUntil(a, b, t, cfg) {
-  const q1 = {}, q2 = {};
-  for (const m of a.moves) {
-    const n = b.moves.find((q) => q.from === m.from);
-    if (!n) return false;
-    for (const dt of [0, 0.1, 0.25]) {
-      const r1 = runnerState(m, t + dt, cfg, q1), r2 = runnerState(n, t + dt, cfg, q2);
-      if (Math.hypot(r1.x - r2.x, r1.z - r2.z) > cfg.fielding.throwChoice.sameFeet) return false;
-    }
-  }
-  return true;
-}
 
 function buildEventList(sim, plan) {
   const ev = [];

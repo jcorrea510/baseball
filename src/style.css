@@ -217,6 +217,7 @@ kbd { display: inline-block; min-width: 26px; padding: 5px 7px; text-align: cent
 .hud.show { opacity: 1; visibility: visible; transition: opacity .3s, visibility 0s; } /* (hidden, not just see-through: its buttons are out of the Tab order outside a game) */
 .vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at center, transparent 58%, rgba(0, 0, 0, .34) 100%); }
 .flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+.cutfade { position: absolute; inset: 0; background: #05080f; opacity: 0; pointer-events: none; } /* (the camera cut: the picture comes up out of the dark) */
 .hudbtns { position: absolute; top: calc(var(--safe-t) + 10px); left: calc(var(--safe-l) + 12px); display: flex; gap: var(--sp-2); pointer-events: auto; }
 .hudbtns .iconbtn { background: rgba(9, 15, 29, .86); }
 

@@ -182,6 +182,7 @@ export const CONFIG = {
     minScreenPx: 6,
     handMinScreenPx: 3.5, // the ball in the pitcher's throwing hand is drawn at least this big, so you can see which hand it is in
     minScreenFrac: 0.009,
+    playMinScreenPx: 5, playMinScreenFrac: 0.0075, // a ball in play (hit, thrown) is never drawn smaller than this on screen (px, or this share of the screen's height) - you can always find it
     // Movement is measured at the plate. breakArm: feet toward the pitcher's
     // throwing-arm side (negative = glove side). hop: feet of "extra rise"
     // (negative = extra drop) compared with plain gravity.
@@ -701,12 +702,15 @@ export const CONFIG = {
       throwSet: 0.35, // s from on his feet to letting the throw go (he never throws before he is up)
       preferRun: 0.2, // nobody dives for a ball a fielder can simply run to within this many seconds
     },
-    // Choosing the throw (you pitch, Fielding on Play): the fielder who gets the ball runs to it by himself; you pick where his first
-    // throw goes. The bases are offered from `lead` s (game time) before he would let the throw go - never before `earliest` s after
-    // contact - until he does; meanwhile the game runs at `slow` x speed (it eases in over `slowIn` and back out over `slowOut` real s).
-    // No pick = the throw he would have made anyway, at the same moment (balance is unchanged). A base is only offered when sending the
-    // throw there moves no runner by more than `sameFeet` up to the moment of the tap (nobody jumps or changes his stride).
-    throwChoice: { lead: 0.5, earliest: 0.35, slow: 0.25, slowIn: 0.15, slowOut: 0.25, sameFeet: 0.5 },
+    // Every throw yours (you pitch, Fielding on Play - fielding.js MANUAL): a throw goes `react` s after your tap (or as soon as he
+    // has the ball, for a tap made before that); a man who has just caught a throw can throw again `transfer` s later; a runner who
+    // turns back counts as making it if he is on his bag within `backSafe` s after the ball reaches the base he gave up on; the play
+    // lasts `hold` s after everything has stopped (you may still throw) and at least `minPlay` s after the ball was fielded.
+    manual: { react: 0.12, transfer: 0.35, backSafe: 0.25, hold: 1.4, minPlay: 2.2 },
+    // Your throws (you pitch, Fielding on Play): taps count from `lead` s (game time) before the fielder has the ball - never before
+    // `earliest` s after contact - until `closeBefore` s before the play ends. Until your first throw the game runs at `slow` x speed
+    // (it eases in over `slowIn` and back out over `slowOut` real s).
+    throwChoice: { lead: 0.45, earliest: 0.3, closeBefore: 0.2, slow: 0.45, slowIn: 0.2, slowOut: 0.3 },
     // Covering a base: an out needs a fielder standing on the bag WITH the ball before the runner gets there. Whoever is not fielding
     // the ball and is nearest to the play breaks for the bag; the fielder with the ball either carries it there himself (when he
     // is close) or throws to the covering man, and the throw is timed to reach the bag when he does.
@@ -913,39 +917,16 @@ export const CONFIG = {
     // the catcher's view you bat from (after Ready): through the catcher's eyes, over his glove (the rest of him is hidden)
     catcher: { pos: [0, 3.3, 7.0], look: [0, 1.2, -30], fov: 42, zoom: 5, clearDist: 6, umpireHead: 4.2, mittY: 1.75, mittReach: 0.16, firstDelay: 0.5 }, // zoom = how quickly it moves in; clearDist = the catcher and umpire are hidden while the camera is closer than this (ft) to them (the batting view, and the pull-back after a swing) (umpireHead = his head's height); the catcher's mitt waits low at mittY and reaches for the ball in the last mittReach s
     pitcher: { pos: [-3.5, 12, -110], look: [0, 2.0, 0], fov: 10, ease: 4, minHorizontalFov: 16 }, // the pitching view: the TV center-field camera - well behind and above the mound with a long lens, so the zone and the batter are big and the pitcher stands off to one side in front (x is for a right-hander; a left-hander is mirrored); ease = how quickly it moves in (bigger = quicker); minHorizontalFov = how wide (deg) a narrow screen makes it at least
-    pitchHit: { // while you pitch and the computer hits the ball: the eye starts where the pitching view was and follows the ball (and the fielder going after it)
-      rise: [34, 50], // ft the camera climbs (up, toward the outfield) from the pitching view while it follows the ball
-      riseTime: 1.4, // s after contact that climb takes
-      fovNear: 46, // deg of view while the ball is close
-      fovFar: 30, // deg of view once the ball is farFeet or more away (narrower, so a far ball stays big)
-      farFeet: 300, // ft from the camera at which the view is at its narrowest
-      lowLook: 0.5, // a ball high in the air: how far (0-1) the camera aims down from the ball toward the grass under it, so the field stays in the picture
-      lowFrom: [20, 80], // ft of ball height at which that downward aim starts / is at full
-      grassMarginDeg: 2, // the grass under a high ball must be at least this many degrees inside the edge of the picture
-      pull: [50, 120], // extra ft up and toward the outfield the camera pulls for a ball way up and near home (a pop-up), so the ball and the grass under it fit together
-      pullFrom: [40, 110], // ft of ball height at which that extra pull starts / is at full
-      pullNear: [110, 200], // ft the ball is from home at which that extra pull starts to fade out / is gone (a deep fly keeps the normal view)
-      homerLook: 18, // ft above a home run in the seats that the camera looks (up at the crowd and fireworks)
-    },
-    playView: { // the computer hit it (you pitch): the camera glides back to film the play from the outfield side, looking in (a home run: homerView)
-      nearHome: [90, 160], // ft from home: a play spot closer than the first is filmed from straight out toward center field, one past the second from right behind it (away from home), in between a blend
-      back: 40, // ft behind the spot
-      minFromHome: 175, // ft: the camera is never nearer home plate than this (a play near home is filmed from out past second base)
-      wallGap: 14, // ft: ...and never nearer the outfield wall than this (never in the stands)
-      sideTurns: [8, 16, 24, 32, 40], // deg round home plate: a play at the wall (no room behind it) - the camera tries these spots along the wall to the side of it instead
-      overWall: 20, overUp: 85, overCost: 4, // a play at the wall: the camera may stand this many ft past it if it is at least this high (over the bleachers, the batter's eye and the scoreboard); counted as this many deg worse, so it is the last resort
-      minOff: 34, // ft: the camera never stands closer than this (sideways) to the spot - from nearer it would look straight down on it
-      up: 52, upMin: 28, upRatio: 0.85, // ft above the grass: this many ft up per ft it is off the spot (so it looks down on it at about 40 deg), between upMin and up (x the step it has backed up) - high enough that the diamond opens up
-      marginDeg: 4, // everything stays at least this many degrees inside the edge of the picture
-      fovMin: 30, fovMax: 56, maxFov: 72, // deg: the narrowest view, the widest before the camera backs up instead, and the widest of all (a ball deep in a corner, with no room to back up)
-      pullStep: 0.3, pullSteps: 6, // the camera backs up and climbs by this share of back / up at a time (at most pullSteps times) until everything fits
-      ease: 2.2, // how quickly it glides there and follows (bigger = quicker; real time, so it is smooth in slow motion too)
-    },
-    homerView: { // a home run while you pitch: the camera stays behind the mound and watches it soar toward you and out
-      rise: 14, riseTime: 1.2, // ft it rises (and over how many s after contact)
-      letGoDeg: 55, letGoAhead: 15, // the ball is let go once it is this many deg above the camera, or less than this many ft in front of it
-      marginDeg: 6, fovMin: 22, fovMax: 70, // deg: room round the ball and home; the narrowest and widest view while it follows the ball
-      fovAfter: 44, diamondZ: -45, // then: this wide, looking at the diamond (z, ft) where the batter rounds the bases
+    fieldView: { // the computer hit it (you pitch): the camera behind home plate, looking out - low and close on the action
+      up: [14, 38], // ft above the grass: for the action at home ... farFeet out
+      back: [34, 2], // ft behind the plate (z) for the same: it moves in a little for a deep ball
+      side: 0.18, sideMax: 30, // it slides this share of the action's x toward that side, at most this many ft
+      farFeet: 330, // ft out at which it is at its highest / furthest in
+      popFrom: [45, 110], popNear: [90, 170], popUp: 8, popBack: 12, // a pop-up (ball this high, this near home): up / back this much more
+      ballOnlyAbove: 55, fovHigh: 34, // a ball higher than this (ft): the picture stays on the man under it and the spot it comes down on (at least this wide, deg) and it drops into it
+      marginDeg: 5, fovMin: 16, fovMax: 56, // deg: room round everything; the narrowest and widest view
+      ease: 3.2, // how quickly it follows (bigger = quicker; real time, smooth in the slow motion too)
+      cutFade: 0.28, // s: switching between the pitching view and this one is a cut behind a quick fade from dark (never a swing round)
     },
     minHorizontalFov: 38, // narrow (portrait) screens widen the view to keep this
     keepBall: { marginDeg: 7, maxFov: 64 }, // a ball high in the air stays this far inside the top of the picture (the view widens up to maxFov deg, then tilts up to it)

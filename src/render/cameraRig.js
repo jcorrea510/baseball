@@ -3,16 +3,18 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { damp, clamp, lerp, smoothstep, DEG } from '../util/math.js';
-import { pitchHitView, playView, playAim, homerView } from './cameraViews.js';
-import { sampleBall } from '../game/fielding.js';
+import { fieldView } from './cameraViews.js';
+import { runnerState } from '../game/runnerMotion.js';
 import { samplePath } from '../game/fielderMotion.js';
-import { BASE_XZ } from '../physics/field.js';
 
 const FIELD_CAM = new THREE.Vector3(0, 44, 58);
 const _look = new THREE.Vector3();
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3();
 const _tmp = new THREE.Vector3();
 const _dir = new THREE.Vector3();
+
+// where a batted ball first comes down (null: it never does in the park)
+const landOf = (sim) => sim.firstBounce || sim.wallHit || null;
 
 export class CameraRig {
   constructor(camera) {
@@ -56,31 +58,6 @@ export class CameraRig {
     return (2 * Math.atan(Math.tan(h / 2) / aspect)) / DEG;
   }
 
-  // Where the camera films the play from while you pitch - chosen ONCE per play, so it never jumps: behind where the play happens
-  // (the catch or the pickup, or where a home run leaves the park), framing home, the bases, the fielder's run and the ball's whole
-  // flight up to then (cameraViews.playView). null for a foul nobody catches (the pitching view just widens to watch it).
-  playCam(play) {
-    if (this.camPlay === play) return this.camSpot;
-    this.camPlay = play;
-    this.camSpot = null;
-    const plan = play.plan, sim = play.sim;
-    if (plan.groundRule || plan.homer || !plan.fair && !plan.caught) return null;
-    const spot = plan.catchPos ? { x: plan.catchPos.x, z: plan.catchPos.z } : plan.pickupPos ? { x: plan.pickupPos.x, z: plan.pickupPos.z } : null;
-    if (!spot) return null;
-    const tEnd = plan.caught ? plan.catchT : plan.pickupT;
-    const pts = [[0, 0, 0]];
-    const q = {};
-    for (let t = 0; t <= tEnd; t += 0.25) {
-      const b = sampleBall(sim, t, q);
-      pts.push([b.x, Math.max(0.5, b.y), b.z]);
-    }
-    const runs = plan.fielder && plan.paths[plan.fielder];
-    if (runs) for (let t = 0; t <= tEnd; t += 0.5) { const p = samplePath(runs, t); pts.push([p.x, 3, p.z]); }
-    const extra = [1, 2, 3].map((b) => [BASE_XZ[b][0], 0, BASE_XZ[b][1]]);
-    this.camSpot = { spot, pos: playView(spot, pts, CONFIG, extra).pos };
-    return this.camSpot;
-  }
-
   update(dt, E, actors, aspect) {
     this.aspect = aspect;
     const cam = this.camera;
@@ -100,6 +77,7 @@ export class CameraRig {
     let tFov = cfg.batter.fov;
     let posL = 4, lookL = 8, fovL = 4;
     let minH = cfg.minHorizontalFov;
+    let view = null; // 'pitch' | 'field' while you pitch: switching between the two is a cut (see below)
     this.followK = 1;
     const look = this.batterLook(_look).clone();
 
@@ -112,55 +90,45 @@ export class CameraRig {
       look.set(C.look[0], C.look[1], C.look[2]);
       tFov = C.fov; posL = C.zoom; lookL = C.zoom * 1.4; fovL = C.zoom;
     } else if (this.pitching && E && E.play && !this.title && (phase === 'play' || phase === 'result')) {
-      // pitching, the computer has hit it - one camera that never cuts and never turns round: from the pitching view (behind the
-      // mound, looking in) it glides back to film the play from behind where it happens, still looking in (cameraViews.playView):
-      // the ball comes toward you, the fielder runs under it, and home, the bases and the runners stay in the picture for the throw
-      // and the tag. (A foul nobody catches: the pitching view just widens to watch it - cameraViews.pitchHitView.)
+      // pitching, the computer has hit it: the TV games' fielding camera - behind home plate, looking out, low and close on the action
+      // (cameraViews.fieldView). It comes in with a cut behind a quick fade (no swing round from the pitching view, which looks the
+      // other way), then follows smoothly: the ball, the man after it or with it, the runners on the move, the bag a throw is going to.
       const ball = actors.ballPos;
       const plan = E.play.plan;
       const t = E.time - E.play.t0;
       this.interest.set(ball.x, Math.max(1.5, ball.y), ball.z);
-      const cs = plan.homer ? null : this.playCam(E.play);
-      if (plan.homer) {
-        const V = homerView(ball, t, this.pitcherHand, CONFIG);
-        tPos = _tmp.set(V.pos[0], V.pos[1], V.pos[2]).clone();
-        look.set(V.look[0], V.look[1], V.look[2]);
-        tFov = V.fov; posL = 3; lookL = 4; fovL = 3;
-      } else if (cs) {
-        // (the spot is fixed for the play; the aim and the width follow what is happening now: home and the ball always, the fielder
-        // with it, the other bases when they fit)
-        const pts = [[0, 0, 0], [cs.spot.x, 3, cs.spot.z]], extra = [1, 2, 3].map((b) => [BASE_XZ[b][0], 0, BASE_XZ[b][1]]);
-        const runs = plan.fielder && plan.paths[plan.fielder];
-        if (runs) { const q = samplePath(runs, t); pts.push([q.x, 3, q.z]); }
-        pts.push([ball.x, Math.max(0.5, ball.y), ball.z]);
-        const V = playAim(cs.pos, pts, CONFIG, extra);
-        tPos = _tmp.set(cs.pos[0], cs.pos[1], cs.pos[2]).clone();
-        look.set(V.look[0], V.look[1], V.look[2]);
-        const PV = cfg.playView;
-        tFov = V.fov; posL = PV.ease; lookL = PV.ease * 1.3; fovL = PV.ease;
-      } else {
-        const V = pitchHitView(ball, t, plan, this.pitcherHand, CONFIG);
-        tPos = _tmp.set(V.pos[0], V.pos[1], V.pos[2]).clone();
-        look.set(V.look[0], V.look[1], V.look[2]);
-        tFov = V.fov; posL = 3; lookL = 5; fovL = 3.5;
+      const pts = [];
+      const carry = plan.carries.find((q) => q.t0 <= t && t < q.t1);
+      const man = carry ? carry.pos : plan.fielder && !plan.homer && t < (plan.ballHitEnd ?? Infinity) ? plan.fielder : null;
+      if (man && plan.paths[man]) { const q = samplePath(plan.paths[man], t); pts.push([q.x, 3, q.z]); }
+      const th = plan.throws.find((q) => q.t0 <= t && t < q.t1 + 0.3);
+      if (th) pts.push([th.bx, 2, th.bz]);
+      const tHave = plan.caught ? plan.catchT : plan.pickupT;
+      if (!plan.homer && tHave !== undefined && t >= tHave - 0.2) {
+        // (the runners still running - once somebody has the ball they are what the play is about; before that: the ball and him)
+        for (const m of plan.moves) {
+          if (m.out && m.outAt !== undefined && t > m.outAt + 0.5) continue;
+          const r = runnerState(m, t, CONFIG, this.rq || (this.rq = {}));
+          if (r.running && !r.done) pts.push([r.x, 3, r.z]);
+        }
       }
+      const land = plan.caught && plan.catchPos ? plan.catchPos : landOf(E.play.sim);
+      const V = fieldView(ball, pts, CONFIG, land && t < (plan.caught ? plan.catchT : land.t) ? land : null);
+      tPos = _tmp.set(V.pos[0], V.pos[1], V.pos[2]).clone();
+      look.set(V.look[0], V.look[1], V.look[2]);
+      const FV = cfg.fieldView;
+      tFov = V.fov; posL = FV.ease; lookL = FV.ease * 1.4; fovL = FV.ease;
+      view = 'field';
       // a ball high in the air never leaves the picture (same rule as the batting views) - except a home run on its way out
-      this.keepBallOn = ball.y > 12 && !plan.homer && t < plan.ballHitEnd; // (a home run: homerView lets it go on purpose)
-      if (this.keepBallOn) {
-        const K = cfg.keepBall;
-        _a.subVectors(ball, this.pos); _b.subVectors(look, this.pos);
-        const off = _a.angleTo(_b) / DEG + K.marginDeg;
-        if (2 * off > tFov) tFov = Math.min(K.maxFov, 2 * off);
-        const over = off - K.maxFov / 2;
-        if (over > 0) look.lerp(_c.copy(ball), clamp(over / Math.max(1, off), 0, 1));
-      }
+      this.keepBallOn = false; // (fieldView keeps the picture on the field for a ball way up - it drops into it)
     } else if (this.pitching && E && !this.title) {
       // pitching: behind and above the throwing shoulder (mirrored for a left-hander)
       const P = cfg.pitcher, m = this.pitcherHand === 'L' ? -1 : 1;
       tPos = _tmp.set(P.pos[0] * m, P.pos[1], P.pos[2]).clone();
       look.set(P.look[0], P.look[1], P.look[2]);
       tFov = P.fov; posL = P.ease; lookL = P.ease * 1.4; fovL = P.ease;
-      minH = P.minHorizontalFov; // (the long lens: a narrow screen still shows the zone and the batter, not the whole infield)
+      minH = P.minHorizontalFov;
+      view = 'pitch'; // (the long lens: a narrow screen still shows the zone and the batter, not the whole infield)
     } else if (this.title) {
       // slow orbit around the ballpark for the title screen
       this.titleT += dt;
@@ -244,6 +212,14 @@ export class CameraRig {
       posL = 6; lookL = 9; fovL = 6;
     }
 
+    // the pitching view looks in from center field, the fielding view out from behind home: between the two the camera CUTS (the app
+    // covers it with a quick fade) - easing across would swing it round through the sky
+    this.cutNow = false;
+    if (view && this.view && view !== this.view) {
+      this.pos.copy(tPos); this.look.copy(look); this.fov = tFov; this.minH = minH;
+      this.cutNow = true;
+    }
+    this.view = view;
     if (this.followK !== undefined && E && E.phase === 'play' && this.followK < 1) {
       const bl = this.batterLook(new THREE.Vector3());
       look.lerp(bl, 1 - this.followK);

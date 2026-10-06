@@ -1076,7 +1076,7 @@ export class Actors {
     }
     // after a take the next windup places the ball in the pitcher's hands again
     ball.setVisible(kind !== 'hidden');
-    ball.setScale(kind === 'pitch' ? cfg.pitch.ballScale : 1, kind === 'pitch' ? Math.max(cfg.pitch.minScreenPx, this.viewH * cfg.pitch.minScreenFrac) : kind === 'hand' ? cfg.pitch.handMinScreenPx : 0); // (the ball in the pitcher's hand stays visible, so you see which hand throws)
+    ball.setScale(kind === 'pitch' ? cfg.pitch.ballScale : 1, kind === 'pitch' ? Math.max(cfg.pitch.minScreenPx, this.viewH * cfg.pitch.minScreenFrac) : kind === 'hand' ? cfg.pitch.handMinScreenPx : Math.max(cfg.pitch.playMinScreenPx, this.viewH * cfg.pitch.playMinScreenFrac)); // (the ball in the pitcher's hand stays visible, so you see which hand throws; a ball in play never shrinks to nothing far away)
     ball.setPosition(bp.x, bp.y, bp.z);
     if (spinRate) ball.spin(this.spinAxis || new THREE.Vector3(1, 0, 0), spinRate, dt);
     ball.setTrail(trail, kind === 'pitch');

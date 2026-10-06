@@ -712,7 +712,7 @@ function planPlayCore(i, cfg) {
     const bobbled = bobble(plan, i, f, tF, pf, bases, forced, outs, defense, cfg);
     if (bobbled) return bobbled; // (null: he had time to recover it - the out stands and it is no error)
   }
-  if (isInfieldPlay && groundBall) {
+  if (isInfieldPlay && groundBall && !MANUAL) {
     const attempt = tryInfieldOut({ f, tF, tReady, pf, bases, forced, outs, defense, cfg, plan, bunt });
     if (attempt) return finishInfieldOut(plan, attempt, { f, tF, tReady, pf, bases, forced, outs, defense, cfg, bunt });
   }
@@ -757,11 +757,13 @@ const sp = (b) => (SPD && SPD[b]) || 1;
 let READ = 0;
 // Your runner orders (you tapped a base): `i.orders` = [{ base, t }] in the order given, t = seconds after contact.
 let ORD = null;
-// Where YOU sent the throw (you are in the field and tapped a teammate): `i.throwTo` = { base, t } - the fielder who gets the ball
-// makes his first throw to that base (1..4) instead of the one the planner would choose. Groundouts (an out there if one can be had,
-// else the batter is safe), hits (the throw goes there whoever is running), catches (doubled off or a tag-up there, else just a throw
-// in to that bag). Everything else about the play is the planner's own. Only set while planPlay runs.
-let THROW = null;
+// You are in the field and make every throw yourself (`i.manual`): the fielder who gets the ball runs to it, catches it or picks it
+// up by himself (the planner's own fielding), then HOLDS it until you tap a base; `i.throws` = [{ base, t }] are your taps in order
+// (t = seconds after contact). Each one sends the ball from whoever has it to the man covering that bag (a tap made while a throw is
+// still in the air is made as soon as the ball is caught). No automatic throw, no automatic double play, no automatic rundown: see
+// manualDefense. No fielding errors either. Only set while planPlay runs.
+let MANUAL = false;
+let THROWS = [];
 // The play as it was planned before your latest order: { paths, tCut } (see addMove). Only set while planPlay runs.
 let PREV = null;
 const readDelay = (cfg, from) => (from >= 1 && READ > 0 && rs(from) === undefined ? cfg.runner.startDelay + READ : undefined);
@@ -938,28 +940,6 @@ export function sendOptions(plan, t, cfg = CONFIG) {
  * before it on to it. A base only lights up when nobody (not out) is heading for it already - home always can - so a tap never moves
  * a runner you did not mean and never pushes a runner ahead along. Send the lead runner first.
  */
-/**
- * The fielder's first throw after he has the ball (you choose where it goes - see THROW): { pos, t, base } - who throws, when the
- * ball leaves his hand (or, carrying it to a bag himself, when he sets off) and the base it ends up at (through a cut-off man too).
- * null when he never throws (nobody to throw at, a home run, a foul, an error ...).
- */
-export function firstThrow(plan) {
-  if (!plan || !plan.fair || plan.homer || plan.groundRule || plan.error || plan.dropped || plan.steal || plan.foulTip) return null;
-  const pos = plan.fielder, tHave = plan.caught ? plan.catchT : plan.pickupT;
-  if (!pos || !(tHave >= 0)) return null;
-  const th = plan.throws.filter((q) => q.from === pos && q.t0 >= tHave - 1e-6).sort((a, b) => a.t0 - b.t0)[0];
-  const self = plan.events.filter((e) => e.type === 'out' && e.pos === pos && e.t >= tHave - 1e-6).sort((a, b) => a.t - b.t)[0]
-    || plan.events.filter((e) => e.type === 'throwEnd' && e.pos === pos && e.t >= tHave - 1e-6).sort((a, b) => a.t - b.t)[0];
-  if (th && !(self && self.t < th.t0)) {
-    let base = th.toBase;
-    if (!base) { const relay = plan.throws.find((q) => q.from === th.to && q.t0 >= th.t1 - 1e-6); base = relay ? relay.toBase : 0; } // (a cut-off man)
-    return base ? { pos, t: th.t0, base } : null;
-  }
-  // (he takes it to the bag himself: the choice is made by the time he has the ball)
-  if (self) return { pos, t: tHave, base: self.base };
-  return null;
-}
-
 export function tapOptions(plan, t) {
   const S = plan && plan.send;
   if (!windowOpen(S, t)) return [];
@@ -1142,6 +1122,127 @@ function liveThrow(plan, way, base, st, cfg) {
   plan.ballEnd = Math.max(plan.ballEnd || 0, way.t1);
 }
 
+// ---------------------------------------------------------------------------
+// YOU make every throw (MANUAL): the ball goes, in turn, to each base you tapped (THROWS) - from whoever has it, to the man covering
+// that bag (or the man with it carries it there himself when that is quicker); nothing is thrown that you did not tap. When the ball
+// is in a glove on a bag, any runner still heading for that bag is out: a force (the batter at first, a runner forced along - while
+// the men behind him are not out) as soon as it is there, a tag as he slides in. A runner not forced who sees a throw coming that
+// will beat him turns back to the bag he came from if he can make it (the throw after that may catch him - a rundown is just your
+// taps going back and forth). Runner orders (the computer's sends) are applied in time order between the throws.
+//   st = { holder, at {x, z}, t (when he can throw), onBag }; late = runner orders still to apply. Sets plan.manual = { holder, at,
+//   t, onBag } - who has the ball after your last tap and from when (the engine offers the next throw from there).
+// ---------------------------------------------------------------------------
+function manualDefense(plan, recs, st, late, outs, defense, cfg) {
+  const F = cfg.fielding, R = cfg.runner, M = F.manual;
+  let k = 0;
+  const applyUntil = (t) => { while (k < late.length && late[k].t <= t) applyOrder(recs, late[k++], cfg); };
+  const batter = recs.find((r) => r.from === 0);
+  // forced at `base`: the batter at first, or a runner forced from the start while every man behind him in the chain is still up
+  const forcedAt = (r, base) => {
+    if (r.returning) return true; // (going back to his bag after a catch: the ball there before him doubles him off - no tag)
+    if (r.from === 0) return base === 1;
+    if (!r.forced || base !== r.from + 1) return false;
+    for (let b = r.from - 1; b >= 0; b--) { const q = recs.find((x) => x.from === b); if (!q || q.out) return false; }
+    return true;
+  };
+  for (const th of THROWS) {
+    if (outs + (plan.outsMade || 0) >= 3) break;
+    const go = Math.max(st.t, th.t + M.react);
+    applyUntil(go);
+    const base = th.base;
+    if (st.onBag === base) { st = { ...st, t: go }; continue; } // (he is standing on it already)
+    const way = coverOptions({ base, thrower: st.holder, tReady: go, from: st.at, tHave: st.onBag ? undefined : st.t }, plan, defense, cfg)[0];
+    if (!way) continue;
+    liveThrow(plan, way, base, { ...st, t: go }, cfg);
+    const tBall = way.tOut; // (in the glove, on the bag)
+    // runners heading for that bag: out, safe - or, seeing the throw beat him, back to where he came from
+    for (const r of recs.filter((q) => !q.out && q.legs.length && q.to === base && !(q.lockAt !== undefined && tBall >= q.lockAt)).sort((a, b) => b.from - a.from)) {
+      const arrive = recArrive(cfg, r, base);
+      if (arrive === undefined || arrive <= tBall) { // (he is there already)
+        if (arrive !== undefined && tBall - arrive <= F.closePlay) plan.events.push({ t: tBall + 0.1, type: 'safe', base });
+        continue;
+      }
+      const forced = forcedAt(r, base);
+      const need = forced ? 0 : (base === 4 ? F.tagTime : R.sendTag);
+      if (!(tBall + need + F.outMargin <= arrive)) {
+        if (arrive - tBall <= F.closePlay + need) plan.events.push({ t: arrive + 0.1, type: 'safe', base });
+        continue;
+      }
+      if (!forced && !r.returning) {
+        // he sees the throw is going to beat him: back to the bag he left, if nobody else is on it and he gets there first
+        const back = base - 1, sees = way.t0 + R.retreatRead;
+        const free = back >= Math.max(1, r.from) && !recs.some((q) => q !== r && !q.out && q.to === back);
+        if (free && sees < arrive) {
+          const hyp = cloneRec(r);
+          backLegs(hyp.legs, hyp.from, back, sees, cfg, hyp.spd);
+          const tBack = recArrive(cfg, hyp, back);
+          if (tBack !== undefined && tBack < tBall + M.backSafe) { r.legs = hyp.legs; r.to = back; r.recalled = true; r.retreated = true; r.retreatAt = sees; continue; }
+        }
+      }
+      const tOut = forced ? tBall : Math.max(tBall, arrive - R.tagLead);
+      plan.events.push({ t: tOut, type: 'out', base, pos: way.recv.pos, tag: !forced });
+      markOut(plan, r, base, tOut, cfg);
+      if (!forced) plan.tagOut = true;
+      if (outs + plan.outsMade >= 3) break;
+    }
+    st = { holder: way.recv, at: { x: BASE_XZ[base][0], z: BASE_XZ[base][1] }, t: tBall + M.transfer, onBag: base };
+  }
+  applyUntil(Infinity);
+  plan.manual = { holder: st.holder.pos, at: st.at, t: st.t, onBag: st.onBag };
+  void batter;
+}
+
+// You make the throws (MANUAL): as on every ball in play, each base has its man - the usual cover man for it (fielding.coverer) breaks
+// for the bag as the ball is hit and waits there - so a throw you tap goes straight in. (The man with the ball and anybody already
+// running somewhere are left alone.)
+function manualCovers(plan, f, defense, cfg) {
+  const F = cfg.fielding, used = new Set([f.pos]);
+  for (const base of [1, 2, 3, 4]) {
+    const q = coverer(base, f, defense);
+    if (!q || used.has(q.pos) || (plan.paths[q.pos] && plan.paths[q.pos].length)) continue;
+    used.add(q.pos);
+    const arr = coverArrival(plan, q, base, F.cover.start, cfg);
+    addMove(plan, q, BASE_XZ[base][0], BASE_XZ[base][1], Math.max(arr.t, F.cover.start + 0.05), { role: 'cover', start: arr.start, vmax: arr.speed, minEffort: 0.8, stop: true }, cfg);
+  }
+}
+
+// The end of a play you field (MANUAL): every runner has stopped (or is out), every throw is in - and then `manual.hold` s more
+// (you may still throw), never before `manual.minPlay` s after he had the ball.
+function manualEnd(plan, recs, tHave, outs, anyOn, cfg) {
+  const M = cfg.fielding.manual, R = cfg.runner;
+  let last = Math.max(plan.ballEnd || 0, tHave);
+  for (const m of plan.moves) last = Math.max(last, m.out ? m.outAt + R.outLinger - 0.35 : Math.min(mFinish(cfg, m), tHave + 12));
+  for (const th of plan.throws) last = Math.max(last, th.t1);
+  plan.endTime = Math.max(plan.endTime || 0, last + (anyOn && outs + (plan.outsMade || 0) < 3 ? M.hold : 0.4), tHave + M.minPlay);
+  if (plan.send && outs + (plan.outsMade || 0) >= 3) plan.send.closeAt = Math.min(plan.send.closeAt ?? Infinity, last);
+  void recs;
+}
+
+// A ball you field that is not caught (MANUAL, from finishHit once the runners' bases are settled): your throws, then the result.
+function manualFinish(plan, recs, batter, { f, tF, tReady, pf, outs, defense, cfg, late, resultOf, air }) {
+  const carry = plan.carries.find((c) => c.pos === f.pos && Math.abs(c.t1 - tReady) < 1e-6);
+  if (carry) carry.t1 = tReady + 99; // (he holds it until you tap a base)
+  plan.ballEnd = tReady;
+  manualCovers(plan, f, defense, cfg);
+  manualDefense(plan, recs, { holder: f, at: { x: pf.x, z: pf.z }, t: tReady, onBag: null }, late, outs, defense, cfg);
+  const forcedOut = recs.some((r) => r.out && r.from > 0 && r.forced && r.outBase === r.from + 1);
+  if (batter.out) {
+    plan.batterDest = 0;
+    plan.result = batter.outBase === 1 && (f.type !== 'OF' || !air) ? (plan.outsMade >= 2 ? 'doublePlay' : plan.bunt && recs.some((r) => r.from > 0 && !r.out && r.to > r.from) ? 'sacBunt' : 'groundout') : resultOf(1);
+  } else {
+    plan.batterDest = batter.to;
+    plan.result = forcedOut ? 'fieldersChoice' : resultOf(batter.to);
+    if (plan.outsMade >= 2) plan.result = 'doublePlay';
+  }
+  plan.infieldHit = plan.result === 'single' && f.type !== 'OF';
+  if (plan.tagOut && outs + plan.outsMade >= 3) plan.timePlay = true; // (runs that crossed the plate before a tag still count)
+  for (const r of recs) plan.moves.push(recToMove(r));
+  const anyOn = plan.moves.some((m) => !m.out && m.to >= 1 && m.to <= 3);
+  manualEnd(plan, recs, tF, outs, anyOn, cfg);
+  plan.send.post = viewOf(recs, cfg);
+  return plan;
+}
+
 // He is tagged (on the bag, or up the line where the man with the ball met him).
 function liveTag(plan, pick, cfg) {
   const R = cfg.runner, r = pick.r;
@@ -1247,15 +1348,33 @@ function caughtRunners(plan, i, f, air, type, bases, outs, defense, cfg) {
     applyOrder(recs, home !== undefined && home + 0.05 > o.t + R.sendReact ? { ...o, t: home + 0.05 - R.sendReact } : o, cfg);
   }
   for (const r of runners) if (r.sent) r.tagUp = true;
-  // the defense: one throw - behind a runner you sent before the catch (doubled off), else at a runner tagging up
   const at = { x: air.ball.x, z: air.ball.z };
+  if (MANUAL) {
+    // you make every throw: he holds it until you tap a base (doubled off / a tag-up out happens only if you throw there in time)
+    for (const r of runners) if (r.to === r.from && r.legs.some((L) => L.kind === 'reverse' || L.kind === 'path' || L.kind === 'resume')) r.returning = true;
+    const carry = plan.carries.find((c) => c.pos === f.pos && c.t0 === tC);
+    if (carry) carry.t1 = tC + 99;
+    manualCovers(plan, f, defense, cfg);
+    manualDefense(plan, recs, { holder: f, at, t: readyAt(plan, f, tC, cfg), onBag: null }, orders.filter((o) => o.t > by), outs, defense, cfg);
+    if (fair && plan.outsMade <= 1 && runners.some((r) => r.from === 3 && r.to === 4 && !r.out)) plan.result = 'sacFly';
+    else if (plan.outsMade >= 2) plan.result = 'doublePlay';
+    let anyOn = false;
+    for (const r of runners) {
+      const m = recToMove(r);
+      if (r.tagUp && !r.out) m.tag = true;
+      plan.moves.push(m);
+      if (!r.out) { plan.endTime = Math.max(plan.endTime, Math.min(mFinish(cfg, m), tC + 9) + 0.3); if (m.to <= 3) anyOn = true; }
+    }
+    manualEnd(plan, recs, tC, outs, anyOn, cfg);
+    plan.send.post = viewOf(recs, cfg);
+    return;
+  }
+  // the defense: one throw - behind a runner you sent before the catch (doubled off), else at a runner tagging up
   let chased = null; // (a runner the tag-up throw went after who is still far away: the live defense runs him down)
   if (!plan.doubledOff) {
     const tReady = readyAt(plan, f, tC, cfg);
     let done = false;
-    // (you picked the base: only a play there - and if there is none, the ball is simply thrown in to that bag)
-    const mine = (b) => !THROW || THROW.base === b;
-    for (const r of runners.filter((q) => q.wasSent && q.to === q.from && mine(q.from)).sort((a, b) => b.from - a.from)) {
+    for (const r of runners.filter((q) => q.wasSent && q.to === q.from).sort((a, b) => b.from - a.from)) {
       const arrive = recArrive(cfg, r, r.from);
       const way = coverOptions({ base: r.from, thrower: f, tReady, from: at, tHave: tC, runnerT: arrive }, plan, defense, cfg)[0];
       if (!way) continue;
@@ -1266,14 +1385,7 @@ function caughtRunners(plan, i, f, air, type, bases, outs, defense, cfg) {
       break;
     }
     if (!done) {
-      const targets = runners.filter((q) => q.to > q.from && mine(q.to)).sort((a, b) => b.to - a.to);
-      // (you picked a base the throw cannot win at, or with nobody going there: it is simply thrown in to that bag - see after the loop)
-      const thrownIn = () => {
-        const way = coverOptions({ base: THROW.base, thrower: f, tReady, from: at, tHave: tC }, plan, defense, cfg).filter((w) => !w.self)[0];
-        if (way) liveThrow(plan, way, THROW.base, { holder: f, at, t: tReady }, cfg);
-      };
-      if (THROW && !targets.length) thrownIn();
-      for (const r of targets) {
+      for (const r of runners.filter((q) => q.to > q.from).sort((a, b) => b.to - a.to)) {
         const base = r.to;
         const arrive = recArrive(cfg, r, base);
         const way = coverOptions({ base, thrower: f, tReady, from: at, runnerT: arrive, tag: R.sendTag }, plan, defense, cfg).filter((w) => !w.self)[0];
@@ -1293,7 +1405,7 @@ function caughtRunners(plan, i, f, air, type, bases, outs, defense, cfg) {
           const t1 = tReady + throwTime(dist(at.x, at.z, BASE_XZ[4][0], BASE_XZ[4][1]), f, cfg);
           plan.throws.push({ from: f.pos, to: 'C', t0: tReady, t1, ax: at.x, az: at.z, bx: BASE_XZ[4][0], bz: BASE_XZ[4][1], toBase: 4 });
           plan.events.push({ t: t1 + F.tagTime, type: 'throwLate' });
-        } else if (THROW) thrownIn(); // (a late throw to the base you picked: he is safe)
+        }
         break;
       }
     }
@@ -1472,7 +1584,7 @@ function planWildPitchCore(i, cfg) {
 // ---------------------------------------------------------------------------
 // Errors. `i.errorRoll` (0..1, from the engine's seeded random numbers) decides; no roll = no errors (tests, the Derby, practice).
 function errorHappens(i, p) {
-  return i.errorRoll !== undefined && !i.simple && i.errorRoll < p * (i.errorScale ?? 1);
+  return i.errorRoll !== undefined && !i.simple && !MANUAL && i.errorRoll < p * (i.errorScale ?? 1);
 }
 // Where the ball squirts to (a direction fixed by the roll, so a replay is identical), kept inside the ballpark.
 function looseSpot(i, x, z, cfg, d = cfg.fielding.errors.looseDist) {
@@ -1572,7 +1684,8 @@ export function planPlay(i, cfg = CONFIG) {
   RUN = i.running || null;
   SPD = i.speeds || null;
   ORD = i.orders && i.orders.length ? i.orders : null;
-  THROW = i.throwTo && i.throwTo.base >= 1 && i.throwTo.base <= 4 ? i.throwTo : null;
+  MANUAL = !!i.manual && !i.simple;
+  THROWS = MANUAL ? (i.throws || []).filter((q) => q.base >= 1 && q.base <= 4).slice().sort((a, b) => a.t - b.t) : [];
   PREV = i.prev && i.prev.paths ? { paths: i.prev.paths, tCut: i.prev.t + cfg.fielding.replanReact } : null;
   READ = 0;
   try {
@@ -1581,7 +1694,7 @@ export function planPlay(i, cfg = CONFIG) {
     // the picture and the referee see him where the planner did)
     for (const m of plan.moves) if (m.tStart === undefined && !m.legs && !m.back && !m.trot && m.from >= 1) { const d = readDelay(cfg, m.from); if (d !== undefined) m.tStart = d; }
     // (`i.batterThrough`, while you choose the throws) a batter safe at first on a ball the infield fields runs through the bag, as he
-    // would have if he were out - so the picture is the same whatever the throw, and you may choose it (see THROW); he walks back to
+    // would have if he were out - so the picture is the same whatever you throw (see MANUAL); he walks back to
     // the bag after the play
     if (i.batterThrough && plan.fair && !plan.caught && !plan.homer && plan.fielder && fielderType(plan.fielder) !== 'OF') {
       for (const m of plan.moves) if (m.from === 0 && m.to === 1 && !m.out && !m.round && (!m.legs || (m.legs.length === 1 && m.legs[0].kind === 'run' && m.legs[0].to === 1))) m.through = true;
@@ -1595,7 +1708,7 @@ export function planPlay(i, cfg = CONFIG) {
     settleThrows(plan);
     addCalls(plan, cfg);
     return plan;
-  } finally { RUN = null; SPD = null; ORD = null; PREV = null; THROW = null; READ = 0; }
+  } finally { RUN = null; SPD = null; ORD = null; PREV = null; MANUAL = false; THROWS = []; READ = 0; }
 }
 // When the inning's third out is made in this play.
 function thirdOutAt(plan, outs) {
@@ -1838,11 +1951,6 @@ function tryInfieldOut({ f, tF, tReady, pf, bases, forced, outs, defense, cfg, p
   let choice;
   const force = options.find((o) => o.kind === 'force');
   const first = options.find((o) => o.kind === 'first');
-  if (THROW) {
-    // you picked the base: the out there if he can get it - else no out at all (the throw goes there and everybody is safe: finishHit)
-    const mine = options.find((o) => o.base === THROW.base);
-    return mine ? { choice: mine, force, first, leadForced } : null;
-  }
   // On a bunt the fielder charging in takes the sure out at first, unless the lead runner is clearly beaten.
   // (A thin force play is not worth it when the batter can be had easily: take the sure out.)
   const thin = force && first && force.margin < cfg.fielding.thinForce && first.margin > force.margin + cfg.fielding.thinForceGain;
@@ -2156,6 +2264,8 @@ function finishHit(plan, ctx) {
   plan.result = resultOf(bd);
   plan.infieldHit = plan.result === 'single' && f.type !== 'OF';
 
+  if (MANUAL) return manualFinish(plan, recs, batter, { f, tF, tReady, pf, outs, defense, cfg, late, resultOf, air: !!air });
+
   // Ball movement after the pickup: the throw goes where an out can be made (the lead-most such runner), else to the base the lead
   // runner is heading for.
   let leadDest = bd;
@@ -2163,8 +2273,7 @@ function finishHit(plan, ctx) {
   plan.leadDest = leadDest;
   plan.ctx.leadDest = leadDest;
   let tgtBase = Math.min(4, leadDest);
-  if (THROW) tgtBase = THROW.base; // (you picked where it goes)
-  else for (const r of [...snap].sort((p, q) => q.to - p.to)) {
+  for (const r of [...snap].sort((p, q) => q.to - p.to)) {
     if (!(r.sent || r.recalled) || r.to < 1 || (!r.recalled && r.to <= r.from)) continue; // (a runner who was not sent only took a base he was sure to reach)
     const arrive = recArrive(cfg, r, r.to);
     const tBall = D[r.to] - (r.to === 4 ? F.tagTime : 0); // (when the throw gets there)

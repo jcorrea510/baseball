@@ -434,9 +434,13 @@ export class App {
   updateThrowPick(e, realDt) {
     const c = !this.paused && !this.ui.current && this.screen === 'game' && !this.bot ? e.throwChoice : null;
     this.throwOpen = !!c;
+    this.throwFirst = !!(c && c.first); // (the slow motion is only for your first throw: see tick)
     if (!c) { if (this.throwShown) { this.throwShown = false; this.ui.setThrowPick(null); } this.fielderRing.hide(); return; }
     this.throwShown = true;
     const p = e.play, t = e.time - p.t0, cam = this.S.camera, W = this.S.size.w, H = this.S.size.h;
+    // who has the ball right now (nobody while a throw is in the air): he wears the ring, and is never one of the markers
+    const carry = p.plan.carries.find((q) => q.t0 <= t && t < q.t1);
+    const holder = carry ? carry.pos : null;
     const v = this.throwV || (this.throwV = new THREE.Vector3());
     const items = [];
     for (const q of c.bases) {
@@ -445,15 +449,15 @@ export class App {
       const [bx, bz] = BASE_XZ[q.base];
       let best = null;
       for (const pos of Object.keys(this.actors.fielders)) {
-        if (pos === c.pos) continue;
+        if (pos === holder) continue;
         const r = this.actors.fielders[pos].root.position;
         const d = Math.hypot(r.x - bx, r.z - bz);
         if (!best || d < best.d) best = { r, d };
       }
       const at = best && best.d < CONFIG.throwPick.nearFeet ? best.r : { x: bx, z: bz };
       v.set(at.x, CONFIG.throwPick.height, at.z).project(cam);
-      if (v.z > 1) continue; // (behind the camera)
-      items.push({ base: q.base, ok: true, hint: q.base === c.base && this.engine.difficulty === 'rookie', x: (v.x + 1) / 2 * W, y: (1 - v.y) / 2 * H });
+      if (v.z > 1 || Math.abs(v.x) > 0.97 || Math.abs(v.y) > 0.95) continue; // (off the picture: the base diamond in the corner has it)
+      items.push({ base: q.base, ok: true, x: (v.x + 1) / 2 * W, y: (1 - v.y) / 2 * H });
     }
     // (far away the bases bunch up on the screen: markers too close to each other are pushed apart sideways, keeping their order)
     const gap = CONFIG.throwPick.gap;
@@ -467,8 +471,8 @@ export class App {
     }
     for (const q of items) { q.x = clamp(q.x, 40, W - 40); q.y = clamp(q.y, 80, H - 40); }
     this.ui.setThrowPick({ items });
-    const runs = p.plan.paths[c.pos];
-    if (runs) { const q = samplePath(runs, t); this.fielderRing.show(q.x, q.z, realDt); }
+    const runs = holder && p.plan.paths[holder];
+    if (runs) { const q = samplePath(runs, t); this.fielderRing.show(q.x, q.z, realDt); } else this.fielderRing.hide();
   }
 
   quitToMenu() {
@@ -1443,6 +1447,7 @@ export class App {
   baseKey(base) {
     const e = this.engine;
     if (!e || this.paused || this.bot) return;
+    if (this.throwOpen) { this.throwKey(base); return; } // (you are in the field: a base on the diamond is a throw)
     if (e.tapBase(base)) this.audio.uiClick();
   }
 
@@ -1464,7 +1469,9 @@ export class App {
   // Every frame: the base diamond is up while you can send runners - the bases you can send someone to light up, and a dot shows
   // every runner where he is right now.
   updateBasePad(e) {
-    const open = !this.paused && !this.ui.current && e.sendOpen && !e.pitching; // (you never send the computer's runners)
+    // (you never send the computer's runners - while you are in the field the diamond is where you throw: its lit bases)
+    const throwing = !this.paused && !this.ui.current && this.throwOpen;
+    const open = throwing || (!this.paused && !this.ui.current && e.sendOpen && !e.pitching);
     if (!open) { if (this.padShown) { this.padShown = false; this.ui.setBasePad(null); } return; }
     this.padShown = true;
     const p = e.play, t = e.time - p.t0;
@@ -1483,7 +1490,7 @@ export class App {
       const q = runnerProfile(0, 1, 'run', e.cfg).at(Math.max(0, t - e.cfg.runner.batterStart), this.padQ || (this.padQ = {}));
       dots.push({ x: q.x, z: q.z, sent: false, from: 0 });
     }
-    this.ui.setBasePad({ dots, open: e.baseTargets().map((q) => q.base) });
+    this.ui.setBasePad({ dots, open: throwing ? e.throwChoice.bases.filter((q) => q.ok).map((q) => q.base) : e.baseTargets().map((q) => q.base), throwing });
   }
 
   swingInput(ev) {
@@ -1579,7 +1586,7 @@ export class App {
         else if (e.phase !== 'play') this.fast = false;
         // choosing the throw: the game eases into slow motion until you tap (or he throws by himself), then eases back out
         const TC = CONFIG.fielding.throwChoice;
-        const want = this.throwOpen ? TC.slow : 1;
+        const want = this.throwFirst ? TC.slow : 1; // (until your first throw: then the play runs at full speed)
         const rate = (1 - TC.slow) * realDt / (want < this.throwSlow ? TC.slowIn : TC.slowOut);
         this.throwSlow = want < this.throwSlow ? Math.max(want, this.throwSlow - rate) : Math.min(want, this.throwSlow + rate);
         if (this.throwOpen) this.fast = false;
@@ -1602,6 +1609,7 @@ export class App {
     const camDt = this.fast ? Math.min(realDt * 3, 0.1) : realDt;
     if (this.screen === 'game' || this.screen === 'over') this.cam.update(camDt, e, this.actors, this.S.size.aspect);
     else this.cam.update(camDt, null, this.actors, this.S.size.aspect);
+    if (this.cam.cutNow) this.ui.cutFade(CONFIG.camera.fieldView.cutFade); // (a cut between the pitching and the fielding view)
     const cam = this.S.camera;
     // ball trail + effects use real time
     this.ball.updateTrail(realDt, cam, this.S.size.h, this.actors.trailPts);
