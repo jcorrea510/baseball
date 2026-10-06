@@ -10,13 +10,15 @@ import { createRng } from '../util/rng.js';
 import { zoneRatio } from '../physics/pitch.js';
 import { pitchGuide } from './pitchGuide.js';
 import { chooseSend } from './cpuRunner.js';
+import { heatAt, zoneCell, cellCenter } from './scouting.js';
 
 /** A person pitching (scripts/pitchfeel.mjs PITCHERS has the new / average / good ones): ring tap spread (ms), hand shake on the
  * aim (ft), how often he throws a pitch he did not mean to (`wrongPitch`), whether he mixes speeds on purpose (`mixSpeeds`).
  * Where he aims when behind in the count (`behindX`: share of the zone's half-width toward a corner, `behindY`: ft from the middle of
  * the zone - a person does not groove it, he aims low and toward a corner inside the zone, so a shaky hand still walks a batter now and then) and
  * how far inside the edge he paints a corner (`paint`, ft). */
-export const BOT_PITCHER = { tapSd: 50, shake: 0.12, wrongPitch: 0, mixSpeeds: false, behindX: 0.7, behindY: -0.75, paint: 0.08 };
+export const BOT_PITCHER = { tapSd: 50, shake: 0.12, wrongPitch: 0, mixSpeeds: false, behindX: 0.7, behindY: -0.75, paint: 0.08, followCall: 0.4, avoidHot: 0.7 };
+// (the scouting a person uses: how often he throws the catcher's call, and how often he steers a pitch out of the batter's hot zone)
 const FAST = new Set(['fastball', 'sinker', 'heater']);
 
 export function createBot(engine, o = {}) {
@@ -79,8 +81,20 @@ export function createBot(engine, o = {}) {
   function botPitch() {
     if (engine.phase === 'aim') {
       if (!throwPlan || throwPlan.aimSince !== engine.phaseSince) {
-        const type = choosePitchType(engine.count);
-        throwPlan = { aimSince: engine.phaseSince, ready: engine.time + prng.range(0.5, 1.2), type, aim: chooseTarget(engine.count, type), tapErr: prng.gauss(0, pitcher.tapSd) };
+        let type = choosePitchType(engine.count), aim = chooseTarget(engine.count, type);
+        const call = engine.call;
+        if (call && pitcher.followCall && prng.chance(pitcher.followCall)) {
+          // the catcher's sign: that pitch, on his spot (as well as his hand allows)
+          type = call.type;
+          aim = { x: call.x + prng.gauss(0, pitcher.shake), y: call.y + prng.gauss(0, pitcher.shake) };
+        } else if (engine.zones && heatAt(engine.zones, aim.x, aim.y, engine.cfg) > 0 && pitcher.avoidHot && prng.chance(pitcher.avoidHot)) {
+          // he sees he is aiming into the batter's hot zone: to the nearest cell that is not hot
+          const from = zoneCell(aim.x, aim.y, engine.cfg);
+          let best = null;
+          for (let i = 0; i < 9; i++) if (engine.zones[i] <= 0) { const d = Math.abs(Math.floor(i / 3) - Math.floor(from / 3)) + Math.abs((i % 3) - (from % 3)); if (!best || d < best.d) best = { i, d }; }
+          if (best) { const c = cellCenter(best.i, engine.cfg); aim = { x: c.x + prng.gauss(0, pitcher.shake), y: c.y + prng.gauss(0, pitcher.shake) }; }
+        }
+        throwPlan = { aimSince: engine.phaseSince, ready: engine.time + prng.range(0.5, 1.2), type, aim, tapErr: prng.gauss(0, pitcher.tapSd) };
       }
       if (engine.time < Math.max(throwPlan.ready, engine.fieldersSetAt)) return; // (a moment to think, and the pitcher is set)
       engine.selectPitch(throwPlan.type);

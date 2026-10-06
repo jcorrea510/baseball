@@ -170,19 +170,20 @@ export const CONFIG = {
     // Where the batter is: a pitch crossing this far inside (ft from the middle of the plate, toward him) at this height hits him
     hitBatter: { inner: 1.75, outer: 3.3, low: 0.6, high: 5.3 },
     wasteMinRatio: 1.75, // a 'waste' pitch is never wilder in the wrong direction than this: it stays out of reach
-    ballScale: 1.5, // pitches are drawn a bit bigger so they are easy to track
+    ballScale: 1.3, // pitches you bat against are drawn a little bigger so they are easy to track (only the picture)
+    ballScalePitching: 1, // ...but real size while you pitch: the long-lens TV view makes a real ball easy to see (bigger looked like a balloon)
     // Seeing the ball (all of it is picture only): a thin dark rim keeps a white ball visible against clouds, dirt and crowd; a soft
     // shadow right under it on the ground shows where it is and when it passes the plate; a short streak behind it shows its curve and
     // speed. No glow.
-    rimColor: 0x0b1230, rimOpacity: 0.78, rimScale: 1.16,
-    shadowOpacity: 0.6, shadowRadius: 0.5,
+    rimColor: 0x0b1230, rimOpacity: 0.5, rimScale: 1.06, // (a thin dark edge so the white ball never melts into a white background - thin enough that it still looks like a ball)
+    shadowOpacity: 0.55, shadowRadius: 0.2, // (a ball-sized shadow, not a puddle)
     trailColor: 0xdfe9ff, trailSize: 0.36, trailSeconds: 0.11, trailStrength: 0.6, // (a longer streak shows which way it is heading)
     // ...and on screen at least this many pixels across (or this fraction of the screen height, whichever is bigger) while it still
     // grows as it comes in: at release a real-size ball is only ~2.5 px on a phone held sideways. Only the picture: timing is unchanged.
     minScreenPx: 6,
     handMinScreenPx: 3.5, // the ball in the pitcher's throwing hand is drawn at least this big, so you can see which hand it is in
     minScreenFrac: 0.009,
-    playMinScreenPx: 5, playMinScreenFrac: 0.0075, // a ball in play (hit, thrown) is never drawn smaller than this on screen (px, or this share of the screen's height) - you can always find it
+    playMinScreenPx: 2.6, playMinScreenFrac: 0.0038, // a ball in play (hit, thrown) is never drawn smaller than this on screen (px, or this share of the screen's height) - a speck you can still find, never a balloon (its streak and shadow do the rest)
     // Movement is measured at the plate. breakArm: feet toward the pitcher's
     // throwing-arm side (negative = glove side). hop: feet of "extra rise"
     // (negative = extra drop) compared with plain gravity.
@@ -298,6 +299,19 @@ export const CONFIG = {
   //  Balanced with scripts/pitchfeel.mjs (the bands in tests/pitchfeel.test.js: an average person gives up about the old simulated half's
   //  runs on each level, a good one clearly fewer, a new one clearly more, Pro strikeouts 20-35%).
   // --------------------------------------------------------------------------
+  // Scouting the batter while you pitch (game/scouting.js): his hot / cold zones and the catcher's call.
+  scout: {
+    sluggerPower: 72, weakContact: 35, // Power at least this: a third hot cell; Contact at most this: a third cold one
+    call: {
+      radius: 0.4, // ft: your aim within this of the catcher's spot (and the pitch he called) counts as throwing his call
+      staminaSave: 0.75, // x the stamina a pitch costs when you throw his call (hitting your spot is an easy pitch to make)
+      putawayBreaking: 0.7, offPlate: 0.22, belowZone: 0.25, aboveZone: 0.3, // two strikes: a breaking ball this far off the plate / below the zone (ft) this often, else a fastball up
+      changeAfterFast: 0.6, fastAfterSlow: 0.6, // how often he calls a change of speed after a fastball / a fastball after something slow
+      coldShare: 0.65, lowShare: 0.6, awayShare: 0.65, // how often he sets up in a cold cell of the batter's / low / away
+      toEdge: 0.5, // share of the way from a cell's middle to its outer edge his spot sits
+      behindIn: 0.6, // behind in the count his spot is pulled this share of the way... (1 = no pull) toward the middle: a strike
+    },
+  },
   cpuBat: {
     readTime: 0.22, // s before the swing must start that he judges where the pitch will cross
     readGuide: 'pro', // ...starting from this level's pitch guide on every level (your guide changes with the level; his read only by his readSd)
@@ -305,6 +319,10 @@ export const CONFIG = {
     // Share of his read / timing error each grade of YOUR pitch causes (the hang floats over the middle: easy to square up). Wide on purpose:
     // a PERFECT tap is clearly harder to hit than a GOOD one, so a good pitcher gives up clearly fewer runs (pitchfeel good <= .75 x average).
     gradeFactor: { perfect: 2.0, good: 1.2, ok: 0.8, hang: 0.5, sail: 1 },
+    // His hot and cold zones (game/scouting.js): x his read / timing / aim errors on a pitch crossing in a hot / cold cell of his, and
+    // mph added to (or taken off) his exit speed there. Symmetric on purpose - on average they cancel out.
+    heat: { hot: 0.86, cold: 1.16, evHot: 2, evCold: -2 },
+    callBonus: 1.0, // x his read and timing errors when you throw the catcher's call (that pitch, on his spot) - 1: the call is advice (a good pitch in a good spot), its reward is the stamina it saves (scout.call.staminaSave)
     fadeOut: 1.4, // x his read error on a pitch that starts in the zone and finishes outside it (the slider off the corner)
     fadePull: 0.2, // ...and his read is also pulled this share of the way back toward where that pitch started (x the grade factor, at most all the way): he sees a strike and chases it
     // His chance to swing, by where he THINKS the pitch will cross (zoneBoxRatio bands in `bands`). "Two" = two strikes.
@@ -420,6 +438,15 @@ export const CONFIG = {
     holdMin: 0.3, // s: a mouse button / Space held down at least this long to start the delivery taps the ring when you let go (a quicker click waits for the next one)
     markSize: 0.16, // ft: radius of the marks of this at-bat's pitches on the zone
     markStrike: 0xffc23a, markBall: 0x6fb8ff, markOpacity: 0.92, // gold = a strike (called, swinging or fouled off), blue = a ball
+    hotColor: 0xff4a3a, coldColor: 0x3d8bff, zoneOpacity: 0.2, cellFill: 0.94, // the batter's hot / cold zones: red / blue tints over those cells of the zone (this see-through, this share of a cell)
+    callColor: 0xffc23a, callLocked: 0x5dff8f, callR: 0.3, // the catcher's call: a gold target (ft radius) - green when you are on it with the pitch he called
+  },
+
+  // The big aiming panel while you pitch (ui.setAimPad, App.updateAimPad): the strike zone drawn large over the plate.
+  aimPad: {
+    zoneShare: 0.28, // the strike zone is this share of the screen's height
+    dot: 0.26, // ft: your dot's radius on it (the ring closes onto it when you should let go / tap)
+    margin: 8, marginTop: 64, // px it keeps from the screen's edges (and from the top, under the pitch pill)
   },
 
   // The see-through bat you aim with (render/batAim.js) and how the cursor / keys / a finger move it
@@ -855,6 +882,7 @@ export const CONFIG = {
     turnLen: 28,
     overrun: 22, // ft the batter runs on past first base when he is running through it (an out)
     batterStart: 0.34, // s after contact the batter leaves the box
+    swapEase: 0.2, // s: a batter whose route changes when the play is planned again (you sent him on) eases onto it over about this long (picture only)
     startDelay: 0.04, // runners on base leave almost as soon as the ball is hit (they are already leading off)
     trotSpeed: 21, // ft/s on a home-run trot
     jogSpeed: 20, // ft/s: the walk to first after ball four
@@ -911,7 +939,7 @@ export const CONFIG = {
     batter: { pos: [0.0, 13.5, 24.0], pitch: -14.5, fov: 36 }, // camera behind the plate; pitch in degrees
     // the catcher's view you bat from (after Ready): through the catcher's eyes, over his glove (the rest of him is hidden)
     catcher: { pos: [0, 3.3, 7.0], look: [0, 1.2, -30], fov: 42, zoom: 5, clearDist: 6, umpireHead: 4.2, mittY: 1.75, mittReach: 0.16, firstDelay: 0.5 }, // zoom = how quickly it moves in; clearDist = the catcher and umpire are hidden while the camera is closer than this (ft) to them (the batting view, and the pull-back after a swing) (umpireHead = his head's height); the catcher's mitt waits low at mittY and reaches for the ball in the last mittReach s
-    pitcher: { pos: [-3.5, 12, -110], look: [0, 2.0, 0], fov: 10, ease: 4, minHorizontalFov: 16 }, // the pitching view: the TV center-field camera - well behind and above the mound with a long lens, so the zone and the batter are big and the pitcher stands off to one side in front (x is for a right-hander; a left-hander is mirrored); ease = how quickly it moves in (bigger = quicker); minHorizontalFov = how wide (deg) a narrow screen makes it at least
+    pitcher: { pos: [-3.5, 12, -110], look: [0, 2.0, 0], fov: 10, ease: 4, minHorizontalFov: 16, twoStrikeZoom: 0.9 }, // (twoStrikeZoom: x the view with two strikes on him - the camera leans in) // the pitching view: the TV center-field camera - well behind and above the mound with a long lens, so the zone and the batter are big and the pitcher stands off to one side in front (x is for a right-hander; a left-hander is mirrored); ease = how quickly it moves in (bigger = quicker); minHorizontalFov = how wide (deg) a narrow screen makes it at least
     fieldView: { // the computer hit it (you pitch): the camera behind home plate, looking out - low and close on the action
       up: [14, 38], // ft above the grass: for the action at home ... farFeet out
       back: [34, 2], // ft behind the plate (z) for the same: it moves in a little for a deep ball
@@ -938,6 +966,7 @@ export const CONFIG = {
       sfx: 1.0, // bat, glove, throws, thuds
       crowd: 1.0, // crowd noise, applause and the ballpark organ
       applause: 0.85, // loudness of a round of applause (before the crowd channel)
+      clapAlong: 0.32, // loudness of the crowd clapping along in time with two strikes on their batter (each hand's clap)
       glovePop: 2.4, // the catcher's mitt pop (x the built-in level): one of the signature sounds, so it is up front
       whoosh: 2.4, // the swing whoosh
       ui: 2.5, // menu clicks

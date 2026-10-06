@@ -32,11 +32,17 @@ export function startSpot(flight, cfg = CONFIG) {
   };
 }
 
-/** The share of his errors your pitch's grade causes ('wild' counts as its kind: a hang or a sail). */
+/** The share of his errors your pitch's grade causes ('wild' counts as its kind: a hang or a sail) - more when you threw the catcher's
+ *  call (pitch.onCall). */
 function gradeFactor(pitch, cfg) {
   const G = cfg.cpuBat.gradeFactor;
   const key = pitch.grade === 'wild' ? (pitch.wildKind || 'sail') : pitch.grade;
-  return G[key] ?? 1;
+  return (G[key] ?? 1) * (pitch.onCall ? cfg.cpuBat.callBonus : 1);
+}
+/** x his errors for a pitch in a hot (heat > 0) or cold (< 0) zone of his (scouting.heatAt). */
+export function heatScale(heat, cfg = CONFIG) {
+  const H = cfg.cpuBat.heat;
+  return heat > 0 ? H.hot : heat < 0 ? H.cold : 1;
 }
 
 /**
@@ -93,12 +99,13 @@ function swingChance(ratio, count, batter, cfg) {
 
 /**
  * Take or swing.
- * @param {object} i  { pitch, count: {balls, strikes}, recent: [{type, speedMph}] (last two, oldest first), batter, level, strength (k, -1.5..1.5), rng }
+ * @param {object} i  { pitch, count: {balls, strikes}, recent: [{type, speedMph}] (last two, oldest first), batter, level, strength (k, -1.5..1.5), rng,
+ *                    heat (-1 cold .. +1 hot: where it crosses, his zones) }
  * @returns {{swing:false}|{swing:true, errorMs:number, aim:{x:number,y:number}, protect:boolean}}
  */
 export function decideSwing(i, cfg = CONFIG) {
   const C = cfg.cpuBat, L = levelOf(i.level, cfg), rng = i.rng, pitch = i.pitch;
-  const scale = errorScale(i.batter, i.strength, cfg);
+  const scale = errorScale(i.batter, i.strength, cfg) * heatScale(i.heat || 0, cfg); // (his hot / cold zones)
   const seen = perceivedSpot(pitch, L.readSd * scale, rng, cfg);
   const ratio = zoneBoxRatio(seen.x, seen.y, cfg);
   if (!rng.chance(swingChance(ratio, i.count, i.batter, cfg))) return { swing: false };
@@ -125,15 +132,16 @@ export function decideSwing(i, cfg = CONFIG) {
  * What the engine feeds computeSwing for his swing: his own window (never the level's player window), the timing-window scale from his
  * Contact rating (or team strength), exit speed from his Power (or team strength) and no bat bonus or aim help.
  */
-export function cpuSwingInputs(level, batter, strength, cfg = CONFIG) {
+export function cpuSwingInputs(level, batter, strength, cfg = CONFIG, heat = 0) {
   const L = levelOf(level, cfg), C = cfg.cpuBat;
+  const H = C.heat, hot = heat > 0 ? H.evHot : heat < 0 ? H.evCold : 0; // (his hot / cold zones: a little more / less off the bat)
   const rated = hasRatings(batter);
   const eff = ratingEffects(rated ? batter : null, cfg);
   const k = strength || 0;
   return {
     window: L.window,
     windowScale: L.windowScale * (rated ? eff.window : 1 / (1 - C.strengthSd * k)),
-    evBonus: rated ? eff.ev : C.strengthEv * k,
+    evBonus: (rated ? eff.ev : C.strengthEv * k) + hot,
     batBonus: 0,
     aimAssist: L.aimAssist,
   };

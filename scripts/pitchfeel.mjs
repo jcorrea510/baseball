@@ -23,11 +23,11 @@ const RATINGS = [26, 40, 54, 68]; // a club's strength: tier 1 .. tier 5 (config
 const round3 = (x) => Math.round(x * 1000) / 1000;
 
 // How good the simulated person pitching is: ring tap spread (ms), hand shake on the aim (ft), how often he throws the wrong pitch,
-// whether he mixes speeds on purpose (see bot.js).
+// whether he mixes speeds on purpose, how often he throws the catcher's call and steers clear of a hot zone (see bot.js).
 export const PITCHERS = {
-  new: { tapSd: 75, shake: 0.2, wrongPitch: 0.15 },
-  average: { tapSd: 50, shake: 0.12 },
-  good: { tapSd: 30, shake: 0.07, mixSpeeds: true },
+  new: { tapSd: 75, shake: 0.2, wrongPitch: 0.15, followCall: 0.15, avoidHot: 0.2 },
+  average: { tapSd: 50, shake: 0.12, followCall: 0.4, avoidHot: 0.7 },
+  good: { tapSd: 30, shake: 0.07, mixSpeeds: true, followCall: 0.6, avoidHot: 0.9 },
 };
 
 /** The balance target (runs / hits / walks / Ks per half) for a level, or for a League club's rating at Pro. */

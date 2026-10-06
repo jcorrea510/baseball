@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { clamp } from '../util/math.js';
+import { cellCenter, onCall } from '../game/scouting.js';
 
 const SEG = 72; // segments round the timing ring
 const GRADES = ['perfect', 'good', 'ok', 'wild'];
@@ -84,6 +85,43 @@ export class PitchAim {
     this.markMats = { strike: own(new THREE.MeshBasicMaterial(flat({ color: A.markStrike }))), ball: own(new THREE.MeshBasicMaterial(flat({ color: A.markBall }))) };
     this.markRimMat = own(new THREE.MeshBasicMaterial(flat({ color: A.rimColor, opacity: 0.75 })));
     this.markNums = [];
+    // the batter's hot (red) and cold (blue) zones: a soft tint over each cell of the strike zone while you aim
+    this.grid = new THREE.Group();
+    this.grid.position.z = CONFIG.pitch.contactZ + 0.01;
+    this.grid.visible = false;
+    scene.add(this.grid);
+    const P = CONFIG.pitch, cw = (2 * P.zoneHalfWidth) / 3, ch = (P.zoneTop - P.zoneBottom) / 3;
+    const cellGeo = own(new THREE.PlaneGeometry(cw * A.cellFill, ch * A.cellFill));
+    this.cells = [];
+    for (let i = 0; i < 9; i++) {
+      const m = own(new THREE.MeshBasicMaterial(flat({ color: 0xffffff, opacity: 0 })));
+      const mesh = new THREE.Mesh(cellGeo, m);
+      const c = cellCenter(i);
+      mesh.position.set(c.x, c.y, 0);
+      mesh.renderOrder = 20;
+      this.grid.add(mesh);
+      this.cells.push(mesh);
+    }
+    this.zonesKey = null;
+    // the catcher's call: a target where he wants it (gold; green once you are on it with the pitch he called)
+    this.call = new THREE.Group();
+    this.call.position.z = CONFIG.pitch.contactZ + 0.025;
+    this.call.visible = false;
+    scene.add(this.call);
+    this.callMat = own(new THREE.MeshBasicMaterial(flat({ color: A.callColor, opacity: 0.9 })));
+    const callRing = new THREE.Mesh(own(new THREE.RingGeometry(A.callR * 0.82, A.callR, 40)), this.callMat);
+    callRing.renderOrder = 28;
+    this.call.add(callRing);
+    const tick = own(new THREE.PlaneGeometry(A.callR * 0.08, A.callR * 0.42));
+    for (let k = 0; k < 4; k++) {
+      const t = new THREE.Mesh(tick, this.callMat);
+      const a = (k * Math.PI) / 2;
+      t.position.set(Math.sin(a) * A.callR * 1.08, Math.cos(a) * A.callR * 1.08, 0);
+      t.rotation.z = -a;
+      t.renderOrder = 28;
+      this.call.add(t);
+    }
+    this.callFade = 0;
     this.markSlots = [];
     this.markFade = 0;
     this.own = own;
@@ -171,6 +209,29 @@ export class PitchAim {
    */
   update(e, dt, show = true, marks = false) {
     const A = this.A;
+    // the batter's zones and the catcher's call: up while you aim and through the delivery
+    const aiming = !!(show && e && e.pitching && (e.phase === 'aim' || e.phase === 'delivery'));
+    if (e && e.zones) {
+      const key = e.zones.join(',');
+      if (key !== this.zonesKey) {
+        this.zonesKey = key;
+        e.zones.forEach((v, i) => { this.cells[i].material.color.setHex(v > 0 ? A.hotColor : A.coldColor); this.cells[i].userData.on = v !== 0; });
+      }
+    }
+    for (const c of this.cells) c.material.opacity = c.userData.on ? A.zoneOpacity * this.fade : 0;
+    this.grid.visible = this.fade > 0.01 && !!(e && e.zones);
+    const callOn = aiming && !!(e && e.call);
+    this.callFade = clamp(this.callFade + (callOn ? dt : -dt) / A.fade, 0, 1);
+    this.call.visible = this.callFade > 0.01;
+    if (callOn) {
+      this.call.position.x = e.call.x; this.call.position.y = e.call.y;
+      const aim = e.phase === 'delivery' && e.ring ? e.ring.aim : e.pitchAim;
+      const type = e.phase === 'delivery' && e.ring ? e.ring.type : e.pitchType;
+      const locked = onCall(e.call, type, aim);
+      this.callMat.color.setHex(locked ? A.callLocked : A.callColor);
+      this.call.scale.setScalar(locked ? 1.08 : 1);
+    }
+    this.callMat.opacity = 0.9 * this.callFade;
     // the at-bat's marks: up through the whole pitch (aim, delivery, the pitch, the call), gone during a play
     this.markFade = clamp(this.markFade + (marks ? dt : -dt) / A.fade, 0, 1);
     this.marks.visible = this.markFade > 0.01;
@@ -220,11 +281,12 @@ export class PitchAim {
   hide() {
     this.fade = 0; this.group.visible = false; this.flashT = -1; this.flashGroup.visible = false;
     this.markFade = 0; this.marks.visible = false;
+    this.grid.visible = false; this.callFade = 0; this.call.visible = false;
     for (const g of GRADES) this.labels[g].mesh.visible = false;
   }
 
   dispose() {
-    this.group.removeFromParent(); this.flashGroup.removeFromParent(); this.marks.removeFromParent();
+    this.group.removeFromParent(); this.flashGroup.removeFromParent(); this.marks.removeFromParent(); this.grid.removeFromParent(); this.call.removeFromParent();
     for (const d of this.disposables) d.dispose();
   }
 }

@@ -127,6 +127,7 @@ export class UI {
     const hud = h('div', 'hud');
     hud.innerHTML = `
       <div class="vignette"></div>
+      <svg class="aimpad" aria-hidden="true"><rect class="ap-reach"/><g class="ap-cells"></g><rect class="ap-zone"/><g class="ap-marks"></g><g class="ap-call"><circle class="ap-callring"/><path class="ap-callticks"/></g><circle class="ap-dot"/><circle class="ap-ring"/><text class="ap-word"></text></svg>
       <div class="throwpad" aria-label="Throw to">
         <svg class="tpfield" viewBox="0 0 200 200" aria-hidden="true"><path d="M100 172 L172 100 L100 28 L28 100 Z"/></svg>
         <svg class="tpfield tpdots" viewBox="0 0 200 200" aria-hidden="true"><g class="runners"></g><circle class="tpball" r="0"/></svg>
@@ -214,10 +215,13 @@ export class UI {
     // the base diamond (sending runners): a lit base is taken the moment it is touched - the runner behind it goes there
     this.q.basepad.addEventListener('pointerdown', (e) => {
       e.preventDefault(); e.stopPropagation();
-      // (a runner you sent: tap his dot to call him back - the dots' tap areas sit on top of everything)
-      const r = e.target.closest('.bphit.canback');
+      // a lit base under the finger wins: a runner you just sent is still standing on it (his dot's call-back circle sits on top),
+      // and the tap is for the man behind him - tapping 2nd for the batter must never call back the runner just sent on from 2nd
+      const under = document.elementsFromPoint ? document.elementsFromPoint(e.clientX, e.clientY) : [e.target];
+      const b = under.map((x) => x.closest && x.closest('.bpbase.open')).find(Boolean) || null;
+      // (a runner you sent: tap his dot - away from a lit base - to call him back)
+      const r = !b && e.target.closest('.bphit.canback');
       if (r) { this.act('runnerBack', { from: +r.dataset.from }); return; }
-      const b = e.target.closest('.bpbase.open');
       if (b) { b.classList.add('hit'); setTimeout(() => b.classList.remove('hit'), 220); this.act('base', { base: +b.dataset.base }); }
     });
     hud.addEventListener('click', (e) => {
@@ -1048,7 +1052,7 @@ export class UI {
       this.q.pitchbar.dataset.n = o.pitches.length;
       this.q.pitchbar.innerHTML = o.pitches.map((p) => `<button data-type="${p.type}" tabindex="-1"><span class="pn">${p.label}</span><span class="pm">${Math.round(p.mph)}</span></button>`).join('');
     }
-    for (const b of this.q.pitchbar.children) b.classList.toggle('on', b.dataset.type === o.selected);
+    for (const b of this.q.pitchbar.children) { b.classList.toggle('on', b.dataset.type === o.selected); b.classList.toggle('call', b.dataset.type === o.call); }
   }
   // The bullpen panel: list = [{ id, name, hand, pitches: [labels], rating, stamina (0..1) }], one row each - a tap on a row brings him
   // in (act 'bullpenPick'). Labels only. An empty list closes it.
@@ -1077,6 +1081,59 @@ export class UI {
   setPitchCount(text) { this.q.pitchinfo.querySelector('.cnt').textContent = text || ''; }
   // the Swing button shows (phones) while you are up
   setSwingButton(on) { this.q.swingBtn.classList.toggle('show', !!on); }
+  /**
+   * The big aiming panel while you pitch (round nineteen): the strike zone drawn large over the plate, in feet - x is the field's x
+   * (the panel shows it mirrored, as the pitching view sees it), y is height. o = null hides it, else:
+   *   { left, top, pxPerFt (where it is on the screen), reach {x, yMin, yMax}, zone {halfWidth, bottom, top}, zones [9] (-1 / 0 / 1),
+   *     call {x, y, locked} | null, dot {x, y, r} | null, ring {r, gold} | null, marks [{x, y, strike}], word {text, color, alpha, x, y} | null,
+   *     faded (true while the pitch is in the air: only the marks and the word stay) }
+   */
+  setAimPad(o) {
+    const el = this.hud.querySelector('.aimpad');
+    if (!o) { if (this.aimPadOn) { this.aimPadOn = false; el.classList.remove('show'); } return; }
+    if (!this.aimPadOn) { this.aimPadOn = true; el.classList.add('show'); }
+    el.classList.toggle('faded', !!o.faded);
+    const R = o.reach, Z = o.zone, k = o.pxPerFt;
+    // (svg units are feet: x mirrored - the panel's x = -x - and y upside down - the panel's y = -height)
+    el.setAttribute('viewBox', `${-R.x} ${-R.yMax} ${2 * R.x} ${R.yMax - R.yMin}`);
+    el.style.left = `${o.left}px`; el.style.top = `${o.top}px`; el.style.width = `${2 * R.x * k}px`; el.style.height = `${(R.yMax - R.yMin) * k}px`;
+    const set = (q, a) => { for (const n in a) q.setAttribute(n, a[n]); };
+    set(el.querySelector('.ap-reach'), { x: -R.x, y: -R.yMax, width: 2 * R.x, height: R.yMax - R.yMin, rx: 0.12 });
+    set(el.querySelector('.ap-zone'), { x: -Z.halfWidth, y: -Z.top, width: 2 * Z.halfWidth, height: Z.top - Z.bottom });
+    const cells = el.querySelector('.ap-cells');
+    const key = (o.zones || []).join(',');
+    if (cells.dataset.key !== key) {
+      cells.dataset.key = key;
+      const cw = (2 * Z.halfWidth) / 3, ch = (Z.top - Z.bottom) / 3;
+      cells.innerHTML = (o.zones || []).map((v, i) => {
+        if (!v) return '';
+        const r = Math.floor(i / 3), c = i % 3;
+        const x = -(-Z.halfWidth + (c + 1) * cw); // (mirrored)
+        return `<rect class="${v > 0 ? 'hot' : 'cold'}" x="${x.toFixed(3)}" y="${(-Z.top + r * ch).toFixed(3)}" width="${cw.toFixed(3)}" height="${ch.toFixed(3)}"/>`;
+      }).join('');
+    }
+    const marks = el.querySelector('.ap-marks');
+    const mk = (o.marks || []).map((m) => `${m.x.toFixed(2)},${m.y.toFixed(2)},${m.strike ? 1 : 0}`).join(';');
+    if (marks.dataset.key !== mk) {
+      marks.dataset.key = mk;
+      marks.innerHTML = (o.marks || []).map((m, i) => `<g class="${m.strike ? 'strike' : 'ball'}"><circle cx="${(-m.x).toFixed(3)}" cy="${(-m.y).toFixed(3)}" r="0.13"/><text x="${(-m.x).toFixed(3)}" y="${(-m.y + 0.055).toFixed(3)}">${i + 1}</text></g>`).join('');
+    }
+    const call = el.querySelector('.ap-call');
+    if (o.call) {
+      call.style.display = '';
+      call.classList.toggle('locked', !!o.call.locked);
+      const r = 0.24, cx = -o.call.x, cy = -o.call.y;
+      set(call.querySelector('.ap-callring'), { cx, cy, r });
+      call.querySelector('.ap-callticks').setAttribute('d', [[0, -1], [1, 0], [0, 1], [-1, 0]].map(([a, b]) => `M${cx + a * r * 1.15} ${cy + b * r * 1.15} L${cx + a * r * 1.6} ${cy + b * r * 1.6}`).join(' '));
+    } else call.style.display = 'none';
+    const dot = el.querySelector('.ap-dot');
+    if (o.dot) set(dot, { cx: -o.dot.x, cy: -o.dot.y, r: o.dot.r }); else dot.setAttribute('r', 0);
+    const ring = el.querySelector('.ap-ring');
+    if (o.ring && o.dot) { set(ring, { cx: -o.dot.x, cy: -o.dot.y, r: Math.max(0, o.ring.r) }); ring.classList.toggle('gold', !!o.ring.gold); } else ring.setAttribute('r', 0);
+    const word = el.querySelector('.ap-word');
+    if (o.word) { word.textContent = o.word.text; set(word, { x: -o.word.x, y: -o.word.y }); word.style.fill = o.word.color; word.style.opacity = o.word.alpha; } else word.textContent = '';
+  }
+
   /**
    * The throw pad while you are in the field: o = null hides it, else { open: [bases you can throw to, 0 = the mound], hold: the base
    * the man with the ball stands on (or null), dots: [{ x, z, from }] the runners, ball: { x, z } | null } (field feet).

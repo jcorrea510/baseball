@@ -14,6 +14,7 @@ import { alignDefense, tapOptions } from './fielding.js';
 import * as rules from './rules.js';
 import { ringTiming, throwPitch, gradeTap, fatigue, pitchCost, staminaMax } from './pitching.js';
 import { decideSwing } from './cpuBatter.js';
+import { hotZones, heatAt, catcherCall, onCall } from './scouting.js';
 import { chooseSend, stealDecision } from './cpuRunner.js';
 import { choosePitch } from './pitcherAI.js';
 
@@ -111,6 +112,8 @@ const methods = {
     this.setBunt(false);
     this.steal = null; this.setSteal(false);
     this.setPhase('aim');
+    this.zones = hotZones(this.batter, this.cfg); // (his hot / cold zones: scouting.js)
+    this.makeCall();
     this.emit('paStart', { batter: this.batter, index: this.batterIndex, count: this.count, waiting: false, offense: 'cpu', first });
     this.emitCount();
     if (!quiet) this.checkpoint();
@@ -121,8 +124,17 @@ const methods = {
   nextCpuPitch() {
     this.pitch = null; this.swing = null; this.play = null; this.ring = null; this.cpuSwing = null;
     this.setPhase('aim');
+    if (!this.zones) this.zones = hotZones(this.batter, this.cfg);
+    this.makeCall();
     this.checkpoint();
     this.emit('aimStart', { pitcher: this.mound.pitcher, batter: this.batter });
+  },
+
+  // The catcher's sign for the next pitch (scouting.catcherCall): this.call = { type, x, y, why }. Deterministic from the game's seed
+  // and the pitch number - the engine's random numbers are untouched.
+  makeCall() {
+    const m = this.mound;
+    this.call = m ? catcherCall({ pitches: m.pitcher.pitches, count: this.count, recent: m.recent, zones: this.zones, batterHand: this.batterHand, seed: this.seed ?? 0, n: this.pitchCount + 1 }, this.cfg) : null;
   },
 
   // ------------------------------------------------------------------ your inputs
@@ -266,11 +278,13 @@ const methods = {
       hitsBatter: hitsBatter(th.target.x, th.target.y, this.batterHand, cfg), // (if he lets it go: hit by pitch)
       resolved: false, caught: false,
       grade: th.grade, wildKind: th.wildKind, errMs: th.errMs, aim: { ...r.aim }, mine: true,
+      onCall: !this.simming && onCall(this.call, r.type, r.aim, cfg), // (you threw the catcher's call: he reads it a little worse)
+      heat: heatAt(this.zones, th.target.x, th.target.y, cfg), // (where it really crosses: one of his hot / cold zones?)
     };
     this.swing = null;
     m.pitches++;
     // the pitch costs stamina (more with a runner in scoring position, at three balls, for the heater)
-    const cost = pitchCost({ type: th.type, balls: this.count.balls, risp: !!(this.bases[1] || this.bases[2]) }, cfg);
+    const cost = pitchCost({ type: th.type, balls: this.count.balls, risp: !!(this.bases[1] || this.bases[2]) }, cfg) * (this.pitch.onCall ? cfg.scout.call.staminaSave : 1); // (the catcher's call saves a little)
     if (!this.practicePitch) m.left = Math.max(0, m.left - cost); // (practice: no stamina)
     const spent = (this.pitchStats.spent ||= {});
     spent[pitcher.id] = (spent[pitcher.id] || 0) + cost;
@@ -283,7 +297,7 @@ const methods = {
     // the batter reads it from the release and decides: take or swing (and if he swings, how early or late and where)
     const dec = this.cpuSwingOverride ? this.cpuSwingOverride(this) : decideSwing({
       pitch: this.pitch, count: this.count, recent: m.recent.slice(-2), batter: this.batter, level: this.difficulty,
-      strength: this.d.cpuStrength ?? 0, rng: this.rng,
+      strength: this.d.cpuStrength ?? 0, rng: this.rng, heat: this.pitch.heat,
     }, cfg);
     this.cpuSwing = null;
     if (dec && dec.swing) {

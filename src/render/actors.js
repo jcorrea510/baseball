@@ -277,7 +277,7 @@ export class Actors {
       let fx = 0, fz = 0;
       if (pos === 'P') { fx = (E.pitcher.hand === 'R' ? -0.35 : 0.35) - def.homeX; fz = -P0.moundDistance - def.homeZ; }
       if (pos === 'C') {
-        const tx = pitch ? pitch.target.x : 0;
+        const tx = pitch ? pitch.target.x : E.pitching && E.call ? E.call.x : 0; // (you pitch: he shifts over to where he called it)
         fx = clamp(tx * 0.5, -1.0, 1.0) * (phase === 'ready' ? 0 : 1) - def.homeX;
       }
       if (!st.init) {
@@ -434,13 +434,16 @@ export class Actors {
     if (plan && playT >= 0 && plan.throws.some((th) => th.from === 'C' && playT >= th.t0 - 0.45 && playT <= th.t0 + 0.7)) return false;
     if (speed > 1.5) return false; // jogging back to the plate
     const cfg = E.cfg;
-    let mx = 0, my = 2.4, mz = cfg.pitch.catchZ;
+    // you pitch: he sets up where he called it (scouting's catcher's call) - his mitt there as your target - and reaches from there
+    const call = E.pitching && E.call ? E.call : null;
+    const sx = call ? clamp(call.x, -1.2, 1.2) : 0, sy = call ? clamp(call.y, 1.0, 3.6) : null;
+    let mx = sx, my = sy ?? 2.4, mz = cfg.pitch.catchZ;
     if (pitch) {
       // He sets up a low, neutral target and only reaches for the ball as it arrives (in the catcher's view his glove is right there: it
       // must never tell you where the pitch is going before the ball does)
       const C = cfg.camera.catcher;
       const reach = (E.phase === 'pitch' || E.phase === 'result' || E.phase === 'play') ? smoothstep(pitch.flight.tCatch - C.mittReach, pitch.flight.tCatch - 0.02, time - pitch.tRelease) : 0;
-      mx = pitch.target.x * reach; my = lerp(C.mittY, Math.max(0.9, pitch.target.y), reach);
+      mx = lerp(sx, pitch.target.x, reach); my = lerp(sy ?? C.mittY, Math.max(0.9, pitch.target.y), reach);
       if (E.phase === 'pitch' || E.phase === 'result' || E.phase === 'play') {
         const pt = time - pitch.tRelease;
         if (pt > pitch.flight.tCatch && !E.swing?.made) {
@@ -799,11 +802,20 @@ export class Actors {
       if (speed < 0.8) speed = 0;
     } else {
       const src = move || null;
-      if (!st.mv || st.mvSrc !== src) { st.mv = { ...(move || { from: 0, to: 4, out: false }) }; st.mvSrc = src; } // (a new plan: start from its move afresh)
+      if (st.mvPlay !== E.play) { st.offT = undefined; st.offX = st.offZ = 0; st.rx = st.rz = undefined; } // (a new play: nothing carried over)
+      const swap = !!st.mv && st.mvSrc !== src && st.rx !== undefined && st.mvPlay === E.play;
+      if (!st.mv || st.mvSrc !== src) { st.mv = { ...(move || { from: 0, to: 4, out: false }) }; st.mvSrc = src; st.mvPlay = E.play; } // (a new plan: start from its move afresh)
       const mv = st.mv;
       mv.trot = trot; mv.tStart = tRun;
+      // a batter who stops at first runs THROUGH the bag (and walks back to it after the play), as he would if he were out - never a
+      // dead stop on it; he touches it at exactly the moment the planner said (runnerMotion 'through')
+      if (!mv.out && mv.from === 0 && mv.to === 1 && !mv.legs && !mv.round && !trot) mv.through = true;
       r = runnerState(mv, playT, cfg, st.rs || (st.rs = {}));
-      x = r.x; z = r.z; speed = r.speed; accel = r.accel; side = r.side; heading = r.heading; d = r.s;
+      // the play was planned again (you sent him on, say) and his new route puts him somewhere else: he eases onto it, never jumps
+      if (swap) { st.offX = st.rx - r.x; st.offZ = st.rz - r.z; st.offT = playT; }
+      st.rx = r.x; st.rz = r.z;
+      const ease = st.offT !== undefined ? Math.exp(-Math.max(0, playT - st.offT) / cfg.runner.swapEase) : 0;
+      x = r.x + (st.offX || 0) * ease; z = r.z + (st.offZ || 0) * ease; speed = r.speed; accel = r.accel; side = r.side; heading = r.heading; d = r.s;
     }
     // he starts in the box, a little beside the plate; that offset fades out over his first strides (added to the route, so it
     // never makes him move faster than his legs)
@@ -1076,7 +1088,7 @@ export class Actors {
     }
     // after a take the next windup places the ball in the pitcher's hands again
     ball.setVisible(kind !== 'hidden');
-    ball.setScale(kind === 'pitch' ? cfg.pitch.ballScale : 1, kind === 'pitch' ? Math.max(cfg.pitch.minScreenPx, this.viewH * cfg.pitch.minScreenFrac) : kind === 'hand' ? cfg.pitch.handMinScreenPx : Math.max(cfg.pitch.playMinScreenPx, this.viewH * cfg.pitch.playMinScreenFrac)); // (the ball in the pitcher's hand stays visible, so you see which hand throws; a ball in play never shrinks to nothing far away)
+    ball.setScale(kind === 'pitch' ? (E.pitching ? cfg.pitch.ballScalePitching : cfg.pitch.ballScale) : 1, kind === 'pitch' ? Math.max(cfg.pitch.minScreenPx, this.viewH * cfg.pitch.minScreenFrac) : kind === 'hand' ? cfg.pitch.handMinScreenPx : Math.max(cfg.pitch.playMinScreenPx, this.viewH * cfg.pitch.playMinScreenFrac)); // (the ball in the pitcher's hand stays visible, so you see which hand throws; a ball in play never shrinks to nothing far away)
     ball.setPosition(bp.x, bp.y, bp.z);
     if (spinRate) ball.spin(this.spinAxis || new THREE.Vector3(1, 0, 0), spinRate, dt);
     ball.setTrail(trail, kind === 'pitch');

@@ -28,6 +28,7 @@ import * as SEA from './game/season.js';
 import { runnerState, runnerProfile } from './game/runnerMotion.js';
 import { currentPark } from './physics/field.js';
 import { pitchTopMph, isPainted, staminaMax } from './game/pitching.js';
+import { onCall } from './game/scouting.js';
 const parkName = () => currentPark().name.toUpperCase();
 
 // scorekeeping numbers for the error banner (E6 = an error by the shortstop)
@@ -624,12 +625,19 @@ export class App {
       void swung;
     });
     on('pitchCall', (p) => this.onPitchCall(p));
+    on('aimStart', () => { // (two strikes on their batter: the crowd claps along - louder with the bases loaded or late in a close game)
+      const g = e.game;
+      if (!g || e.simming || g.strikes !== 2 || this.bot) return;
+      const tense = (e.bases.filter(Boolean).length >= 2 ? 0.25 : 0) + (g.inning >= g.innings && Math.abs(g.score.top - g.score.bottom) <= 2 ? 0.25 : 0);
+      audio.clapAlong(6, 0.42, 0.8 + tense);
+    });
     on('contact', (c) => this.onContact(c));
     on('playEvent', (ev) => this.onPlayEvent(ev));
     on('result', (r) => { this.onResult(r); this.groaned = false; });
     on('derby', (d) => { ui.setDerby(d); this.updateScoreboard(); });
-    on('ringTap', ({ grade }) => this.pitchAim.flash(grade, e.ring && e.ring.aim)); // (how well the ring was tapped)
-    on('pitchGrade', ({ grade }) => { if (!e.ring || !e.ring.tapped) this.pitchAim.flash(grade, e.ring && e.ring.aim); }); // (no tap at all: WILD)
+    const padWord = (grade) => { const a = (e.ring && e.ring.aim) || e.pitchAim; this.padWord = { grade, t: 0, x: a.x, y: a.y }; };
+    on('ringTap', ({ grade }) => padWord(grade)); // (how well the ring was tapped: the word on the aiming panel)
+    on('pitchGrade', ({ grade }) => { if (!e.ring || !e.ring.tapped) padWord(grade); }); // (no tap at all: WILD)
     on('simDone', (s) => {
       // the half you simmed: its highlights, with Skip (the engine is already on to your turn at bat, held at Ready)
       ui.hideBanner(); ui.hideCallout();
@@ -917,8 +925,16 @@ export class App {
       const m = r.foulTip ? ['FOUL TIP', count, 'neutral'] : map[r.call] || [r.text || '', '', 'neutral'];
       if (r.foulTip) audio.glovePop(0.9);
       if (r.call === 'ball' || r.call === 'take') { /* subtle */ }
-      if (mine && this.isPainted(r)) { ui.banner('PAINTED', count, 'great'); return; } // (a perfect pitch on the edge of the zone)
-      if (m[0]) ui.banner(m[0], e.mode === 'quick' ? m[1] : (r.call === 'swingingStrike' ? 'Swinging' : ''), m[2]);
+      // you pitch: what you threw and how fast in the small line (and whether you hit the catcher's mitt); a swing and miss on a ball
+      // out of the zone is a chase
+      const p = r.pitch;
+      if (mine && p && r.call !== 'hitByPitch') {
+        const what = [`${LABEL[p.type] || p.type} ${Math.round(p.speedMph)}`, p.onCall ? 'On the mitt' : ''].filter(Boolean).join(' · ');
+        if (r.call === 'swingingStrike') m[0] = p.isStrike ? 'SWING & MISS' : 'CHASED';
+        m[1] = what;
+      }
+      if (mine && this.isPainted(r)) { ui.banner('PAINTED', m[1] || count, 'great'); return; } // (a perfect pitch on the edge of the zone)
+      if (m[0]) ui.banner(m[0], e.mode === 'quick' || mine ? m[1] : (r.call === 'swingingStrike' ? 'Swinging' : ''), m[2]);
       if (r.call === 'ball' && e.game && e.game.balls === 3) audio.crowdSwell(0.2, 1.2);
       return;
     }
@@ -953,7 +969,7 @@ export class App {
     else if (res === 'hitByPitch') { cls = 'neutral'; sub = runsText.replace(' · ', '') || 'Take your base'; audio.glovePop(0.4); audio.crowdGroan(0.45); }
     else if (res === 'strikeoutSwinging' || res === 'strikeoutLooking') {
       cls = mine ? 'good' : 'bad'; sub = r.detail || (res === 'strikeoutLooking' ? 'Looking' : 'Swinging');
-      if (mine) this.strikeoutMoment(r); else audio.crowdGroan(0.7);
+      if (mine) { this.strikeoutMoment(r); big = 'K'; const ks = e.pitchStats ? e.pitchStats.k : 0; sub = `${ks > 1 ? `${ks} strikeouts · ` : ''}${sub}`; cls = 'great'; } else audio.crowdGroan(0.7); // (yours: the big K and your count today)
       if (r.detail === 'Foul tip') audio.glovePop(0.9);
       if (mine && this.isPainted(r)) sub = `Painted · ${sub}`;
     }
@@ -1263,6 +1279,7 @@ export class App {
 
   // feet on the plane over the plate per screen pixel (for dragging the bat with a finger)
   ftPerPx() {
+    if (this.aimPadGeo && this.engine && this.isPitching(this.engine)) return 1 / this.aimPadGeo.k; // (a finger drags the dot on the aiming panel)
     const cam = this.S.camera;
     const d = Math.max(1, cam.position.distanceTo(new THREE.Vector3(this.aimShown.x, this.aimShown.y, CONFIG.pitch.contactZ)));
     return (2 * d * Math.tan((cam.fov * Math.PI) / 360)) / Math.max(1, this.S.size.h);
@@ -1276,6 +1293,13 @@ export class App {
 
   // The cursor's ray onto the plane over the front of the plate -> aimTarget (used by the bat and by the pitch aim).
   aimOnCursor() {
+    const g = this.aimPadGeo;
+    if (g && this.engine && this.isPitching(this.engine)) {
+      // pitching: the cursor on the big aiming panel (mirrored: the panel's x is -x)
+      const px = ((this.mouse.nx + 1) / 2) * this.S.size.w, py = ((1 - this.mouse.ny) / 2) * this.S.size.h;
+      this.aimTarget.x = -(px - g.cx) / g.k; this.aimTarget.y = g.mid - (py - g.cy) / g.k;
+      return;
+    }
     const ray = new THREE.Raycaster();
     ray.setFromCamera(new THREE.Vector2(this.mouse.nx, this.mouse.ny), this.S.camera);
     const o = ray.ray.origin, d = ray.ray.direction;
@@ -1313,7 +1337,8 @@ export class App {
     const g = e.game, m = e.mound;
     const cnt = inField && g ? `${g.balls}-${g.strikes}` : '';
     const canBull = open && e.phase === 'aim' && e.bullpenOptions().length > 0;
-    const sig = `${canBull}|${inField}|${open}|${open && e.phase !== 'delivery'}|${e.pitchType}|${m ? m.pitcher.id : ''}|${cnt}|${open && e.phase === 'aim'}|${m ? m.pitches + ':' + (m.max > 0 ? Math.round(100 * m.left / m.max) : 100) : ''}`;
+    const call = e.call && open && e.phase === 'aim' ? e.call.type : null; // (the catcher's sign: a CALL tag on that pitch's button)
+    const sig = `${canBull}|${inField}|${open}|${open && e.phase !== 'delivery'}|${e.pitchType}|${m ? m.pitcher.id : ''}|${cnt}|${open && e.phase === 'aim'}|${m ? m.pitches + ':' + (m.max > 0 ? Math.round(100 * m.left / m.max) : 100) : ''}|${call}`;
     if (sig !== this.pitchSig) {
       this.pitchSig = sig;
       if (!inField) { this.ui.pinPitchInfo(null); this.ui.setPitching(null); this.ui.setPitcherTag(null); this.ui.setPitchCount(''); }
@@ -1324,7 +1349,7 @@ export class App {
         const sel = p.pitches.includes(e.pitchType) ? e.pitchType : p.pitches[0];
         if (open && e.phase === 'aim') this.ui.pinPitchInfo({ type: LABEL[sel] || sel, mph: pitchTopMph(p, sel, CONFIG) }); else this.ui.pinPitchInfo(null);
         this.ui.setPitching({
-          open, selected: sel, canSim: open && e.phase !== 'delivery', canBullpen: canBull,
+          open, selected: sel, canSim: open && e.phase !== 'delivery', canBullpen: canBull, call,
           pitches: p.pitches.map((t) => ({ type: t, label: LABEL[t] || t, mph: pitchTopMph(p, t, CONFIG) })),
         });
       }
@@ -1333,9 +1358,46 @@ export class App {
 
   // The aim dot, break arc, timing ring and grade word (render/pitchAim.js) while you pitch.
   updatePitchDot(e, dt) {
-    const show = !!(e && !this.paused && !this.ui.current && !e.simming && this.isPitching(e) && this.screen === 'game');
-    const marks = !!(e && !this.ui.current && !e.simming && this.screen === 'game' && this.isPitchView(e)); // (the at-bat's pitches, until a ball is put in play)
-    this.pitchAim.update(e || {}, dt, show, marks);
+    this.pitchAim.update(e || {}, dt, false, false); // (the small 3D dot / ring / marks stay away: the big aiming panel shows it all)
+    this.updateAimPad(e, dt);
+  }
+
+  // The big aiming panel (ui.setAimPad): the strike zone drawn large over the plate while you pitch - the batter's hot / cold zones,
+  // the catcher's call, your dot and the shrinking ring, the grade word, and this at-bat's pitches. It steps aside while the pitch
+  // is in the air (only the marks and the word stay) and comes back for the call. `aimPadGeo` maps the cursor / a finger onto it.
+  updateAimPad(e, dt) {
+    const on = !!(e && !this.paused && !this.ui.current && !e.simming && this.screen === 'game' && this.isPitchView(e) && e.mound);
+    if (this.padWord) { this.padWord.t += dt; if (this.padWord.t > CONFIG.pitchAim.flashTime) this.padWord = null; }
+    if (!on) { if (this.aimPadGeo) { this.aimPadGeo = null; this.ui.setAimPad(null); } return; }
+    const AP = CONFIG.aimPad, PA = CONFIG.pitchAim, P = CONFIG.pitch, R = CONFIG.swing.reach;
+    const mid = (P.zoneTop + P.zoneBottom) / 2;
+    const v = (this.padV || (this.padV = new THREE.Vector3())).set(0, mid, P.contactZ).project(this.S.camera);
+    const W = this.S.size.w, H = this.S.size.h;
+    const k = (H * AP.zoneShare) / (P.zoneTop - P.zoneBottom);
+    const w = 2 * R.x * k, h = (R.yMax - R.yMin) * k;
+    const cx0 = ((v.x + 1) / 2) * W, cy0 = ((1 - v.y) / 2) * H;
+    const left = clamp(cx0 - R.x * k, AP.margin, Math.max(AP.margin, W - w - AP.margin));
+    const top = clamp(cy0 - (R.yMax - mid) * k, AP.marginTop, Math.max(AP.marginTop, H - h - AP.margin));
+    this.aimPadGeo = { k, mid, cx: left + R.x * k, cy: top + (R.yMax - mid) * k };
+    const aiming = e.phase === 'aim' || e.phase === 'delivery';
+    const ring = e.phase === 'delivery' ? e.ring : null;
+    const aim = ring ? ring.aim : e.pitchAim;
+    let ringO = null;
+    if (ring) {
+      const t = clamp(e.time - ring.tStart, 0, ring.time);
+      const tr = ring.tapped ? clamp(ring.hitAt + ring.errMs / 1000, 0, ring.time) : t; // (a tap freezes it where it was)
+      ringO = { r: AP.dot * (ring.time - tr) / (ring.time - ring.hitAt), gold: Math.abs(tr - ring.hitAt) * 1000 <= CONFIG.pitching.ring.perfect };
+    }
+    const type = ring ? ring.type : e.pitchType;
+    const word = this.padWord ? (() => {
+      const u = this.padWord.t / PA.flashTime;
+      return { text: this.padWord.grade.toUpperCase(), color: PA.colors[this.padWord.grade], alpha: clamp((1 - u) * 2.2, 0, 1), x: this.padWord.x, y: this.padWord.y + AP.dot + 0.32 + 0.3 * (1 - (1 - u) * (1 - u)) };
+    })() : null;
+    this.ui.setAimPad({
+      left, top, pxPerFt: k, reach: R, zone: { halfWidth: P.zoneHalfWidth, bottom: P.zoneBottom, top: P.zoneTop }, zones: e.zones || [],
+      call: aiming && e.call ? { x: e.call.x, y: e.call.y, locked: onCall(e.call, type, aim) } : null,
+      dot: aiming ? { x: aim.x, y: aim.y, r: AP.dot } : null, ring: ringO, marks: this.pitchMarks, word, faded: e.phase === 'pitch',
+    });
   }
 
   // A pitch of this at-bat to mark on the zone (you pitch): where it crossed and whether it was a strike.
@@ -1395,6 +1457,7 @@ export class App {
     const pitchPlay = !!(e && this.screen === 'game' && !e.over && e.pitching && !e.simming && e.play && (e.phase === 'play' || e.phase === 'result'));
     this.cam.pitching = !!e && !this.paused && (this.isPitchView(e) || pitchPlay);
     this.cam.pitcherHand = (e && e.mound && e.mound.pitcher && e.mound.pitcher.hand) || 'R';
+    this.cam.twoStrikes = !!(e && e.pitching && e.game && e.game.strikes === 2 && e.game.balls < 3); // (the pitching view leans in for the put-away pitch)
     this.actors.cameraCatcherDist = this.cam.catcherDist;
     this.actors.cameraPos = this.S.camera.position;
     const A = CONFIG.batAim;

@@ -461,7 +461,7 @@ export class Engine {
     if (this.offense === 'cpu') {
       // the computer's batter: his own contact window and timing windows, none of your batting help (cpuBatter.cpuSwingInputs); a
       // protect swing is a slower bat (`cpuBat.protectSpeed` of the full bat speed - computeSwing takes extra bat speed in mph)
-      const ci = cpuSwingInputs(this.difficulty, this.batter, this.d.cpuStrength ?? 0, this.cfg);
+      const ci = cpuSwingInputs(this.difficulty, this.batter, this.d.cpuStrength ?? 0, this.cfg, pitch.heat || 0); // (pitch.heat: his hot / cold zones)
       const slower = opts.protect ? (1 - this.cfg.cpuBat.protectSpeed) * this.cfg.swing.batSpeed : 0;
       contact = computeSwing({
         errorMs: times.errorMs, ball, aim, window: ci.window, vBall, wBall, windowScale: ci.windowScale,

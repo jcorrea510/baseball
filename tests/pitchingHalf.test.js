@@ -554,10 +554,13 @@ describe('stamina', () => {
     e.on('stamina', (s) => seen.push(s));
     const max = e.mound.max, start = e.mound.left;
     expect(start).toBe(max);
+    let onCall = 0;
+    e.on('release', ({ pitch }) => { if (pitch.onCall) onCall++; });
     for (let k = 0; k < 4; k++) pitchOne(e, { type: 'fastball' });
     expect(e.mound.pitches).toBe(4);
     expect(seen.length).toBe(4);
-    expect(e.mound.left).toBeLessThan(max - 3.9);
+    // (a pitch on the catcher's call costs scout.call.staminaSave of the usual)
+    expect(e.mound.left).toBeLessThan(max - (4 - onCall) * 0.975 - onCall * 0.975 * CONFIG.scout.call.staminaSave);
     expect(e.mound.left).toBeGreaterThan(max - 4 * 1.6);
     expect(seen[3]).toEqual({ left: e.mound.left, max });
   });

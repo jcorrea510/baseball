@@ -520,3 +520,31 @@ describe('a runner you sent who turns back', () => {
     expect(found).toBeGreaterThan(3);
   }, 120000);
 });
+
+describe('two taps in a row (owner, Oct 6: "a runner on 2nd, a hit, I tap third to send him, then second for the batter - the runner went back to second")', () => {
+  it('third sends the runner from second, then second sends the batter: both go on, nobody comes back', () => {
+    const rng = createRng(31);
+    let checked = 0;
+    const problems = [];
+    for (let k = 0; k < 300 && checked < 25; k++) {
+      const c = C(rng.range(85, 104), rng.range(4, 20), rng.range(-35, 35));
+      const { plan: p0 } = plan(c, { bases: [null, 2, null] });
+      if (!p0.send || !p0.fair || p0.homer || p0.caught || p0.result === 'error') continue;
+      const t1 = p0.send.from + 0.15;
+      if (!tapOptions(p0, t1).some((q) => q.base === 3 && q.from === 2)) continue;
+      const o1 = { base: 3, t: t1, from: 2 };
+      const { plan: p1 } = plan(c, { bases: [null, 2, null], orders: [o1] });
+      const t2 = t1 + 0.3;
+      const opt = tapOptions(p1, t2).find((q) => q.base === 2);
+      if (!opt) continue;
+      checked++;
+      if (opt.from !== 0) problems.push(`second lit for the runner from ${opt.from}, not the batter`);
+      const { plan: p2 } = plan(c, { bases: [null, 2, null], orders: [o1, { base: 2, t: t2, from: opt.from }] });
+      const r = p2.moves.find((m) => m.from === 2), b = p2.moves.find((m) => m.from === 0);
+      if (!r.out && r.to < 3) problems.push(`ball ${k}: the runner from second ended on ${r.to}`);
+      if (!b.out && b.to < 2 && !p2.retreated) problems.push(`ball ${k}: the batter ended on ${b.to}`);
+    }
+    expect(problems).toEqual([]);
+    expect(checked).toBeGreaterThan(5);
+  });
+});

@@ -301,6 +301,7 @@ kbd { display: inline-block; min-width: 26px; padding: 5px 7px; text-align: cent
 .banner .sub:empty { display: none; }
 .banner.good, .banner.great { --accent: var(--gold); }
 .banner.bad { --accent: var(--red); }
+.banner.great[data-big="K"] .big { font-size: clamp(72px, 13vw, 140px); line-height: .9; color: #ffd24a; } /* (your strikeout: the big K) */
 .banner.hr { --accent: var(--gold-hi); top: 42%; }
 .banner.hr::before { display: none; }
 .banner.hr .big { font-family: var(--font-display); font-size: clamp(40px, 10vw, 112px); background: linear-gradient(180deg, #fff, #ffd56a 60%, #ff8a1e); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 6px 0 rgba(120, 40, 0, .85)) drop-shadow(0 10px 30px rgba(0, 0, 0, .5)); }
@@ -343,6 +344,25 @@ svg.wordart { display: block; height: 1.08em; width: auto; max-width: 100%; marg
 .swingbtn svg.i { width: 30px; height: 30px; stroke-width: 2.4; }
 .swingbtn.on { transform: scale(.92); filter: brightness(1.12); }
 body.touch .swingbtn.show { display: flex; }
+/* the big aiming panel while you pitch: the strike zone drawn large over the plate (units are feet) */
+.aimpad { position: absolute; display: none; pointer-events: none; overflow: visible; transition: opacity .14s; z-index: 2; }
+.aimpad.show { display: block; }
+.aimpad.faded > :not(.ap-marks):not(.ap-word) { opacity: 0; }
+.aimpad > * { transition: opacity .14s; }
+.ap-reach { fill: rgba(8, 14, 28, .22); stroke: rgba(255, 255, 255, .18); stroke-width: .02; }
+.ap-zone { fill: rgba(255, 255, 255, .05); stroke: rgba(255, 255, 255, .9); stroke-width: .035; }
+.ap-cells .hot { fill: rgba(255, 70, 50, .33); }
+.ap-cells .cold { fill: rgba(60, 140, 255, .33); }
+.ap-marks circle { stroke: #0a1020; stroke-width: .025; }
+.ap-marks .strike circle { fill: #ffc23a; } .ap-marks .ball circle { fill: #6fb8ff; }
+.ap-marks text { font: 400 .15px/1 var(--display); fill: #1a1206; text-anchor: middle; }
+.ap-call circle { fill: none; stroke: #ffc23a; stroke-width: .045; }
+.ap-call path { stroke: #ffc23a; stroke-width: .045; stroke-linecap: round; }
+.ap-call.locked circle, .ap-call.locked path { stroke: #5dff8f; }
+.ap-dot { fill: rgba(255, 255, 255, .55); stroke: #fff; stroke-width: .035; }
+.ap-ring { fill: none; stroke: #fff; stroke-width: .06; }
+.ap-ring.gold { stroke: #ffd24a; }
+.ap-word { font: 400 .42px/1 var(--display); text-anchor: middle; paint-order: stroke; stroke: #3a2008; stroke-width: .07; }
 /* your throws (you are in the field): the throw pad - four big bases in a diamond and the mound in the middle; tap where it goes */
 .throwpad { --tp: 280px; position: absolute; right: calc(var(--safe-r) + 14px); bottom: calc(var(--safe-b) + 14px); width: var(--tp); height: var(--tp); display: none; pointer-events: none; z-index: 6; }
 .throwpad.show { display: block; }
@@ -418,6 +438,8 @@ body.touch .swingbtn.show { display: flex; }
 .pitchbar .pm { font: 400 24px/1 var(--display); letter-spacing: .02em; text-shadow: var(--outline-blue); font-variant-numeric: tabular-nums; }
 .pitchbar .pm::after { content: " mph"; font: 800 10px/1 var(--cond); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); text-shadow: none; }
 .pitchbar button.on { background: linear-gradient(180deg, var(--gold-hi), var(--gold) 55%, var(--gold-lo)); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .55), inset 0 -2px 0 rgba(150, 60, 0, .3), 0 5px 0 var(--gold-edge), 0 10px 18px rgba(0, 0, 0, .42); }
+.pitchbar button { position: relative; }
+.pitchbar button.call::before { content: "CALL"; position: absolute; top: -11px; left: 50%; transform: translateX(-50%); padding: 3px 7px 2px; border-radius: 7px; background: #5dff8f; color: #0b2a14; font: 800 10px/1 var(--cond); letter-spacing: .12em; box-shadow: 0 2px 0 #1f8c45, 0 3px 8px rgba(0, 0, 0, .35); } /* (the catcher's sign) */
 .pitchbar button.on:active { box-shadow: inset 0 2px 0 rgba(255, 255, 255, .45), 0 1px 0 var(--gold-edge), 0 4px 8px rgba(0, 0, 0, .4); }
 .pitchbar button.on .pn { color: var(--gold-ink); }
 .pitchbar button.on .pm { color: #fff; text-shadow: var(--outline); }

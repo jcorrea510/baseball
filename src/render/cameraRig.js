@@ -126,7 +126,7 @@ export class CameraRig {
       const P = cfg.pitcher, m = this.pitcherHand === 'L' ? -1 : 1;
       tPos = _tmp.set(P.pos[0] * m, P.pos[1], P.pos[2]).clone();
       look.set(P.look[0], P.look[1], P.look[2]);
-      tFov = P.fov; posL = P.ease; lookL = P.ease * 1.4; fovL = P.ease;
+      tFov = P.fov * (this.twoStrikes ? P.twoStrikeZoom : 1); posL = P.ease; lookL = P.ease * 1.4; fovL = P.ease * 0.5; // (two strikes: it leans in, slowly)
       minH = P.minHorizontalFov;
       view = 'pitch'; // (the long lens: a narrow screen still shows the zone and the batter, not the whole infield)
     } else if (this.title) {

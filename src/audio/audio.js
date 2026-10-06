@@ -337,6 +337,18 @@ export class AudioEngine {
     src.stop(t + seconds * 1.4 + 0.2);
   }
 
+  // Two strikes on their batter: the crowd claps along in time, `beats` claps `every` s apart, each one hundreds of hands at once.
+  clapAlong(beats = 6, every = 0.42, level = 1) {
+    if (!this.ok) return;
+    const t0 = this.ctx.currentTime + 0.05, g = CONFIG.audio.mix.clapAlong * level;
+    for (let k = 0; k < beats; k++) {
+      const swell = 0.6 + 0.4 * (k / Math.max(1, beats - 1)); // (it builds)
+      for (let j = 0; j < 26; j++) {
+        this.noise(t0 + k * every + Math.random() * 0.035, 0.028 + Math.random() * 0.02, { type: 'highpass', freq: 1400 + Math.random() * 2200, gain: g * swell * (0.4 + Math.random() * 0.6), dest: this.crowd, sendReverb: 0.25 });
+      }
+    }
+  }
+
   // A few seconds of a crowd clapping (stereo): thousands of short, bright hand claps at random moments. Pure maths, no files.
   makeApplause(seconds) {
     const rate = this.ctx.sampleRate, n = Math.floor(rate * seconds);
