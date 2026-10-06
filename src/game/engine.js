@@ -792,22 +792,27 @@ export class Engine {
   // in the air is made as soon as it is caught. The play is planned again with every tap (everything before it stays as it was).
 
   /**
-   * Can you throw right now? { holder (position), onBag (the base he stands on, or null), first (no throw made yet), opens (play time
-   * from when taps count), bases: [{ base, ok }] } or null (not your play, before the ball is nearly his, the inning is over ...).
+   * Can you throw right now? { holder (position), onBag (the base he stands on, or null), first (no throw made yet), slowFrom (play
+   * time from when the game slows down for your first throw: a moment before he has the ball), bases: [{ base, ok }] (base 0 = the
+   * mound: back to the pitcher, the play is over) } or null (not your play, the ball is back on the mound, the inning is over ...).
+   * Open from the moment the ball is hit: a tap made before he has the ball is made as soon as he does.
    */
   get throwChoice() {
     const p = this.play;
     if (this.phase !== 'play' || !p || p.steal || p.wild || !p.planIn || !p.planIn.manual || this.paused || this.simming) return null;
     const plan = p.plan, m = plan.manual;
-    if (!m || this.outs + (plan.outsMade || 0) >= 3) return null;
+    if (!m || m.ended || this.outs + (plan.outsMade || 0) >= 3) return null;
     const t = this.time - p.t0, W = this.cfg.fielding.throwChoice;
     const tHave = plan.caught ? plan.catchT : plan.pickupT;
-    const opens = Math.max(W.earliest, tHave - W.lead);
-    if (!(t >= opens) || t >= plan.endTime - W.closeBefore) return null;
-    return { holder: m.holder, onBag: m.onBag, first: p.planIn.throws.length === 0, opens, bases: [1, 2, 3, 4].map((base) => ({ base, ok: base !== m.onBag })) };
+    if (!(t >= W.earliest) || t >= plan.endTime - W.closeBefore) return null;
+    return {
+      holder: m.holder, onBag: m.onBag, first: p.planIn.throws.length === 0, slowFrom: tHave - W.lead,
+      bases: [0, 1, 2, 3, 4].map((base) => ({ base, ok: base === 0 || base !== m.onBag })),
+    };
   }
 
-  /** Throw to `base` (1..4) - from whoever has the ball, as soon as he can. True when taken. */
+  /** Throw to `base` (1..4, or 0 = back to the pitcher on the mound: the play is over) - from whoever has the ball, as soon as he
+   *  can. True when taken. */
   chooseThrow(base) {
     const c = this.throwChoice;
     if (!c || !c.bases.some((q) => q.base === base && q.ok)) return false;

@@ -759,7 +759,7 @@ let READ = 0;
 let ORD = null;
 // You are in the field and make every throw yourself (`i.manual`): the fielder who gets the ball runs to it, catches it or picks it
 // up by himself (the planner's own fielding), then HOLDS it until you tap a base; `i.throws` = [{ base, t }] are your taps in order
-// (t = seconds after contact). Each one sends the ball from whoever has it to the man covering that bag (a tap made while a throw is
+// (t = seconds after contact; base 0 = back to the pitcher on the mound, which ends the play). Each one sends the ball from whoever has it to the man covering that bag (a tap made while a throw is
 // still in the air is made as soon as the ball is caught). No automatic throw, no automatic double play, no automatic rundown: see
 // manualDefense. No fielding errors either. Only set while planPlay runs.
 let MANUAL = false;
@@ -1130,7 +1130,8 @@ function liveThrow(plan, way, base, st, cfg) {
 // will beat him turns back to the bag he came from if he can make it (the throw after that may catch him - a rundown is just your
 // taps going back and forth). Runner orders (the computer's sends) are applied in time order between the throws.
 //   st = { holder, at {x, z}, t (when he can throw), onBag }; late = runner orders still to apply. Sets plan.manual = { holder, at,
-//   t, onBag } - who has the ball after your last tap and from when (the engine offers the next throw from there).
+//   t, onBag, ended } - who has the ball after your last tap and from when (the engine offers the next throw from there); a tap on
+//   base 0 is the throw back to the pitcher (the mound): the play is over (plan.mounded = when he has it).
 // ---------------------------------------------------------------------------
 function manualDefense(plan, recs, st, late, outs, defense, cfg) {
   const F = cfg.fielding, R = cfg.runner, M = F.manual;
@@ -1145,11 +1146,32 @@ function manualDefense(plan, recs, st, late, outs, defense, cfg) {
     for (let b = r.from - 1; b >= 0; b--) { const q = recs.find((x) => x.from === b); if (!q || q.out) return false; }
     return true;
   };
+  let mounded = false;
   for (const th of THROWS) {
     if (outs + (plan.outsMade || 0) >= 3) break;
     const go = Math.max(st.t, th.t + M.react);
     applyUntil(go);
     const base = th.base;
+    if (base === 0) {
+      // back to the pitcher (the mound): that is the end of the play - runners finish the base they are running to, nobody goes further
+      mounded = true;
+      const P = defense.P;
+      if (st.holder.pos === 'P') { plan.mounded = go; break; }
+      const runs = plan.paths.P;
+      let pp = { x: P.x, z: P.z }, t1 = go;
+      for (let k = 0; k < 2; k++) { // (aimed where he will be when it gets there)
+        t1 = go + throwTime(dist(st.at.x, st.at.z, pp.x, pp.z), st.holder, cfg);
+        if (runs && runs.length) { const q = samplePath(runs, t1); pp = { x: q.x, z: q.z }; }
+      }
+      for (const c of plan.carries) if (c.pos === st.holder.pos && c.t0 <= go + 1e-6 && c.t1 > go) c.t1 = go;
+      plan.throws.push({ from: st.holder.pos, to: 'P', t0: go, t1, ax: st.at.x, az: st.at.z, bx: pp.x, bz: pp.z, toBase: 0 });
+      plan.carries.push({ pos: 'P', t0: t1, t1: t1 + 99 });
+      plan.events.push({ t: t1, type: 'throwEnd', pos: 'P', base: 0 });
+      plan.ballEnd = Math.max(plan.ballEnd || 0, t1);
+      plan.mounded = t1;
+      st = { holder: P, at: pp, t: t1, onBag: null };
+      break;
+    }
     if (st.onBag === base) { st = { ...st, t: go }; continue; } // (he is standing on it already)
     const way = coverOptions({ base, thrower: st.holder, tReady: go, from: st.at, tHave: st.onBag ? undefined : st.t }, plan, defense, cfg)[0];
     if (!way) continue;
@@ -1187,8 +1209,8 @@ function manualDefense(plan, recs, st, late, outs, defense, cfg) {
     }
     st = { holder: way.recv, at: { x: BASE_XZ[base][0], z: BASE_XZ[base][1] }, t: tBall + M.transfer, onBag: base };
   }
-  applyUntil(Infinity);
-  plan.manual = { holder: st.holder.pos, at: st.at, t: st.t, onBag: st.onBag };
+  if (!mounded) applyUntil(Infinity); // (after the ball is back on the mound nobody is sent anywhere)
+  plan.manual = { holder: st.holder.pos, at: st.at, t: st.t, onBag: st.onBag, ended: mounded };
   void batter;
 }
 
@@ -1213,7 +1235,9 @@ function manualEnd(plan, recs, tHave, outs, anyOn, cfg) {
   let last = Math.max(plan.ballEnd || 0, tHave);
   for (const m of plan.moves) last = Math.max(last, m.out ? m.outAt + R.outLinger - 0.35 : Math.min(mFinish(cfg, m), tHave + 12));
   for (const th of plan.throws) last = Math.max(last, th.t1);
-  plan.endTime = Math.max(plan.endTime || 0, last + (anyOn && outs + (plan.outsMade || 0) < 3 ? M.hold : 0.4), tHave + M.minPlay);
+  // (the ball back on the mound ends it as soon as everybody has stopped; else it waits `hold` for another throw)
+  if (plan.mounded !== undefined) plan.endTime = Math.max(last, plan.mounded) + M.afterMound;
+  else plan.endTime = Math.max(plan.endTime || 0, last + (anyOn && outs + (plan.outsMade || 0) < 3 ? M.hold : 0.4), tHave + M.minPlay);
   if (plan.send && outs + (plan.outsMade || 0) >= 3) plan.send.closeAt = Math.min(plan.send.closeAt ?? Infinity, last);
   void recs;
 }
@@ -1685,7 +1709,7 @@ export function planPlay(i, cfg = CONFIG) {
   SPD = i.speeds || null;
   ORD = i.orders && i.orders.length ? i.orders : null;
   MANUAL = !!i.manual && !i.simple;
-  THROWS = MANUAL ? (i.throws || []).filter((q) => q.base >= 1 && q.base <= 4).slice().sort((a, b) => a.t - b.t) : [];
+  THROWS = MANUAL ? (i.throws || []).filter((q) => q.base >= 0 && q.base <= 4).slice().sort((a, b) => a.t - b.t) : [];
   PREV = i.prev && i.prev.paths ? { paths: i.prev.paths, tCut: i.prev.t + cfg.fielding.replanReact } : null;
   READ = 0;
   try {

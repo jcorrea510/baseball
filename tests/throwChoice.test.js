@@ -41,7 +41,7 @@ function hitOne(e, contact, tap = () => null) {
     if (c) {
       got.choices.push({ ...c, now: e.time - e.play.t0 });
       const b = tap(c, e.time - e.play.t0, got.taps);
-      if (b && e.chooseThrow(b)) got.taps.push(b);
+      if (b !== null && b !== undefined && e.chooseThrow(b)) got.taps.push(b); // (0 = the mound)
     }
     if (e.play) got.plan = e.play.plan;
     e.update(DT);
@@ -56,15 +56,16 @@ const inTurn = (...bases) => (c, t, taps) => (taps.length < bases.length ? bases
 const outsAt = (plan) => plan.events.filter((ev) => ev.type === 'out').sort((a, b) => a.t - b.t).map((ev) => ev.base);
 
 describe('your throws: when you can throw', () => {
-  it('from a moment before he has the ball until the play is over; never with Fielding on Auto or while you bat', () => {
+  it('from the moment the ball is hit until the play is over; never with Fielding on Auto or while you bat', () => {
     const got = hitOne(make(), GROUNDER_SS);
     expect(got.choices.length).toBeGreaterThan(0);
     const c = got.choices[0];
     expect(c.holder).toBe('SS');
     expect(c.first).toBe(true);
-    const tHave = got.plan.pickupT;
-    expect(c.now).toBeGreaterThanOrEqual(Math.max(CONFIG.fielding.throwChoice.earliest, tHave - CONFIG.fielding.throwChoice.lead) - 1e-9);
-    expect(c.bases.map((q) => q.ok)).toEqual([true, true, true, true]);
+    expect(c.now).toBeLessThan(got.plan.pickupT); // (from the moment the ball is hit: long before he has it)
+    expect(c.now).toBeGreaterThanOrEqual(CONFIG.fielding.throwChoice.earliest - 1e-9);
+    expect(c.bases.map((q) => q.base)).toEqual([0, 1, 2, 3, 4]);
+    expect(c.bases.map((q) => q.ok)).toEqual([true, true, true, true, true]);
     expect(hitOne(make({ fielding: 'auto' }), GROUNDER_SS).choices).toEqual([]);
     const e = new Engine({ mode: 'quick', seed: 3, fielding: 'play', playerSide: 'top' });
     e.start();
@@ -114,6 +115,17 @@ describe('your throws: nothing is automatic', () => {
     const got = hitOne(make({}, [null, 1, null]), LINER_LEFT_CENTER, inTurn(2, 3));
     expect(got.taps).toEqual([2, 3]);
     expect(got.plan.throws.map((t) => t.toBase)).toEqual([2, 3]);
+  });
+
+  it('the mound: the ball back to the pitcher ends the play - nobody is thrown out, nothing more can be thrown', () => {
+    const plain = hitOne(make({}, [1, null, null]), LINER_LEFT_CENTER);
+    const got = hitOne(make({}, [1, null, null]), LINER_LEFT_CENTER, inTurn(0));
+    expect(got.taps).toEqual([0]);
+    expect(got.plan.throws.map((t) => [t.to, t.toBase])).toEqual([['P', 0]]);
+    expect(got.plan.mounded).toBeGreaterThan(0);
+    expect(got.plan.outsMade || 0).toBe(0);
+    expect(got.plan.endTime).toBeLessThan(plain.plan.endTime); // (it is over sooner than when nobody throws at all)
+    expect(got.choices.filter((c) => c.now > got.plan.mounded)).toEqual([]);
   });
 
   it('the base the man with the ball stands on is not offered', () => {

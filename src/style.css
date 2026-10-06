@@ -343,16 +343,33 @@ svg.wordart { display: block; height: 1.08em; width: auto; max-width: 100%; marg
 .swingbtn svg.i { width: 30px; height: 30px; stroke-width: 2.4; }
 .swingbtn.on { transform: scale(.92); filter: brightness(1.12); }
 body.touch .swingbtn.show { display: flex; }
-/* choosing the throw (you are in the field): a gold marker over each teammate the fielder can throw to; tap one */
-.throwpick { position: absolute; inset: 0; pointer-events: none; z-index: 6; } /* (over every other part of the HUD: a marker is always tappable) */
-.tpk { appearance: none; position: absolute; left: 0; top: 0; width: 0; height: 0; padding: 0; border: 0; background: none; display: none; pointer-events: none; touch-action: none; }
-.tpk.show { display: block; }
-.tpk .ring { position: absolute; left: -34px; top: -34px; width: 68px; height: 68px; border-radius: 50%; border: 4px solid var(--gold); background: radial-gradient(circle, rgba(255, 196, 64, .16) 55%, rgba(255, 196, 64, .34)); box-shadow: 0 0 0 3px rgba(40, 22, 4, .55), 0 6px 18px rgba(0, 0, 0, .45); pointer-events: auto; cursor: pointer; animation: tpkPulse 1.1s ease-in-out infinite; }
-.tpk .lab { position: absolute; left: 50%; top: -64px; transform: translateX(-50%); padding: 4px 10px 3px; border-radius: 9px; background: var(--gold); color: var(--gold-ink); font: 400 19px/1 var(--display); letter-spacing: .02em; white-space: nowrap; box-shadow: 0 3px 0 var(--gold-edge), 0 6px 14px rgba(0, 0, 0, .4); pointer-events: auto; cursor: pointer; }
-.tpk.hint .ring { border-color: #fff; box-shadow: 0 0 0 3px rgba(40, 22, 4, .55), 0 0 22px rgba(255, 220, 120, .9); }
-.tpk:active .ring, .tpk:active .lab { filter: brightness(1.2); }
-@keyframes tpkPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
-.hud.throwing .ffbtn, .hud.throwing .swingbtn, .hud.throwing .lineup, .hud.throwing .pitchtag { display: none !important; }
+/* your throws (you are in the field): the throw pad - four big bases in a diamond and the mound in the middle; tap where it goes */
+.throwpad { --tp: 280px; position: absolute; right: calc(var(--safe-r) + 14px); bottom: calc(var(--safe-b) + 14px); width: var(--tp); height: var(--tp); display: none; pointer-events: none; z-index: 6; }
+.throwpad.show { display: block; }
+.tpfield { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.tpfield path { fill: rgba(10, 18, 34, .28); stroke: rgba(255, 255, 255, .6); stroke-width: 3; }
+.tpdots circle { stroke: #0a1020; stroke-width: 2.5; }
+.tpdots .tpball { fill: #fff; stroke: #c62828; stroke-width: 2; }
+.tpb { appearance: none; position: absolute; width: 27%; height: 27%; margin: -13.5% 0 0 -13.5%; padding: 0; border: 0; background: none; pointer-events: auto; touch-action: none; cursor: pointer; }
+.tpb::before { content: ''; position: absolute; inset: 12%; transform: rotate(45deg); border-radius: 12%; background: rgba(40, 52, 78, .9); border: 4px solid rgba(255, 255, 255, .45); box-shadow: 0 6px 0 rgba(0, 0, 0, .35); transition: transform .08s var(--ease), background .12s; }
+.tpb span { position: relative; font: 400 clamp(15px, calc(var(--tp) * .075), 22px)/1 var(--display); color: rgba(255, 255, 255, .6); text-shadow: var(--outline); }
+.tpb.open::before { background: radial-gradient(circle at 50% 35%, var(--gold), var(--gold-edge)); border-color: #fff; }
+.tpb.open span { color: #fff; }
+.tpb.held::before { background: rgba(255, 255, 255, .92); border-color: var(--gold); }
+.tpb.held span { color: var(--gold-ink); text-shadow: none; }
+.tpb.hit::before { transform: rotate(45deg) scale(.88); filter: brightness(1.2); }
+.tpb[data-base="2"] { left: 50%; top: 14%; }
+.tpb[data-base="3"] { left: 14%; top: 50%; }
+.tpb[data-base="1"] { left: 86%; top: 50%; }
+.tpb[data-base="4"] { left: 50%; top: 86%; }
+.tpb.mound { left: 50%; top: 50%; width: 30%; height: 30%; margin: -15% 0 0 -15%; }
+.tpb.mound::before { transform: none; border-radius: 50%; inset: 8%; background: rgba(120, 66, 32, .9); }
+.tpb.mound.open::before { background: radial-gradient(circle at 50% 35%, #c98a52, #7a4422); border-color: #fff; }
+.tpb.mound.hit::before { transform: scale(.9); }
+.tpb.mound span { font-size: clamp(13px, calc(var(--tp) * .06), 18px); }
+@media (max-height: 520px) { .throwpad { --tp: 230px; right: calc(var(--safe-r) + 10px); bottom: calc(var(--safe-b) + 8px); } }
+@media (max-height: 360px) { .throwpad { --tp: 196px; } }
+.hud.throwing .ffbtn, .hud.throwing .swingbtn, .hud.throwing .basepad, .hud.throwing .pitchside, .hud.throwing .callout { display: none !important; }
 
 /* the base diamond (sending runners): bottom right while a hit is being played. A base lights up when you can send a runner there -
    tap it and the runner behind it goes. */

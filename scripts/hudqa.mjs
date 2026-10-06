@@ -1,6 +1,6 @@
 // HUD overlap check in the real game: every pop-up (pitch pill, exit-speed readout, timing meter, banner, score bug, aim
 // controls, practice drawer; and, as a second state, the base diamond you send runners with during a play; while you pitch, the pitching
-// controls, the bullpen, and the markers you tap to choose a throw) forced on at once, in each mode, at each screen size; prints any two that overlap or leave the screen.
+// controls, the bullpen, and the throw pad you make your throws with) forced on at once, in each mode, at each screen size; prints any two that overlap or leave the screen.
 //   npm run dev  then  node scripts/hudqa.mjs [sizes e.g. 568x320,844x390] [url]      (screenshots in qa-output/)
 import fs from 'node:fs';
 import { chromium } from 'playwright-core';
@@ -49,15 +49,15 @@ for (const sz of sizes) {
         ui.setBasePad(null); // (you never send the computer's runners)
         if (state === 'fieldplay') ui.setFast(true, false);
         if (state === 'fieldthrow') {
-          // you choose a throw: the pitching controls are away (a play), a marker floats over each teammate (one far into a corner)
+          // you make the throws: the pitching controls are away (a play), the throw pad is up
           ui.setPitching({ open: false, selected: 'slider', canSim: true, canBullpen: true, pitches: [] });
           ui.setFast(false, false);
           a.updateThrowPick = () => {}; // (no real play: keep the frame loop from putting them away before the screenshot)
-          ui.setThrowPick({ items: [{ base: 1, x: innerWidth * 0.3, y: innerHeight * 0.35 }, { base: 2, x: innerWidth * 0.45, y: innerHeight * 0.5 }, { base: 3, x: innerWidth * 0.7, y: innerHeight * 0.4 }, { base: 4, x: 40, y: 80 }].map((q) => ({ ...q, ok: true })) });
+          ui.setThrowPad({ open: [0, 1, 2, 3, 4], hold: null, dots: [{ x: 0, z: -20, from: 0 }, { x: 60, z: -70, from: 1 }], ball: { x: -120, z: -250 } });
         }
       }
       // overlap check between visible HUD boxes
-      const sel = ['.lineup', '.pitchinfo', '.callout', '.meter', '.batterup', '.bugwrap', '.derbybox', '.practbox', '.practice', '.hudbtns', '.acts', '.swingbtn', '.basepad', '.ffbtn', '.pitchbar', '.pitchside', '.bullpanel'];
+      const sel = ['.lineup', '.pitchinfo', '.callout', '.meter', '.batterup', '.bugwrap', '.derbybox', '.practbox', '.practice', '.hudbtns', '.acts', '.swingbtn', '.basepad', '.ffbtn', '.pitchbar', '.pitchside', '.bullpanel', '.throwpad'];
       const boxes = [];
       for (const s of sel) { const e = document.querySelector('.hud ' + s); if (!e) continue; const cs = getComputedStyle(e); if (cs.display === 'none' || +cs.opacity === 0) continue; const b = e.getBoundingClientRect(); if (b.width && b.height) boxes.push({ s, b }); }
       const hits = [];

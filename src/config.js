@@ -706,11 +706,11 @@ export const CONFIG = {
     // has the ball, for a tap made before that); a man who has just caught a throw can throw again `transfer` s later; a runner who
     // turns back counts as making it if he is on his bag within `backSafe` s after the ball reaches the base he gave up on; the play
     // lasts `hold` s after everything has stopped (you may still throw) and at least `minPlay` s after the ball was fielded.
-    manual: { react: 0.12, transfer: 0.35, backSafe: 0.25, hold: 1.4, minPlay: 2.2 },
-    // Your throws (you pitch, Fielding on Play): taps count from `lead` s (game time) before the fielder has the ball - never before
-    // `earliest` s after contact - until `closeBefore` s before the play ends. Until your first throw the game runs at `slow` x speed
-    // (it eases in over `slowIn` and back out over `slowOut` real s).
-    throwChoice: { lead: 0.45, earliest: 0.3, closeBefore: 0.2, slow: 0.45, slowIn: 0.2, slowOut: 0.3 },
+    manual: { react: 0.12, transfer: 0.35, backSafe: 0.25, hold: 1.4, minPlay: 2.2, afterMound: 0.35 }, // (afterMound: s the play lasts once the ball is back on the mound and everybody has stopped)
+    // Your throws (you pitch, Fielding on Play): taps count from `earliest` s after contact (a tap made before the fielder has the ball
+    // is made as soon as he does) until `closeBefore` s before the play ends. From `lead` s (game time) before he has the ball until
+    // your first throw the game runs at `slow` x speed (it eases in over `slowIn` and back out over `slowOut` real s).
+    throwChoice: { lead: 0.45, earliest: 0.1, closeBefore: 0.2, slow: 0.45, slowIn: 0.2, slowOut: 0.3 },
     // Covering a base: an out needs a fielder standing on the bag WITH the ball before the runner gets there. Whoever is not fielding
     // the ball and is nearest to the play breaks for the bag; the fielder with the ball either carries it there himself (when he
     // is close) or throws to the covering man, and the throw is timed to reach the bag when he does.
@@ -894,11 +894,6 @@ export const CONFIG = {
     alpha: 0.9, // how solid it is
     pulse: 0.08, pulseRate: 1.4, // it grows and shrinks by this share, this many times a second
   },
-  throwPick: { // the markers you tap to choose the throw (picture only)
-    nearFeet: 45, // ft: the marker sits on the teammate nearest the bag when one is this close to it, else on the bag itself
-    gap: 84, // px: two markers closer than this on the screen are pushed apart (side by side), so each stays easy to tap
-    height: 3.2, // ft above the grass the marker is drawn (about his belt)
-  },
   landing: {
     minApex: 14, // ft: only balls hit up into the air get a ring (not grounders or low liners)
     minFlight: 1.0, // s: ...and only if they stay up at least this long
@@ -926,6 +921,7 @@ export const CONFIG = {
       ballOnlyAbove: 55, fovHigh: 34, // a ball higher than this (ft): the picture stays on the man under it and the spot it comes down on (at least this wide, deg) and it drops into it
       marginDeg: 5, fovMin: 16, fovMax: 56, // deg: room round everything; the narrowest and widest view
       ease: 3.2, // how quickly it follows (bigger = quicker; real time, smooth in the slow motion too)
+      padShift: 0.13, padWiden: 0.22, // while the throw pad is up (it covers the right of the screen) the picture slides this share of the width left and widens by this share
       cutFade: 0.28, // s: switching between the pitching view and this one is a cut behind a quick fade from dark (never a swing round)
     },
     minHorizontalFov: 38, // narrow (portrait) screens widen the view to keep this

@@ -253,7 +253,14 @@ export class CameraRig {
     if (s > 0) cam.rotateZ(Math.sin(this.shakeT * 2.9) * 0.008 * s);
     // (the narrowest view a narrow screen may have eases between the pitching view's and everyone else's, so nothing jumps)
     this.minH = this.minH === undefined ? minH : damp(this.minH, minH, fovL, dt);
-    cam.fov = Math.max(this.fov, this.minVFov(aspect, this.minH));
+    // the throw pad covers the right of the screen while you field: the picture slides left (and widens a touch) so the play is
+    // in the open part of it (padShift = share of the screen's width; eased, real time)
+    const FV = cfg.fieldView;
+    const shiftTo = view === 'field' && this.padOn ? FV.padShift : 0;
+    this.shift = this.cutNow ? shiftTo : damp(this.shift || 0, shiftTo, FV.ease, dt);
+    cam.fov = Math.max(this.fov * (1 + FV.padWiden * this.shift / FV.padShift || 0), this.minVFov(aspect, this.minH));
+    const tanH = Math.tan((cam.fov * DEG) / 2) * aspect;
+    cam.filmOffset = this.shift * 2 * tanH * cam.getFilmWidth(); // (three.js: the frustum moves by filmOffset / filmWidth of the near plane's x)
     cam.updateProjectionMatrix();
   }
 }

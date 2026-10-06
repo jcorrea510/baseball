@@ -127,7 +127,15 @@ export class UI {
     const hud = h('div', 'hud');
     hud.innerHTML = `
       <div class="vignette"></div>
-      <div class="throwpick" aria-label="Throw to"></div>
+      <div class="throwpad" aria-label="Throw to">
+        <svg class="tpfield" viewBox="0 0 200 200" aria-hidden="true"><path d="M100 172 L172 100 L100 28 L28 100 Z"/></svg>
+        <svg class="tpfield tpdots" viewBox="0 0 200 200" aria-hidden="true"><g class="runners"></g><circle class="tpball" r="0"/></svg>
+        <button class="tpb" data-base="2" tabindex="-1" aria-label="Throw to second"><span>2nd</span></button>
+        <button class="tpb" data-base="3" tabindex="-1" aria-label="Throw to third"><span>3rd</span></button>
+        <button class="tpb" data-base="1" tabindex="-1" aria-label="Throw to first"><span>1st</span></button>
+        <button class="tpb home" data-base="4" tabindex="-1" aria-label="Throw home"><span>Home</span></button>
+        <button class="tpb mound" data-base="0" tabindex="-1" aria-label="Back to the pitcher - end the play"><span>Mound</span></button>
+      </div>
       <div class="hudbtns"><button class="iconbtn" data-a="pause" aria-label="Pause" title="Pause (Esc)">${icon('pause')}</button><button class="iconbtn" data-a="mute" aria-label="Sound" title="Mute (M)">${icon('soundOn')}</button><button class="iconbtn" data-a="fullscreen" data-fs aria-label="Full screen" title="Full screen (F)">${icon('full')}</button></div>
       <div class="lineup"><div class="lh"><span>Batting order</span></div><ol></ol></div>
       <div class="pitchinfo"><span class="cnt"></span><span class="type"></span><span class="mph"></span></div>
@@ -223,15 +231,13 @@ export class UI {
     // the Swing button (phones): it swings the moment it is touched (timed from the touch, like a key)
     this.q.swingBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); this.q.swingBtn.classList.add('on'); this.act('swing', e); });
     for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) this.q.swingBtn.addEventListener(ev, () => this.q.swingBtn.classList.remove('on'));
-    // choosing the throw (you are in the field): a marker over each teammate the fielder can throw to - touched, he throws there
+    // your throws (you are in the field): the big throw pad - a touched base (or the mound) is where the ball goes
     this.throwBtns = {};
-    const tp = $(hud, '.throwpick');
-    for (const [base, label] of [[1, '1st'], [2, '2nd'], [3, '3rd'], [4, 'Home']]) {
-      const b = h('button', 'tpk', `<span class="ring"></span><span class="lab">${label}</span>`);
-      b.dataset.base = String(base); b.tabIndex = -1; b.setAttribute('aria-label', `Throw to ${label}`);
-      b.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); this.act('throwTo', { base }); });
-      tp.appendChild(b);
+    for (const b of hud.querySelectorAll('.throwpad .tpb')) {
+      const base = +b.dataset.base;
       this.throwBtns[base] = b;
+      b.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); b.classList.add('hit'); this.act('throwTo', { base }); });
+      for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(ev, () => b.classList.remove('hit'));
     }
     // practice panel
     const pt = $(hud, '.practice .pt');
@@ -1072,21 +1078,36 @@ export class UI {
   // the Swing button shows (phones) while you are up
   setSwingButton(on) { this.q.swingBtn.classList.toggle('show', !!on); }
   /**
-   * Choosing the throw: o = null hides the markers, else { items: [{ base, x, y, ok, hint }] } - x / y in px over the game (the
-   * teammate at that base, on screen), ok = he can throw there, hint = the throw he would make by himself (a soft glow).
+   * The throw pad while you are in the field: o = null hides it, else { open: [bases you can throw to, 0 = the mound], hold: the base
+   * the man with the ball stands on (or null), dots: [{ x, z, from }] the runners, ball: { x, z } | null } (field feet).
    */
-  setThrowPick(o) {
-    const on = !!(o && o.items.some((q) => q.ok));
-    if (on !== this.throwOn) { this.throwOn = on; this.hud.classList.toggle('throwing', on); }
-    if (!on) { for (const base of [1, 2, 3, 4]) this.throwBtns[base].classList.remove('show'); return; }
-    for (const base of [1, 2, 3, 4]) {
-      const b = this.throwBtns[base], q = o.items.find((k) => k.base === base);
-      const show = !!(q && q.ok);
-      b.classList.toggle('show', show);
-      if (!show) continue;
-      b.classList.toggle('hint', !!q.hint);
-      b.style.transform = `translate(${Math.round(q.x)}px, ${Math.round(q.y)}px)`;
+  setThrowPad(o) {
+    const el = this.hud.querySelector('.throwpad');
+    const on = !!o;
+    if (on !== this.throwOn) { this.throwOn = on; el.classList.toggle('show', on); this.hud.classList.toggle('throwing', on); }
+    if (!on) return;
+    for (const [base, b] of Object.entries(this.throwBtns)) {
+      b.classList.toggle('open', o.open.includes(+base));
+      b.classList.toggle('held', o.hold === +base);
     }
+    // field feet -> the pad's picture: home (100,172), first (172,100), second (100,28), third (28,100)
+    const k = 72 / 63.64, px = (x) => (100 + x * k).toFixed(1), py = (z) => (172 + z * k).toFixed(1);
+    const g = el.querySelector('.runners');
+    while (g.children.length < o.dots.length) g.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'circle'));
+    for (let i = 0; i < g.children.length; i++) {
+      const c = g.children[i], d = o.dots[i];
+      if (!d) { c.setAttribute('r', 0); continue; }
+      c.setAttribute('cx', px(d.x)); c.setAttribute('cy', py(d.z)); c.setAttribute('r', 9);
+      c.style.fill = RUNNER_COLORS[d.from] || '#fff';
+    }
+    const ball = el.querySelector('.tpball');
+    // (a ball far out in the outfield sits on the pad's edge, toward where it is)
+    if (o.ball) {
+      let bx = o.ball.x * k, bz = o.ball.z * k + 72;
+      const r = Math.hypot(bx, bz), lim = 96;
+      if (r > lim) { bx *= lim / r; bz *= lim / r; }
+      ball.setAttribute('cx', (100 + bx).toFixed(1)); ball.setAttribute('cy', (100 + bz).toFixed(1)); ball.setAttribute('r', 6);
+    } else ball.setAttribute('r', 0);
   }
   // The base diamond while you can send runners: o = null hides it, else { open: [bases that light up], dots: [{ x, z, sent, from,
   // canBack }] } (canBack: a runner you sent - his dot wears a ring and a tap on it calls him back).

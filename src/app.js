@@ -26,7 +26,7 @@ import { PitchAim } from './render/pitchAim.js';
 import { landingSpot, landingRing } from './game/landing.js';
 import * as SEA from './game/season.js';
 import { runnerState, runnerProfile } from './game/runnerMotion.js';
-import { currentPark, BASE_XZ } from './physics/field.js';
+import { currentPark } from './physics/field.js';
 import { pitchTopMph, isPainted, staminaMax } from './game/pitching.js';
 const parkName = () => currentPark().name.toUpperCase();
 
@@ -434,43 +434,23 @@ export class App {
   updateThrowPick(e, realDt) {
     const c = !this.paused && !this.ui.current && this.screen === 'game' && !this.bot ? e.throwChoice : null;
     this.throwOpen = !!c;
-    this.throwFirst = !!(c && c.first); // (the slow motion is only for your first throw: see tick)
-    if (!c) { if (this.throwShown) { this.throwShown = false; this.ui.setThrowPick(null); } this.fielderRing.hide(); return; }
+    this.cam.padOn = !!c;
+    if (!c) { this.throwFirst = false; if (this.throwShown) { this.throwShown = false; this.ui.setThrowPad(null); } this.fielderRing.hide(); return; }
     this.throwShown = true;
-    const p = e.play, t = e.time - p.t0, cam = this.S.camera, W = this.S.size.w, H = this.S.size.h;
-    // who has the ball right now (nobody while a throw is in the air): he wears the ring, and is never one of the markers
+    const p = e.play, t = e.time - p.t0;
+    this.throwFirst = c.first && t >= c.slowFrom; // (slow motion from a moment before he has the ball until your first throw: see tick)
+    // who has the ball right now (nobody while a throw is in the air): he wears the ring
     const carry = p.plan.carries.find((q) => q.t0 <= t && t < q.t1);
     const holder = carry ? carry.pos : null;
-    const v = this.throwV || (this.throwV = new THREE.Vector3());
-    const items = [];
-    for (const q of c.bases) {
-      if (!q.ok) continue;
-      // the teammate nearest the bag (not the man with the ball) - he is the one heading there to take it
-      const [bx, bz] = BASE_XZ[q.base];
-      let best = null;
-      for (const pos of Object.keys(this.actors.fielders)) {
-        if (pos === holder) continue;
-        const r = this.actors.fielders[pos].root.position;
-        const d = Math.hypot(r.x - bx, r.z - bz);
-        if (!best || d < best.d) best = { r, d };
-      }
-      const at = best && best.d < CONFIG.throwPick.nearFeet ? best.r : { x: bx, z: bz };
-      v.set(at.x, CONFIG.throwPick.height, at.z).project(cam);
-      if (v.z > 1 || Math.abs(v.x) > 0.97 || Math.abs(v.y) > 0.95) continue; // (off the picture: the base diamond in the corner has it)
-      items.push({ base: q.base, ok: true, x: (v.x + 1) / 2 * W, y: (1 - v.y) / 2 * H });
+    const dots = [];
+    for (const m of p.plan.moves) {
+      if (m.back && m.from === 0) continue;
+      if (m.out && m.outAt !== undefined && t > m.outAt) continue; // (out: off the pad)
+      const q = runnerState(m, t, e.cfg, this.padQ || (this.padQ = {}));
+      dots.push({ x: q.x, z: q.z, from: m.from });
     }
-    // (far away the bases bunch up on the screen: markers too close to each other are pushed apart sideways, keeping their order)
-    const gap = CONFIG.throwPick.gap;
-    for (let pass = 0; pass < 4; pass++) {
-      for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
-        const a = items[i], b = items[j], dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
-        if (d >= gap) continue;
-        const push = (gap - d) / 2, sx = dx === 0 ? (a.base < b.base ? 1 : -1) : Math.sign(dx);
-        a.x -= sx * push; b.x += sx * push;
-      }
-    }
-    for (const q of items) { q.x = clamp(q.x, 40, W - 40); q.y = clamp(q.y, 80, H - 40); }
-    this.ui.setThrowPick({ items });
+    const ball = this.actors.ballPos;
+    this.ui.setThrowPad({ open: c.bases.filter((q) => q.ok).map((q) => q.base), hold: c.onBag && holder ? c.onBag : null, dots, ball: ball ? { x: ball.x, z: ball.z } : null });
     const runs = holder && p.plan.paths[holder];
     if (runs) { const q = samplePath(runs, t); this.fielderRing.show(q.x, q.z, realDt); } else this.fielderRing.hide();
   }
@@ -1121,10 +1101,10 @@ export class App {
       const onControl = !inGame && t && t !== document.body && t.closest && !!t.closest('button, input, a, select, summary, [tabindex]:not(#game)');
       if (e.repeat) { if (inGame && ['Space', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault(); return; }
       this.audio.unlock();
-      // choosing the throw: 1 / 2 / 3 / 4 (or H) = throw to that base
+      // your throws: 1 / 2 / 3 / 4 (or H) = throw to that base, 0 or 5 = back to the pitcher on the mound (the play is over)
       if (inGame && this.engine && this.throwOpen && !e.shiftKey) {
-        const b = { Digit1: 1, Digit2: 2, Digit3: 3, Digit4: 4, KeyH: 4, Numpad1: 1, Numpad2: 2, Numpad3: 3, Numpad4: 4 }[e.code];
-        if (b) { e.preventDefault(); this.throwKey(b); return; }
+        const b = { Digit0: 0, Digit5: 0, Numpad0: 0, Numpad5: 0, Digit1: 1, Digit2: 2, Digit3: 3, Digit4: 4, KeyH: 4, Numpad1: 1, Numpad2: 2, Numpad3: 3, Numpad4: 4 }[e.code];
+        if (b !== undefined) { e.preventDefault(); this.throwKey(b); return; }
       }
       switch (e.code) {
         case 'Space': case 'Enter': case 'NumpadEnter':
@@ -1469,9 +1449,7 @@ export class App {
   // Every frame: the base diamond is up while you can send runners - the bases you can send someone to light up, and a dot shows
   // every runner where he is right now.
   updateBasePad(e) {
-    // (you never send the computer's runners - while you are in the field the diamond is where you throw: its lit bases)
-    const throwing = !this.paused && !this.ui.current && this.throwOpen;
-    const open = throwing || (!this.paused && !this.ui.current && e.sendOpen && !e.pitching);
+    const open = !this.paused && !this.ui.current && e.sendOpen && !e.pitching; // (you never send the computer's runners)
     if (!open) { if (this.padShown) { this.padShown = false; this.ui.setBasePad(null); } return; }
     this.padShown = true;
     const p = e.play, t = e.time - p.t0;
@@ -1490,7 +1468,7 @@ export class App {
       const q = runnerProfile(0, 1, 'run', e.cfg).at(Math.max(0, t - e.cfg.runner.batterStart), this.padQ || (this.padQ = {}));
       dots.push({ x: q.x, z: q.z, sent: false, from: 0 });
     }
-    this.ui.setBasePad({ dots, open: throwing ? e.throwChoice.bases.filter((q) => q.ok).map((q) => q.base) : e.baseTargets().map((q) => q.base), throwing });
+    this.ui.setBasePad({ dots, open: e.baseTargets().map((q) => q.base) });
   }
 
   swingInput(ev) {
