@@ -226,87 +226,6 @@ function diveTimeline({ tL, tCatch, airPre, sL, vL, sAir, sCatch, ux, uz, dv, li
   return { dive, sEnd: sL + sFlight + slideDist };
 }
 
-/**
- * A dive launched from wherever a live fielder is at `tL` (he is steered by the player, so there is no ball to plan around).
- * @param {{x:number,z:number,vx:number,vz:number,heading?:number}} state  his body at the launch; the dive goes along his velocity,
- *        or along `heading` (radians, atan2(x, z)) when he is almost standing still
- * @param {number} tL   when he leaves his feet
- * @param {object} cfg  config.fielding.dive (or config.fielding, which holds it)
- * @param {{limitS?:number}} [opts] farthest he may travel along the dive (a wall)
- * The glove meets the ball `airTime` after launch, `armReach` ahead of his body; the run starts at tL, so a track run that ends at
- * tL followed by this one (samplePath) is one continuous motion.
- */
-export function makeLiveDive(state, tL, cfg, opts = {}) {
-  const dv = cfg.dive || cfg;
-  const v = Math.hypot(state.vx, state.vz);
-  let ux, uz;
-  if (v >= 0.5) { ux = state.vx / v; uz = state.vz / v; }
-  else { ux = Math.sin(state.heading ?? 0); uz = Math.cos(state.heading ?? 0); }
-  const airPre = dv.airTime;
-  const vL = v >= 0.5 ? v : 0;
-  const sAir = Math.max(dv.liveLunge, vL * airPre * dv.liveCarry); // how far the flight carries him: his run, or a lunge from standing
-  const sCatch = sAir;
-  const tCatch = tL + airPre;
-  const { dive, sEnd } = diveTimeline({ tL, tCatch, airPre, sL: 0, vL, sAir, sCatch, ux, uz, dv, limitS: opts.limitS });
-  return {
-    x0: state.x, z0: state.z, ux, uz, D: sCatch + dv.armReach, tStart: tL, tArrive: tCatch, vmax: vL, segs: [{ name: 'rest', t0: tL, s0: 0, v0: 0, a: 0 }],
-    x1: state.x + ux * (sCatch + dv.armReach), z1: state.z + uz * (sCatch + dv.armReach), heading: Math.atan2(ux, uz), A: 1, limitS: opts.limitS,
-    dive, tReach: tCatch, tStop: dive.tEnd, sStop: sEnd, vArrive: dive.vLand, xStop: state.x + ux * sEnd, zStop: state.z + uz * sEnd,
-  };
-}
-
-// ---------------------------------------------------------------------------------------------------------------
-// Track runs: a live (steered) fielder records where he was; the record is drawn exactly like a planned run.
-// ---------------------------------------------------------------------------------------------------------------
-/**
- * @param {Array<[number, number, number, number, number]>} samples  [t, x, z, vx, vz], in time order
- */
-export function makeTrackRun(samples) {
-  const n = samples.length;
-  const first = samples[0], last = samples[n - 1];
-  // the way he faces at the end: his last velocity, else the last move he made
-  let ux = 0, uz = 1;
-  if (Math.hypot(last[3], last[4]) >= 0.3) { const sp = Math.hypot(last[3], last[4]); ux = last[3] / sp; uz = last[4] / sp; }
-  else {
-    for (let i = n - 1; i > 0; i--) {
-      const dx = samples[i][1] - samples[i - 1][1], dz = samples[i][2] - samples[i - 1][2], d = Math.hypot(dx, dz);
-      if (d > 0.01) { ux = dx / d; uz = dz / d; break; }
-    }
-  }
-  const dist = new Array(n); // how far he has gone along the track at each sample
-  dist[0] = 0;
-  let vmax = 0;
-  for (let i = 0; i < n; i++) {
-    if (i > 0) dist[i] = dist[i - 1] + Math.hypot(samples[i][1] - samples[i - 1][1], samples[i][2] - samples[i - 1][2]);
-    vmax = Math.max(vmax, Math.hypot(samples[i][3], samples[i][4]));
-  }
-  return {
-    track: samples, trackS: dist, x0: first[1], z0: first[2], ux, uz, D: dist[n - 1], tStart: first[0], tArrive: last[0], tReach: last[0], tStop: last[0],
-    vmax, segs: [], x1: last[1], z1: last[2], xStop: last[1], zStop: last[2], sStop: dist[n - 1], vArrive: Math.hypot(last[3], last[4]),
-    heading: Math.atan2(ux, uz), A: 1,
-  };
-}
-
-function sampleTrack(run, t, out) {
-  const tr = run.track, n = tr.length;
-  let lo = 0, hi = n - 1;
-  const tc = clamp(t, tr[0][0], tr[n - 1][0]);
-  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (tr[mid][0] <= tc) lo = mid; else hi = mid; }
-  const a = tr[lo], b = tr[hi];
-  const f = b[0] - a[0] > EPS ? (tc - a[0]) / (b[0] - a[0]) : 0;
-  const vx = a[3] + (b[3] - a[3]) * f, vz = a[4] + (b[4] - a[4]) * f;
-  const speed = Math.hypot(vx, vz);
-  out.x = a[1] + (b[1] - a[1]) * f;
-  out.z = a[2] + (b[2] - a[2]) * f;
-  out.speed = speed;
-  if (speed >= 0.3) { out.ux = vx / speed; out.uz = vz / speed; } else { out.ux = run.ux; out.uz = run.uz; } // (standing: keeps facing the way he went)
-  out.s = run.trackS[lo] + (run.trackS[hi] - run.trackS[lo]) * f;
-  out.phase = speed < 0.3 ? 'wait' : 'accel';
-  out.u = 0;
-  out.heading = Math.atan2(out.ux, out.uz);
-  out.done = t >= run.tStop;
-  return out;
-}
 
 function sampleDive(run, t, out) {
   const d = run.dive;
@@ -348,7 +267,6 @@ function sampleDive(run, t, out) {
 
 /** Where is this run at time t? Returns a shared object (copy what you need). */
 export function sampleRun(run, t, out = _out) {
-  if (run.track) return sampleTrack(run, t, out);
   if (run.dive && t >= run.dive.tL) return sampleDive(run, t, out);
   let s, v, phase;
   if (t <= run.tStart) { s = 0; v = 0; phase = 'wait'; }

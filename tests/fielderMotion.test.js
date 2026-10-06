@@ -1,7 +1,7 @@
 // Fielder movement: the run profile, the steering mover, and the intercept prediction that ties them to the ball.
 import { describe, it, expect } from 'vitest';
 import { CONFIG } from '../src/config.js';
-import { planRun, planDiveRun, makeTrackRun, makeLiveDive, sampleRun, samplePath, Mover, turnToward, timeToCover, covered, moverTravelTime, moverReturnTime } from '../src/game/fielderMotion.js';
+import { planRun, planDiveRun, sampleRun, samplePath, Mover, turnToward, timeToCover, covered, moverTravelTime, moverReturnTime } from '../src/game/fielderMotion.js';
 import { simulateBattedBall, sampleBall } from '../src/physics/ballistics.js';
 import { createDefense, planPlay, fielderFreeTime, fielderBackTime, POSITIONS } from '../src/game/fielding.js';
 import { fenceDistance, sprayOf } from '../src/physics/field.js';
@@ -581,119 +581,5 @@ describe('show-only runs do not hold up the game', () => {
       const back = fielderBackTime(plan, 'P', defense, CONFIG, plan.endTime);
       expect(back - plan.endTime).toBeLessThan(4.0); // (a pitcher who really ran over to cover first has ~65 ft to jog back)
     }
-  });
-});
-
-describe('makeTrackRun: a run made from where a live fielder really was', () => {
-  // 20 ft/s straight toward +x from (10, -250), a sample every 0.1 s
-  const samples = [];
-  for (let i = 0; i <= 20; i++) samples.push([1 + i * 0.1, 10 + 20 * i * 0.1, -250, 20, 0]);
-  const run = makeTrackRun(samples);
-
-  it('knows when it starts and stops and where', () => {
-    expect(run.track).toBeTruthy();
-    expect(run.tStart).toBeCloseTo(1, 9);
-    expect(run.tStop).toBeCloseTo(3, 9);
-    expect(run.tArrive).toBeCloseTo(3, 9);
-    expect(run.xStop).toBeCloseTo(50, 9);
-    expect(run.zStop).toBeCloseTo(-250, 9);
-    expect(run.ux).toBeCloseTo(1, 6);
-    expect(run.uz).toBeCloseTo(0, 6);
-  });
-
-  it('samples back to within .01 ft at and between the samples', () => {
-    for (let t = 1; t <= 3; t += 0.013) {
-      const p = sampleRun(run, t);
-      expect(Math.abs(p.x - (10 + 20 * (t - 1)))).toBeLessThan(0.01);
-      expect(Math.abs(p.z + 250)).toBeLessThan(0.01);
-      expect(p.speed).toBeCloseTo(20, 6);
-      expect(p.phase).toBe('accel');
-      expect(p.ux).toBeCloseTo(1, 6);
-    }
-  });
-
-  it('clamps before the first sample and after the last, and is done at the end', () => {
-    const a = { ...sampleRun(run, -5) }, b = { ...sampleRun(run, 99) };
-    expect(a.x).toBeCloseTo(10, 9);
-    expect(b.x).toBeCloseTo(50, 9);
-    expect(sampleRun(run, 2.9).done).toBe(false);
-    expect(sampleRun(run, 3).done).toBe(true);
-  });
-
-  it('says wait while he is not moving, and keeps the way he faced', () => {
-    const r = makeTrackRun([[0, 0, -200, 0, 0], [0.5, 0, -200, 0, 0], [1, 5, -200, 10, 0], [1.5, 10, -200, 0, 0]]);
-    expect(sampleRun(r, 0.25).phase).toBe('wait');
-    expect(sampleRun(r, 0.75).phase).toBe('accel');
-    const end = sampleRun(r, 1.5);
-    expect(end.phase).toBe('wait');
-    expect(end.ux).toBeCloseTo(1, 6); // (faces the way he last moved)
-  });
-});
-
-describe('makeLiveDive: a dive launched from wherever he is', () => {
-  const tL = 4;
-  const standing = makeLiveDive({ x: 0, z: -300, vx: 0, vz: 0, heading: Math.PI / 2 }, tL, DV);
-
-  it('has the same shape planDiveRun returns', () => {
-    const d = standing.dive;
-    for (const k of ['tL', 'tLand', 'tSlideEnd', 'tHoldEnd', 'tEnd', 'Ta', 'sL', 'vL', 'sFlight', 'vLand', 'slideDist', 'slideDur', 'decel', 'hold', 'getUp', 'ux', 'uz', 'armReach', 'catchU']) expect(d[k], k).toBeTypeOf('number');
-    expect(d.sL).toBe(0);
-    expect(d.tL).toBe(tL);
-    expect(standing.tStart).toBe(tL);
-    expect(d.ux).toBeCloseTo(1, 9); // a standing start dives the way he faces
-    expect(d.uz).toBeCloseTo(0, 9);
-  });
-
-  it('starts at the body where he stood and the glove meets the ball armReach ahead of the body', () => {
-    const p0 = sampleRun(standing, tL);
-    expect(p0.x).toBeCloseTo(0, 6);
-    expect(p0.z).toBeCloseTo(-300, 6);
-    const tCatch = tL + standing.dive.airPre;
-    expect(tCatch).toBeCloseTo(tL + DV.airTime, 9);
-    const body = sampleRun(standing, tCatch);
-    const glove = { x: body.x + standing.dive.ux * DV.armReach, z: body.z + standing.dive.uz * DV.armReach };
-    expect(Math.hypot(glove.x - body.x, glove.z - body.z)).toBeCloseTo(DV.armReach, 9);
-    expect(body.x).toBeGreaterThan(0.5); // (he did lunge)
-    expect(standing.dive.catchU).toBeGreaterThan(0);
-    expect(standing.dive.catchU).toBeLessThan(1);
-  });
-
-  it('lasts air + landing + slide + hold + get up', () => {
-    const d = standing.dive;
-    expect(d.tEnd - tL).toBeCloseTo(DV.airTime + DV.landAfter + d.slideDur + DV.hold + DV.getUp, 9);
-    expect(d.slideDur).toBeCloseTo(d.vLand / d.decel, 9);
-    expect(standing.tStop).toBeCloseTo(d.tEnd, 9);
-  });
-
-  it('dives along his velocity when he is running, from the speed he has', () => {
-    const run = makeLiveDive({ x: 10, z: -200, vx: 0, vz: -18 }, tL, DV);
-    expect(run.dive.uz).toBeCloseTo(-1, 9);
-    expect(run.dive.vL).toBeCloseTo(18, 9);
-    const before = { ...sampleRun(run, tL - 1e-4) }, after = { ...sampleRun(run, tL + 1e-4) };
-    expect(Math.abs(after.speed - 18)).toBeLessThan(0.3);
-    expect(Math.abs(after.z - (-200))).toBeLessThan(0.01);
-    void before;
-  });
-
-  it('draws as the same dive phases the renderer already knows', () => {
-    const seen = [];
-    for (let t = tL - 0.2; t < standing.dive.tEnd + 0.5; t += 1 / 120) { const p = sampleRun(standing, t).phase; if (seen[seen.length - 1] !== p) seen.push(p); }
-    expect(seen).toEqual(['wait', 'air', 'slide', 'hold', 'getup', 'done']);
-  });
-
-  it('is continuous with the track run that came before it', () => {
-    const track = [];
-    for (let i = 0; i <= 30; i++) { const t = 3 + i * (tL - 3) / 30; track.push([t, 20 * (t - 3), -300, 20, 0]); }
-    const trackRun = makeTrackRun(track);
-    const dive = makeLiveDive({ x: 20, z: -300, vx: 20, vz: 0 }, tL, DV);
-    const a = { ...samplePath([trackRun, dive], tL - 1e-6) }, b = { ...samplePath([trackRun, dive], tL + 1e-6) };
-    expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeLessThan(0.05);
-    expect(b.phase).toBe('air');
-  });
-
-  it('a wall stops the slide in front of it', () => {
-    const run = makeLiveDive({ x: 0, z: -300, vx: 0, vz: -22 }, tL, DV, { limitS: 6 });
-    const end = sampleRun(run, run.dive.tEnd + 1);
-    expect(end.s).toBeLessThanOrEqual(6 + 1e-9);
   });
 });

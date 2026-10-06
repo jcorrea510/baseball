@@ -3,8 +3,10 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { damp, clamp, lerp, smoothstep, DEG } from '../util/math.js';
-import { pitchHitView, chaseView, chaseYaw } from './cameraViews.js';
-import { landingSpot } from '../game/landing.js';
+import { pitchHitView, playView, playAim, homerView } from './cameraViews.js';
+import { sampleBall } from '../game/fielding.js';
+import { samplePath } from '../game/fielderMotion.js';
+import { BASE_XZ } from '../physics/field.js';
 
 const FIELD_CAM = new THREE.Vector3(0, 44, 58);
 const _look = new THREE.Vector3();
@@ -49,17 +51,34 @@ export class CameraRig {
   }
 
   // Minimum vertical FOV so that a narrow (portrait) screen still shows enough width.
-  minVFov(aspect) {
-    const h = CONFIG.camera.minHorizontalFov * DEG;
+  minVFov(aspect, minH = CONFIG.camera.minHorizontalFov) {
+    const h = minH * DEG;
     return (2 * Math.atan(Math.tan(h / 2) / aspect)) / DEG;
   }
 
-  /** A play in which you steer an outfielder has begun: fix the chase camera's direction (and so the stick's) for the whole play. */
-  startChase(play) {
-    if (this.chasePlay === play) return;
-    this.chasePlay = play;
-    this.chaseLand = landingSpot(play.sim, null, CONFIG);
-    this.chaseYaw = chaseYaw(this.chaseLand || play.control.state);
+  // Where the camera films the play from while you pitch - chosen ONCE per play, so it never jumps: behind where the play happens
+  // (the catch or the pickup, or where a home run leaves the park), framing home, the bases, the fielder's run and the ball's whole
+  // flight up to then (cameraViews.playView). null for a foul nobody catches (the pitching view just widens to watch it).
+  playCam(play) {
+    if (this.camPlay === play) return this.camSpot;
+    this.camPlay = play;
+    this.camSpot = null;
+    const plan = play.plan, sim = play.sim;
+    if (plan.groundRule || plan.homer || !plan.fair && !plan.caught) return null;
+    const spot = plan.catchPos ? { x: plan.catchPos.x, z: plan.catchPos.z } : plan.pickupPos ? { x: plan.pickupPos.x, z: plan.pickupPos.z } : null;
+    if (!spot) return null;
+    const tEnd = plan.caught ? plan.catchT : plan.pickupT;
+    const pts = [[0, 0, 0]];
+    const q = {};
+    for (let t = 0; t <= tEnd; t += 0.25) {
+      const b = sampleBall(sim, t, q);
+      pts.push([b.x, Math.max(0.5, b.y), b.z]);
+    }
+    const runs = plan.fielder && plan.paths[plan.fielder];
+    if (runs) for (let t = 0; t <= tEnd; t += 0.5) { const p = samplePath(runs, t); pts.push([p.x, 3, p.z]); }
+    const extra = [1, 2, 3].map((b) => [BASE_XZ[b][0], 0, BASE_XZ[b][1]]);
+    this.camSpot = { spot, pos: playView(spot, pts, CONFIG, extra).pos };
+    return this.camSpot;
   }
 
   update(dt, E, actors, aspect) {
@@ -80,6 +99,7 @@ export class CameraRig {
     let tPos = this.basePos;
     let tFov = cfg.batter.fov;
     let posL = 4, lookL = 8, fovL = 4;
+    let minH = cfg.minHorizontalFov;
     this.followK = 1;
     const look = this.batterLook(_look).clone();
 
@@ -91,30 +111,41 @@ export class CameraRig {
       tPos = _tmp.set(C.pos[0], C.pos[1], C.pos[2]).clone();
       look.set(C.look[0], C.look[1], C.look[2]);
       tFov = C.fov; posL = C.zoom; lookL = C.zoom * 1.4; fovL = C.zoom;
-    } else if (this.pitching && E && E.play && E.play.control && !this.title && (phase === 'play' || phase === 'result')) {
-      // you are steering the outfielder: the chase camera (see cameraViews.chaseView) - up on the screen is away from home, fixed for
-      // the whole play (this.chaseYaw, which the app turns the stick by)
-      const fc = E.play.control;
-      this.startChase(E.play);
-      const ball = actors.ballPos, s = fc.state;
-      const V = chaseView(s, ball, fc.finished ? null : this.chaseLand, CONFIG, this.chaseYaw);
-      tPos = _tmp.set(V.pos[0], V.pos[1], V.pos[2]).clone();
-      look.set(V.look[0], V.look[1], V.look[2]);
-      tFov = V.fov; posL = cfg.chase.ease; lookL = cfg.chase.ease * 1.4; fovL = cfg.chase.ease;
-      this.interest.set(ball.x, Math.max(1.5, ball.y), ball.z);
     } else if (this.pitching && E && E.play && !this.title && (phase === 'play' || phase === 'result')) {
-      // pitching, the computer has hit it: the eye starts where the pitching view was and rises up and back, following the ball
-      // (see cameraViews.pitchHitView). It never cuts to home plate.
+      // pitching, the computer has hit it - one camera that never cuts and never turns round: from the pitching view (behind the
+      // mound, looking in) it glides back to film the play from behind where it happens, still looking in (cameraViews.playView):
+      // the ball comes toward you, the fielder runs under it, and home, the bases and the runners stay in the picture for the throw
+      // and the tag. (A foul nobody catches: the pitching view just widens to watch it - cameraViews.pitchHitView.)
       const ball = actors.ballPos;
       const plan = E.play.plan;
       const t = E.time - E.play.t0;
-      const V = pitchHitView(ball, t, plan, this.pitcherHand, CONFIG);
-      tPos = _tmp.set(V.pos[0], V.pos[1], V.pos[2]).clone();
-      look.set(V.look[0], V.look[1], V.look[2]);
-      tFov = V.fov; posL = 4; lookL = 6; fovL = 4;
       this.interest.set(ball.x, Math.max(1.5, ball.y), ball.z);
-      // a ball high in the air never leaves the picture (same rule as the batting views)
-      this.keepBallOn = ball.y > 12 && !(plan.homer && t > plan.ballHitEnd) && t < plan.ballHitEnd;
+      const cs = plan.homer ? null : this.playCam(E.play);
+      if (plan.homer) {
+        const V = homerView(ball, t, this.pitcherHand, CONFIG);
+        tPos = _tmp.set(V.pos[0], V.pos[1], V.pos[2]).clone();
+        look.set(V.look[0], V.look[1], V.look[2]);
+        tFov = V.fov; posL = 3; lookL = 4; fovL = 3;
+      } else if (cs) {
+        // (the spot is fixed for the play; the aim and the width follow what is happening now: home and the ball always, the fielder
+        // with it, the other bases when they fit)
+        const pts = [[0, 0, 0], [cs.spot.x, 3, cs.spot.z]], extra = [1, 2, 3].map((b) => [BASE_XZ[b][0], 0, BASE_XZ[b][1]]);
+        const runs = plan.fielder && plan.paths[plan.fielder];
+        if (runs) { const q = samplePath(runs, t); pts.push([q.x, 3, q.z]); }
+        pts.push([ball.x, Math.max(0.5, ball.y), ball.z]);
+        const V = playAim(cs.pos, pts, CONFIG, extra);
+        tPos = _tmp.set(cs.pos[0], cs.pos[1], cs.pos[2]).clone();
+        look.set(V.look[0], V.look[1], V.look[2]);
+        const PV = cfg.playView;
+        tFov = V.fov; posL = PV.ease; lookL = PV.ease * 1.3; fovL = PV.ease;
+      } else {
+        const V = pitchHitView(ball, t, plan, this.pitcherHand, CONFIG);
+        tPos = _tmp.set(V.pos[0], V.pos[1], V.pos[2]).clone();
+        look.set(V.look[0], V.look[1], V.look[2]);
+        tFov = V.fov; posL = 3; lookL = 5; fovL = 3.5;
+      }
+      // a ball high in the air never leaves the picture (same rule as the batting views) - except a home run on its way out
+      this.keepBallOn = ball.y > 12 && !plan.homer && t < plan.ballHitEnd; // (a home run: homerView lets it go on purpose)
       if (this.keepBallOn) {
         const K = cfg.keepBall;
         _a.subVectors(ball, this.pos); _b.subVectors(look, this.pos);
@@ -129,6 +160,7 @@ export class CameraRig {
       tPos = _tmp.set(P.pos[0] * m, P.pos[1], P.pos[2]).clone();
       look.set(P.look[0], P.look[1], P.look[2]);
       tFov = P.fov; posL = P.ease; lookL = P.ease * 1.4; fovL = P.ease;
+      minH = P.minHorizontalFov; // (the long lens: a narrow screen still shows the zone and the batter, not the whole infield)
     } else if (this.title) {
       // slow orbit around the ballpark for the title screen
       this.titleT += dt;
@@ -243,7 +275,9 @@ export class CameraRig {
     const Cp = cfg.catcher.pos;
     this.catcherDist = Math.hypot(this.pos.x - Cp[0], this.pos.y - Cp[1], this.pos.z - Cp[2]); // (the actors hide the catcher when we are in his eyes)
     if (s > 0) cam.rotateZ(Math.sin(this.shakeT * 2.9) * 0.008 * s);
-    cam.fov = Math.max(this.fov, this.minVFov(aspect));
+    // (the narrowest view a narrow screen may have eases between the pitching view's and everyone else's, so nothing jumps)
+    this.minH = this.minH === undefined ? minH : damp(this.minH, minH, fovL, dt);
+    cam.fov = Math.max(this.fov, this.minVFov(aspect, this.minH));
     cam.updateProjectionMatrix();
   }
 }

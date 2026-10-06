@@ -28,7 +28,8 @@ for (const sz of sizes) {
     if (await page.evaluate(() => window.__app.ui.current) === 'howto') { await press('.screen.show [data-a=howtoDone]'); await page.waitForTimeout(400); }
     await press(`.screen.show [data-mode=${mode}]`);
     await page.waitForTimeout(300);
-    // a quick game starts with the computer's half, which you pitch: three real pitches (aim, start, tap the ring), then Sim
+    // a quick game starts with the computer's half, which you pitch: three real pitches (aim, start, tap the ring) - and on a desktop a
+    // fourth thrown with one press (hold to start, let go to tap) - then Sim
     let pitched = null;
     if (mode === 'quick') {
       await page.evaluate(() => {
@@ -47,6 +48,15 @@ for (const sz of sizes) {
         // (the ring is shrinking: step to a moment before it meets the target, then tap for real)
         await page.evaluate(() => { const a = window.__app, e = a.engine, r = e.ring; if (!r) return; for (let i = 0; i < 4000 && e.phase === 'delivery' && e.time < r.tStart + r.hitAt - 0.3; i++) a.tick(1 / 240, false); a.tick(0.001, true); });
         if (touch) await page.touchscreen.tap(spot.x, spot.y); else await page.mouse.click(spot.x, spot.y);
+      }
+      if (!touch) {
+        // one pitch the one-press way: hold the button down to start it, let go as the ring meets the dot
+        await page.evaluate(() => { const a = window.__app, e = a.engine; for (let i = 0; i < 4000 && e.phase !== 'aim'; i++) a.tick(1 / 60, false); a.tick(0.001, true); });
+        await page.mouse.move(spot.x, spot.y); await page.waitForTimeout(80);
+        await page.mouse.down();
+        await page.waitForTimeout(350); // (held long enough to count as a hold)
+        await page.evaluate(() => { const a = window.__app, e = a.engine, r = e.ring; if (!r) return; for (let i = 0; i < 4000 && e.phase === 'delivery' && e.time < r.tStart + r.hitAt; i++) a.tick(1 / 240, false); a.tick(0.001, true); });
+        await page.mouse.up();
       }
       await page.evaluate(() => { const a = window.__app, e = a.engine; for (let i = 0; i < 4000 && e.phase !== 'aim'; i++) a.tick(1 / 60, false); a.tick(0.001, true); });
       pitched = await page.evaluate(() => window.__pq);

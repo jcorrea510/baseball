@@ -1,5 +1,6 @@
 // What you see while you pitch (picture only - the engine decides everything): the target dot you aim, the ring that shrinks onto
-// the dot (tap when it meets it) and the grade word that pops up after the tap. Everything lies in the plane over the front of the plate (like the bat in batAim.js), drawn over the field.
+// the dot (tap when it meets it), the grade word that pops up after the tap, and a numbered mark where each pitch of this at-bat
+// crossed the plate (gold = a strike, blue = a ball) so you can set him up. Everything lies in the plane over the front of the plate (like the bat in batAim.js), drawn over the field.
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { clamp } from '../util/math.js';
@@ -72,6 +73,20 @@ export class PitchAim {
     // (the display font may still be loading when the first words are drawn: draw them again once it is)
     try { if (document.fonts && document.fonts.load) document.fonts.load('64px "Lilita One"').then(() => GRADES.forEach((g) => this.draw(g))).catch(() => {}); } catch (e) { /* no font loading */ }
     this.flashT = -1; this.flashGrade = null; this.flashAim = { x: 0, y: 2.5 };
+    // the marks of this at-bat: a disc with a dark rim and its number on it (made as they are needed, reused for every at-bat)
+    this.marks = new THREE.Group();
+    this.marks.position.z = CONFIG.pitch.contactZ + 0.02;
+    this.marks.rotation.y = Math.PI; // (the numbers read the right way from the pitcher's side)
+    this.marks.visible = false;
+    scene.add(this.marks);
+    this.markGeo = own(new THREE.CircleGeometry(1, 24));
+    this.markRimGeo = own(new THREE.RingGeometry(1, 1.28, 24));
+    this.markMats = { strike: own(new THREE.MeshBasicMaterial(flat({ color: A.markStrike }))), ball: own(new THREE.MeshBasicMaterial(flat({ color: A.markBall }))) };
+    this.markRimMat = own(new THREE.MeshBasicMaterial(flat({ color: A.rimColor, opacity: 0.75 })));
+    this.markNums = [];
+    this.markSlots = [];
+    this.markFade = 0;
+    this.own = own;
     this.last = { x: 0, y: CONFIG.timing.zoneCenterY };
   }
 
@@ -91,6 +106,45 @@ export class PitchAim {
     g.fillStyle = A.colors[grade];
     g.fillText(grade.toUpperCase(), c.width / 2, c.height * 0.54);
     L.tex.needsUpdate = true;
+  }
+
+  // the number label for mark n (1, 2, 3 ...): drawn once
+  markNum(n) {
+    if (this.markNums[n]) return this.markNums[n];
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const g = c.getContext('2d');
+    g.font = '44px "Lilita One", "Arial Black", sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = '#1a1206';
+    g.fillText(String(n), 32, 35);
+    const tex = this.own(new THREE.CanvasTexture(c));
+    tex.colorSpace = THREE.SRGBColorSpace;
+    this.markNums[n] = this.own(new THREE.MeshBasicMaterial(flat({ map: tex })));
+    return this.markNums[n];
+  }
+
+  /** The marks of this at-bat: [{ x, y, strike }] in order (an empty list clears them). */
+  setMarks(list) {
+    const A = this.A;
+    while (this.markSlots.length < list.length) {
+      const g = new THREE.Group();
+      const rim = new THREE.Mesh(this.markRimGeo, this.markRimMat); rim.renderOrder = 25;
+      const disc = new THREE.Mesh(this.markGeo, this.markMats.ball); disc.renderOrder = 26;
+      const num = new THREE.Mesh(this.markGeo, this.markNum(1)); num.renderOrder = 27; num.scale.setScalar(1.05);
+      g.add(rim, disc, num);
+      g.scale.setScalar(A.markSize);
+      this.marks.add(g);
+      this.markSlots.push({ g, disc, num });
+    }
+    this.markSlots.forEach((m, i) => {
+      const q = list[i];
+      m.g.visible = !!q;
+      if (!q) return;
+      m.g.position.set(-q.x, q.y, 0); // (the group is turned to face the pitcher: x runs the other way inside it)
+      m.disc.material = q.strike ? this.markMats.strike : this.markMats.ball;
+      m.num.material = this.markNum(i + 1);
+    });
   }
 
   /** Pop the grade word up over where the pitch was aimed. */
@@ -115,8 +169,16 @@ export class PitchAim {
    * @param {number} dt  real seconds since the last frame
    * @param {boolean} [show=true] the aiming picture is wanted (not paused, a menu up, simming ...)
    */
-  update(e, dt, show = true) {
+  update(e, dt, show = true, marks = false) {
     const A = this.A;
+    // the at-bat's marks: up through the whole pitch (aim, delivery, the pitch, the call), gone during a play
+    this.markFade = clamp(this.markFade + (marks ? dt : -dt) / A.fade, 0, 1);
+    this.marks.visible = this.markFade > 0.01;
+    if (this.marks.visible) {
+      const o = this.markFade * A.markOpacity;
+      this.markMats.strike.opacity = o; this.markMats.ball.opacity = o; this.markRimMat.opacity = 0.75 * this.markFade;
+      for (const m of this.markNums) if (m) m.opacity = this.markFade;
+    }
     const live = !!(show && e && e.pitching && (e.phase === 'aim' || e.phase === 'delivery'));
     this.fade = clamp(this.fade + (live ? dt : -dt) / A.fade, 0, 1);
     this.group.visible = this.fade > 0.01;
@@ -157,11 +219,12 @@ export class PitchAim {
 
   hide() {
     this.fade = 0; this.group.visible = false; this.flashT = -1; this.flashGroup.visible = false;
+    this.markFade = 0; this.marks.visible = false;
     for (const g of GRADES) this.labels[g].mesh.visible = false;
   }
 
   dispose() {
-    this.group.removeFromParent(); this.flashGroup.removeFromParent();
+    this.group.removeFromParent(); this.flashGroup.removeFromParent(); this.marks.removeFromParent();
     for (const d of this.disposables) d.dispose();
   }
 }

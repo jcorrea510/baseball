@@ -223,8 +223,8 @@ export const CONFIG = {
       good: 90, // ms either side that counts as GOOD
       ok: 160, // ms either side that counts as OK (anything later or earlier, or no tap, is WILD)
     },
-    delivery: 1.1, // seconds from the tap to the ball leaving the hand
-    nextPitch: 1.5, // seconds between a result and the next aiming screen
+    delivery: 1.0, // seconds from the tap to the ball leaving the hand
+    nextPitch: 0.75, // seconds between a result and the next aiming screen (no dead time: you aim while he walks back up)
     // What each grade does to the pitch: `speed` = share of full speed, `brk` = share of the pitch's break,
     // `miss` = how far (feet, one standard deviation) it can miss the dot.
     grades: {
@@ -268,6 +268,7 @@ export const CONFIG = {
       roar: { level: 0.85, seconds: 3 }, // the crowd's roar for your strikeout
       cheer: { level: 0.45, seconds: 2 }, // the cheer for any other out you make
       groanHit: 0.5, // how loud the groan is for one of their hits (a homer: x 1.6)
+      strikePop: 1.25, // your strike snaps into the mitt this much louder than a ball
     },
     catcherArm: { rookie: 0.9, pro: 1, allstar: 1.05 }, // your catcher's throwing, by level
     fieldErrorScale: { rookie: 0.6, pro: 0.8, allstar: 1 }, // how often your fielders boot a ball, by level
@@ -415,6 +416,9 @@ export const CONFIG = {
     flashSize: [2.6, 0.95], // ft: the word's width and height
     colors: { perfect: '#ffd24a', good: '#7dffb0', ok: '#ffffff', wild: '#ff6a4a' }, // the word's colour per grade
     fade: 0.12, // seconds to fade the dot in / out
+    holdMin: 0.3, // s: a mouse button / Space held down at least this long to start the delivery taps the ring when you let go (a quicker click waits for the next one)
+    markSize: 0.16, // ft: radius of the marks of this at-bat's pitches on the zone
+    markStrike: 0xffc23a, markBall: 0x6fb8ff, markOpacity: 0.92, // gold = a strike (called, swinging or fouled off), blue = a ball
   },
 
   // The see-through bat you aim with (render/batAim.js) and how the cursor / keys / a finger move it
@@ -518,10 +522,6 @@ export const CONFIG = {
       windup: 1.3,
       stealBreak: 1.03, // s before the pitch is released that a runner takes off on a steal (the pitcher's first move)
       derbyFoulIsOut: false,
-      // Fielding the ball yourself (game/fieldControl.js: you steer the outfielder who chases a ball the computer hits). The same idea as
-      // the batting aim help: gloveBonus = extra feet his glove reaches for a fly ball (a Rookie who is a little off still catches it),
-      // diveWindow = how many seconds too EARLY you may press Dive and still have him leave his feet at the right moment.
-      fielding: { gloveBonus: 1.2, diveWindow: 0.22 },
     },
     pro: {
       label: 'Pro',
@@ -556,7 +556,6 @@ export const CONFIG = {
       stealBreak: 0.9,
       derbyFoulIsOut: true,
       swingCue: false,
-      fielding: { gloveBonus: 0.6, diveWindow: 0.16 }, // fielding the ball yourself: extra glove reach (ft) and how early (s) Dive may be pressed (see rookie)
     },
     allstar: {
       label: 'All-Star',
@@ -591,7 +590,6 @@ export const CONFIG = {
       stealBreak: 0.83,
       derbyFoulIsOut: true,
       swingCue: false,
-      fielding: { gloveBonus: 0, diveWindow: 0.1 }, // fielding the ball yourself: no extra glove reach, Dive must be pressed nearly on time (see rookie)
     },
   },
 
@@ -696,9 +694,6 @@ export const CONFIG = {
       airTime: 0.32, // s airborne before the glove meets the ball
       landAfter: 0.12, // s after the catch that his body touches down
       armReach: 3.4, // ft the glove reaches in front of a layed-out body
-      catchRadius: 1.6, // ft: how close the ball must be to the glove (which is armReach ahead of the body) at the moment of a dive you steer yourself
-      liveLunge: 3, // ft: the least a steered dive carries him through the air (a dive from standing still)
-      liveCarry: 0.8, // share of his running speed x airTime a steered dive carries him through the air
       slideDecel: 30, // ft/s^2 sliding along the grass
       landSpeed: 11, // ft/s, top touchdown speed
       hold: 0.1, // s lying with the ball
@@ -706,19 +701,12 @@ export const CONFIG = {
       throwSet: 0.35, // s from on his feet to letting the throw go (he never throws before he is up)
       preferRun: 0.2, // nobody dives for a ball a fielder can simply run to within this many seconds
     },
-    // Fielding the ball yourself (game/fieldControl.js): the outfielder you steer is moved in fixed steps of `step` s (never per frame),
-    // and if the ball has been on the ground `autoAfter` s without him getting to it the computer runs it down for you (a play never hangs).
-    // A steered dive catches the ball if it is within dive.catchRadius of his glove at any step `diveSlack` s either side of the moment
-    // the glove arrives. A fielder you leave alone stands still. The auto-pilot (the computer running him down for you: the safety net
-    // above and the test bots - the Auto setting is something else, the old automatic fielding with nobody steered) runs at the planner's spot,
-    // braking with `autoBrake` of his braking power so he never overshoots it, and aims to have the ball within `autoReach` of his glove
-    // reach by the time it gets there. Planned at contact, before anybody knows what he will do, the play has him pick the ball up
-    // where it comes to rest later than he possibly can: once the ball is at rest and the safety net has taken over, the time to run the
-    // longest straight line in the ballpark, plus `pendingAfter` s for braking and a detour round a corner of the wall (the game plans
-    // the play again at the real catch or pickup, so that moment is never reached). On a ball you steer for, the runners wait until it
-    // is down before they read it, and your pickup is always a hit (no fumble, no throw-out at first from the outfield). The last resort,
-    // never expected: `giveUpAfter` s after the ball is down the ball is his wherever it lies, so a play can never run on forever.
-    control: { step: 1 / 120, autoAfter: 8, diveSlack: 0.05, autoBrake: 0.75, autoReach: 0.5, pendingAfter: 4, giveUpAfter: 30 },
+    // Choosing the throw (you pitch, Fielding on Play): the fielder who gets the ball runs to it by himself; you pick where his first
+    // throw goes. The bases are offered from `lead` s (game time) before he would let the throw go - never before `earliest` s after
+    // contact - until he does; meanwhile the game runs at `slow` x speed (it eases in over `slowIn` and back out over `slowOut` real s).
+    // No pick = the throw he would have made anyway, at the same moment (balance is unchanged). A base is only offered when sending the
+    // throw there moves no runner by more than `sameFeet` up to the moment of the tap (nobody jumps or changes his stride).
+    throwChoice: { lead: 0.5, earliest: 0.35, slow: 0.25, slowIn: 0.15, slowOut: 0.25, sameFeet: 0.5 },
     // Covering a base: an out needs a fielder standing on the bag WITH the ball before the runner gets there. Whoever is not fielding
     // the ball and is nearest to the play breaks for the bag; the fielder with the ball either carries it there himself (when he
     // is close) or throws to the covering man, and the throw is timed to reach the bag when he does.
@@ -896,21 +884,21 @@ export const CONFIG = {
   //  Landing spot ring: a ring lying on the grass where a ball hit in the air comes down (or under the spot where a fielder will catch
   //  it); it shrinks as the ball falls and is at its smallest the moment the flight ends. (Hidden once the ball lands or is caught.)
   // --------------------------------------------------------------------------
-  fieldStick: { // the thumb stick that steers your outfielder on a phone
-    radius: 54, // px the thumb moves from where it landed for full speed
-    dead: 0.12, // share of that a thumb can wobble without moving him
-  },
-  fielderRing: { // the ring at the feet of the outfielder you are steering (picture only)
+  fielderRing: { // the ring at the feet of the fielder who is making the play while you choose his throw (picture only)
     inner: 2.6, outer: 3.4, // ft: its inside and outside radius
     color: 0xffc23a, // the logo's gold
     alpha: 0.9, // how solid it is
     pulse: 0.08, pulseRate: 1.4, // it grows and shrinks by this share, this many times a second
   },
+  throwPick: { // the markers you tap to choose the throw (picture only)
+    nearFeet: 45, // ft: the marker sits on the teammate nearest the bag when one is this close to it, else on the bag itself
+    gap: 84, // px: two markers closer than this on the screen are pushed apart (side by side), so each stays easy to tap
+    height: 3.2, // ft above the grass the marker is drawn (about his belt)
+  },
   landing: {
     minApex: 14, // ft: only balls hit up into the air get a ring (not grounders or low liners)
     minFlight: 1.0, // s: ...and only if they stay up at least this long
     delay: 0.45, // s after contact before the ring appears (the ball has left the bat)
-    controlDelay: 0.15, // ...on a ball you field yourself: sooner (you need to know where to run)
     fadeIn: 0.3, // s the ring takes to fade in
     fadeOut: 0.18, // s it takes to fade away at the end of the flight (no pop)
     radiusStart: 18, // ft: how big the ring starts
@@ -924,8 +912,8 @@ export const CONFIG = {
     batter: { pos: [0.0, 13.5, 24.0], pitch: -14.5, fov: 36 }, // camera behind the plate; pitch in degrees
     // the catcher's view you bat from (after Ready): through the catcher's eyes, over his glove (the rest of him is hidden)
     catcher: { pos: [0, 3.3, 7.0], look: [0, 1.2, -30], fov: 42, zoom: 5, clearDist: 6, umpireHead: 4.2, mittY: 1.75, mittReach: 0.16, firstDelay: 0.5 }, // zoom = how quickly it moves in; clearDist = the catcher and umpire are hidden while the camera is closer than this (ft) to them (the batting view, and the pull-back after a swing) (umpireHead = his head's height); the catcher's mitt waits low at mittY and reaches for the ball in the last mittReach s
-    pitcher: { pos: [-2.4, 8, -67], look: [0, 1.0, 0], fov: 24, ease: 4 }, // the pitching view: behind and above the throwing shoulder (x is for a right-hander; a left-hander is mirrored), looking in at the plate; ease = how quickly it moves in (bigger = quicker)
-    pitchHit: { // while you pitch and the computer hits the ball: the eye starts where the pitching view was and follows the ball
+    pitcher: { pos: [-3.5, 12, -110], look: [0, 2.0, 0], fov: 10, ease: 4, minHorizontalFov: 16 }, // the pitching view: the TV center-field camera - well behind and above the mound with a long lens, so the zone and the batter are big and the pitcher stands off to one side in front (x is for a right-hander; a left-hander is mirrored); ease = how quickly it moves in (bigger = quicker); minHorizontalFov = how wide (deg) a narrow screen makes it at least
+    pitchHit: { // while you pitch and the computer hits the ball: the eye starts where the pitching view was and follows the ball (and the fielder going after it)
       rise: [34, 50], // ft the camera climbs (up, toward the outfield) from the pitching view while it follows the ball
       riseTime: 1.4, // s after contact that climb takes
       fovNear: 46, // deg of view while the ball is close
@@ -939,15 +927,25 @@ export const CONFIG = {
       pullNear: [110, 200], // ft the ball is from home at which that extra pull starts to fade out / is gone (a deep fly keeps the normal view)
       homerLook: 18, // ft above a home run in the seats that the camera looks (up at the crowd and fireworks)
     },
-    chase: { // you steer an outfielder: the camera behind him (on the home-plate side), high, looking out the way the ball went
-      back: 55, // ft behind him (toward home plate)
-      up: 38, // ft above the grass
-      ahead: 6, // ft past the middle of him and the landing spot that it aims (a little more of the field in front of him)
-      fovMin: 34, // deg: the narrowest view
-      marginDeg: 5, // he, the ball and the landing spot stay at least this many degrees inside the edge of the picture
-      pullStep: 0.25, pullSteps: 6, // he is far from the landing spot: the camera backs up and climbs by this share of back / up at a time (at most pullSteps times) until both fit
-      ballAhead: 30, // ft: the ball is kept in the picture once it is this far out in front of the camera (before that it is on its way out over it)
-      ease: 4, // how quickly it follows him and widens (bigger = quicker)
+    playView: { // the computer hit it (you pitch): the camera glides back to film the play from the outfield side, looking in (a home run: homerView)
+      nearHome: [90, 160], // ft from home: a play spot closer than the first is filmed from straight out toward center field, one past the second from right behind it (away from home), in between a blend
+      back: 40, // ft behind the spot
+      minFromHome: 175, // ft: the camera is never nearer home plate than this (a play near home is filmed from out past second base)
+      wallGap: 14, // ft: ...and never nearer the outfield wall than this (never in the stands)
+      sideTurns: [8, 16, 24, 32, 40], // deg round home plate: a play at the wall (no room behind it) - the camera tries these spots along the wall to the side of it instead
+      overWall: 20, overUp: 85, overCost: 4, // a play at the wall: the camera may stand this many ft past it if it is at least this high (over the bleachers, the batter's eye and the scoreboard); counted as this many deg worse, so it is the last resort
+      minOff: 34, // ft: the camera never stands closer than this (sideways) to the spot - from nearer it would look straight down on it
+      up: 52, upMin: 28, upRatio: 0.85, // ft above the grass: this many ft up per ft it is off the spot (so it looks down on it at about 40 deg), between upMin and up (x the step it has backed up) - high enough that the diamond opens up
+      marginDeg: 4, // everything stays at least this many degrees inside the edge of the picture
+      fovMin: 30, fovMax: 56, maxFov: 72, // deg: the narrowest view, the widest before the camera backs up instead, and the widest of all (a ball deep in a corner, with no room to back up)
+      pullStep: 0.3, pullSteps: 6, // the camera backs up and climbs by this share of back / up at a time (at most pullSteps times) until everything fits
+      ease: 2.2, // how quickly it glides there and follows (bigger = quicker; real time, so it is smooth in slow motion too)
+    },
+    homerView: { // a home run while you pitch: the camera stays behind the mound and watches it soar toward you and out
+      rise: 14, riseTime: 1.2, // ft it rises (and over how many s after contact)
+      letGoDeg: 55, letGoAhead: 15, // the ball is let go once it is this many deg above the camera, or less than this many ft in front of it
+      marginDeg: 6, fovMin: 22, fovMax: 70, // deg: room round the ball and home; the narrowest and widest view while it follows the ball
+      fovAfter: 44, diamondZ: -45, // then: this wide, looking at the diamond (z, ft) where the batter rounds the bases
     },
     minHorizontalFov: 38, // narrow (portrait) screens widen the view to keep this
     keepBall: { marginDeg: 7, maxFov: 64 }, // a ball high in the air stays this far inside the top of the picture (the view widens up to maxFov deg, then tilts up to it)

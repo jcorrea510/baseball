@@ -265,14 +265,11 @@ export class Actors {
     const phase = E.phase;
     const F = E.cfg.fielding;
     const turn = F.turnRate * DEG * dt;
-    // the outfielder you are steering: drawn from what he is really doing (the plan only knows it once he has the ball)
-    const fc = E.control && E.play && plan === E.play.plan ? E.control : null;
     for (const pos of POSITIONS) {
       const person = this.fielders[pos];
       const def = E.defense[pos];
       const st = this.state.get(person);
-      const liveRuns = fc && fc.pos === pos ? fc.runs : null;
-      const runs = liveRuns || (plan ? plan.paths[pos] : null);
+      const runs = plan ? plan.paths[pos] : null;
       const move = plan ? plan.fielderMoves.find((m) => m.pos === pos) || null : null;
       const root = person.root;
 
@@ -300,7 +297,7 @@ export class Actors {
       // If the play ends while he is still in the middle of a planned run, he finishes that run (he does not get handed to the
       // jog with all his speed, which would carry him on past his spot - even into the wall).
       let p = null;
-      if (live && runs && (liveRuns || playT < fielderFreeTime(plan, pos))) {
+      if (live && runs && playT < fielderFreeTime(plan, pos)) {
         p = samplePath(runs, playT);
         st.tail = { runs, t: playT, move };
       } else if (!live && st.tail) {
@@ -313,7 +310,7 @@ export class Actors {
       if (p) {
         const tm = live ? move : st.tail ? st.tail.move : move;
         st.cx = p.x; st.cz = p.z; vx = p.ux * p.speed; vz = p.uz * p.speed; speed = p.speed;
-        const dv = liveRuns ? liveRuns.find((r) => r.dive && playT >= r.tStart && playT <= r.dive.tEnd) : tm && tm.dive ? tm.run : null;
+        const dv = tm && tm.dive ? tm.run : null;
         if (dv && (p.phase === 'air' || p.phase === 'slide' || p.phase === 'hold' || p.phase === 'getup')) dive = { phase: p.phase, u: p.u, ux: p.ux, uz: p.uz, catchU: dv.dive.catchU };
         st.mover.reset(p.x, p.z, vx, vz); // keep the jog in step so the hand-off after his job is seamless
       } else {
@@ -324,7 +321,7 @@ export class Actors {
       st.vx = vx; st.vz = vz;
       // the play was planned again (a runner was sent): start from where the old plan had him and ease onto the new one
       const sw = this.planSwap;
-      if (sw && live && !(E.play && E.play.control && E.play.control.pos === pos)) { // (yours was drawn from what he did: no glide)
+      if (sw && live) {
         const oldRuns = sw.old.paths[pos];
         const was = oldRuns && sw.t < fielderFreeTime(sw.old, pos) ? samplePath(oldRuns, sw.t) : null;
         st.offX = was && p ? was.x - p.x : 0; st.offZ = was && p ? was.z - p.z : 0;

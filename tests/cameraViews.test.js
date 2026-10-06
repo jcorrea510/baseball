@@ -1,11 +1,9 @@
 // The camera that follows the ball after the computer's contact while you pitch (pure maths, no three.js).
 import { describe, it, expect } from 'vitest';
 import { CONFIG } from '../src/config.js';
-import { pitchHitView, chaseView, chaseYaw, screenToField } from '../src/render/cameraViews.js';
-import { simulateBattedBall } from '../src/physics/ballistics.js';
-import { createDefense, sampleBall } from '../src/game/fielding.js';
-import { landingSpot } from '../src/game/landing.js';
-import { createRng } from '../src/util/rng.js';
+import { pitchHitView, playView, homerView } from '../src/render/cameraViews.js';
+import { BASE_XZ, fenceDistance, sprayOf } from '../src/physics/field.js';
+import { createDefense } from '../src/game/fielding.js';
 
 const DEG = Math.PI / 180;
 const balls = [
@@ -88,54 +86,59 @@ describe('pitchHitView', () => {
   });
 });
 
-describe('chaseView (you steer an outfielder)', () => {
-  // a dozen fly balls to the outfield; the fielder runs straight from his spot toward the landing spot
-  const rng = createRng(4);
+describe('playView (the computer hit it: the play filmed from the outfield side, looking in)', () => {
   const defense = createDefense();
-  const plays = [];
-  while (plays.length < 12) {
-    const la = rng.range(18, 45), ev = rng.range(78, 100), spray = rng.range(-42, 42);
-    const sim = simulateBattedBall({ exitVelocity: ev, launchAngle: la, sprayAngle: spray, backspin: 900 + 55 * la, hook: 0, start: { x: 0, y: 2.6, z: -1 } });
-    const land = landingSpot(sim, null);
-    if (!land || Math.hypot(land.x, land.z) < 180) continue;
-    const pos = land.x < -60 ? 'LF' : land.x > 60 ? 'RF' : 'CF';
-    plays.push({ sim, land, f: defense[pos] });
-  }
-  it('keeps him, the landing spot and (once it is out in front) the ball in the picture, and never turns', () => {
+  const bases = [1, 2, 3, 4].map((b) => [BASE_XZ[b][0], 0, BASE_XZ[b][1]]);
+  const spots = [
+    ...['P', 'C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF'].map((pos) => ({ name: pos, x: defense[pos].x, z: defense[pos].z })),
+    { name: 'left-field corner', x: -215, z: -230 }, { name: 'deep center', x: 0, z: -385 }, { name: 'right-field line', x: 200, z: -215 },
+    { name: 'bunt up the first-base line', x: 18, z: -28 }, { name: 'foul pop behind home', x: 6, z: 30 }, { name: 'home run to left (where it leaves)', x: -235, z: -270 },
+  ];
+  it('keeps the spot and every base in the picture, from further out than the spot (looking in), up high', () => {
     const bad = [];
-    let seen = 0;
-    for (const [n, p] of plays.entries()) {
-      const yaw0 = chaseView(p.f, sampleBall(p.sim, 0), p.land).yaw;
-      for (const t of [0, 1, 2.5, p.land.tLand - 0.6, p.land.tLand - 0.2]) {
-        const k = Math.min(1, t / p.land.tLand);
-        const fielder = { x: p.f.x + (p.land.x - p.f.x) * k, z: p.f.z + (p.land.z - p.f.z) * k };
-        const ball = sampleBall(p.sim, Math.min(t, p.sim.duration));
-        const v = chaseView(fielder, ball, p.land);
-        if (Math.abs(v.yaw - yaw0) > 1e-9) bad.push(`ball ${n} t=${t}: it turned`);
-        const out = (ball.x - v.pos[0]) * Math.sin(v.yaw) - (ball.z - v.pos[2]) * Math.cos(v.yaw) > CONFIG.camera.chase.ballAhead + 1;
-        const must = [['fielder', { x: fielder.x, y: 3, z: fielder.z }], ['landing', { x: p.land.x, y: 0, z: p.land.z }]];
-        if (out) { must.push(['ball', ball]); seen++; }
-        for (const [name, q] of must) {
-          const off = angleFromAxis(v, q);
-          if (!(off < v.fov / 2 - 4)) bad.push(`ball ${n} t=${t} ${name}: ${off.toFixed(1)} deg of ${v.fov.toFixed(1)}`);
-        }
-        if (!(v.pos[2] > fielder.z)) bad.push(`ball ${n} t=${t}: the camera is not on the home side of him`);
+    for (const f of spots) {
+      const v = playView(f, [bases[3]], CONFIG, bases.slice(0, 3));
+      // (the bases away from the play are kept in only when they fit: always but for a ball at the wall in the deepest part)
+      const deep = Math.hypot(f.x, f.z) > fenceDistance(sprayOf(f.x, f.z)) - 25;
+      const must = [['spot', { x: f.x, y: 3, z: f.z }], ['home', { x: 0, y: 0, z: 0 }], ...(deep ? [] : bases.map((b, i) => [`base ${i + 1}`, { x: b[0], y: 0, z: b[2] }]))];
+      for (const [name, q] of must) {
+        const off = angleFromAxis(v, q);
+        if (!(off < v.fov / 2 - 2)) bad.push(`${f.name} ${name}: ${off.toFixed(1)} deg of ${v.fov.toFixed(1)}`);
       }
+      if (!(v.fov <= CONFIG.camera.playView.maxFov + 1e-9)) bad.push(`${f.name}: fov ${v.fov}`);
+      const R = Math.hypot(v.pos[0], v.pos[2]), wall = fenceDistance(sprayOf(v.pos[0], v.pos[2]));
+      if (!(R > Math.min(Math.hypot(f.x, f.z), wall - CONFIG.camera.playView.wallGap - 1))) bad.push(`${f.name}: the camera is not further out than the spot (or at the wall)`);
+      const PV = CONFIG.camera.playView;
+      if (!(R < wall - 5 || (R <= wall + PV.overWall + 1e-6 && v.pos[1] >= PV.overUp - 1e-6))) bad.push(`${f.name}: the camera is in the stands (${R.toFixed(0)} ft, wall ${wall.toFixed(0)}, ${v.pos[1].toFixed(0)} ft up)`);
+      if (!(v.pos[2] < -100)) bad.push(`${f.name}: the camera is not out past the infield (z ${v.pos[2].toFixed(0)})`);
+      if (!(v.look[2] > v.pos[2])) bad.push(`${f.name}: not looking in`);
+      if (!(v.pos[1] > 20)) bad.push(`${f.name}: too low`);
     }
     expect(bad).toEqual([]);
-    expect(seen).toBeGreaterThan(8); // (the ball out in front in a fair share of the moments checked)
   });
-  it('up on the screen points from home toward the landing spot; the stick turns with it', () => {
-    for (const p of plays) {
-      const yaw = chaseYaw(p.land);
-      const [ux, uz] = screenToField(0, 1, yaw);
-      const d = Math.hypot(p.land.x, p.land.z);
-      expect((ux * p.land.x + uz * p.land.z) / d).toBeGreaterThan(0.99);
-      const [rx, rz] = screenToField(1, 0, yaw);
-      expect(Math.abs(rx * ux + rz * uz)).toBeLessThan(1e-9); // (right is square to up)
-      expect(rx * -uz + rz * ux).toBeGreaterThan(0); // ...and to the right of it as seen from home (toward right field for a ball to center)
+  it('keeps the ball in the picture too, all the way from the bat to the glove', () => {
+    const f = { x: -150, z: -250 };
+    for (const k of [0, 0.3, 0.6, 0.95]) {
+      const ball = { x: f.x * k, y: 3 + 90 * Math.sin(Math.PI * k), z: f.z * k };
+      const v = playView(f, [bases[3], [ball.x, ball.y, ball.z]], CONFIG, bases.slice(0, 3));
+      expect(angleFromAxis(v, ball)).toBeLessThan(v.fov / 2 - 2);
     }
-    const [x, z] = screenToField(1, 0, 0);
-    expect(x).toBeCloseTo(1, 9); expect(z).toBeCloseTo(0, 9);
+  });
+});
+
+describe('homerView (a home run while you pitch)', () => {
+  it('follows the ball toward you with home in the picture, lets it go overhead, never turns round', () => {
+    const P = CONFIG.camera.pitcher.pos;
+    const bad = [];
+    for (const k of [0.05, 0.2, 0.4, 0.6, 0.8, 0.95]) {
+      const ball = { x: -40 * k, y: 3 + 110 * Math.sin(Math.PI * Math.min(1, k * 0.8)), z: -390 * k };
+      const v = homerView(ball, k * 4, 'R', CONFIG);
+      if (!(v.look[2] > v.pos[2])) bad.push(`k=${k}: looking away from home`);
+      if (v.pos[0] !== P[0] || v.pos[2] !== P[2]) bad.push(`k=${k}: the camera moved sideways`);
+      if (angleFromAxis(v, { x: 0, y: 0, z: 0 }) > v.fov / 2) bad.push(`k=${k}: home is out of the picture`);
+      const following = ball.z - v.pos[2] > CONFIG.camera.homerView.letGoAhead && v.fov !== CONFIG.camera.homerView.fovAfter;
+      if (following && angleFromAxis(v, ball) > v.fov / 2 - 2) bad.push(`k=${k}: lost the ball while following it`);
+    }
+    expect(bad).toEqual([]);
   });
 });

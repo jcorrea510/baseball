@@ -4,11 +4,11 @@
 // "plan": a timeline (seconds after contact) the renderer simply plays back.
 import { CONFIG } from '../config.js';
 import { sampleBall, judgeFairFoul, battedBallType } from '../physics/ballistics.js';
-import { BASE_XZ, polar, fenceDistance, sprayOf, clampToField, distanceToWall, isInsideField, wallClearance, parkSpan } from '../physics/field.js';
+import { BASE_XZ, polar, fenceDistance, sprayOf, clampToField, distanceToWall, isInsideField, wallClearance } from '../physics/field.js';
 import { runnerArrival, runnerFinish, runnerState, runnerProfile, retreatArrival, moveArrival, moveFinish, extendLegs, backLegs } from './runnerMotion.js';
 import { planRun, planDiveRun, sampleRun, samplePath, covered, timeToCover, moverReturnTime, TAIL_MAX } from './fielderMotion.js';
 
-export { sampleBall }; // (where the ball is t s after contact - the live fielder in fieldControl.js reads it too)
+export { sampleBall }; // (where the ball is t s after contact)
 
 export const POSITIONS = ['P', 'C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF'];
 const INFIELDERS = ['1B', '2B', 'SS', '3B'];
@@ -371,98 +371,6 @@ function addMove(plan, f, toX, toZ, tArrive, opts = {}, cfg = CONFIG) {
   return move;
 }
 
-// ---------------------------------------------------------------------------
-// The live fielder (CTRL, see planPlay): what he did replaces the planner's search for a catch / a pickup.
-// ---------------------------------------------------------------------------
-const controlledFielder = (defense) => defense[CTRL.pos];
-// His catch, in the shape findAirCatch gives (null: he did not catch it - yet, or at all).
-function controlledCatch(defense) {
-  const o = CTRL.outcome;
-  if (!o || o.kind !== 'catch') return null;
-  return { t: o.t, f: controlledFielder(defense), ball: { x: o.ball.x, y: o.ball.y, z: o.ball.z }, dive: !!o.dive, avail: Infinity, need: 0, slack: 0 };
-}
-// Not caught or picked up yet (no outcome, 'pending', or 'down': the ball came down and he is still after it)?
-const controlPending = () => !CTRL.outcome || (CTRL.outcome.kind !== 'pickup' && CTRL.outcome.kind !== 'catch');
-// His pickup, in the shape findGroundPickup gives. Still pending: he picks it up where it comes to rest, later than he can possibly
-// get there - see pendingPickupTime.
-function controlledPickup(sim, defense, cfg) {
-  const o = CTRL.outcome, f = controlledFielder(defense);
-  if (!controlPending()) return { t: o.t, f, ball: { x: o.x, y: 0, z: o.z }, dive: !!o.dive, avail: Infinity, start: 0, need: 0 };
-  const b = sampleBall(sim, sim.duration, {});
-  return { t: pendingPickupTime(sim, f, cfg), f, ball: { x: b.x, y: 0, z: b.z }, dive: false, avail: Infinity, start: 0, need: 0 };
-}
-// A time the real pickup is always before: `autoAfter` s after the ball is down the auto-pilot takes him over (fieldControl.js), and
-// from wherever you left him - anywhere in the ballpark - he then runs to the ball, which is at rest by sim.duration: at most the
-// longest straight line in the park at his top speed, plus `pendingAfter` for the braking and a detour round a corner of the wall.
-export function pendingPickupTime(sim, f, cfg = CONFIG) {
-  const F = cfg.fielding, C = F.control;
-  const run = Math.max(sim.duration, airEnd(sim) + C.autoAfter) + timeToCover(f.speed, parkSpan(), F.accel);
-  return Math.max(run, airEnd(sim) + C.giveUpAfter) + C.pendingAfter; // (and never before the last resort, giveUpAfter)
-}
-// A ball he did not catch bounced over the wall: a ground-rule double, everybody awarded two bases. The runners did what they do on
-// any ball you steer for until it came down (the plan made before it came down is the same up to then): air legs and your orders
-// until it is down, then on to the base they are awarded (back to it, if you had sent one further). Orders after that change nothing.
-function controlledGroundRule(plan, i, bases, outs, cfg) {
-  const { sim, defense } = i, R = cfg.runner, F = cfg.fielding;
-  const end = sim.groundRule, f = controlledFielder(defense);
-  plan.groundRule = true;
-  plan.result = 'double';
-  plan.batterDest = 2;
-  plan.fielder = f.pos;
-  plan.ballHitEnd = sim.standsLanding ? sim.standsLanding.t : sim.duration;
-  const [wx, wz] = clampToField(end.x, end.z, F.wallMargin + 2.2);
-  controlledMove(plan, f, wx, wz, end.t, 'watch', false);
-  plan.downT = Math.min(sim.firstBounce ? sim.firstBounce.t : Infinity, sim.wallHit ? sim.wallHit.t : Infinity, end.t);
-  const air = AIR[plan.type];
-  if (air) plan.airRes = plan.downT;
-  const tRes = air ? plan.downT + R.downReact : 0;
-  const t0Of = (b) => (b === 0 ? R.batterStart : rs(b) ?? R.startDelay);
-  const forced = new Set();
-  if (bases[0]) { forced.add(1); if (bases[1]) { forced.add(2); if (bases[2]) forced.add(3); } }
-  const recs = makeRecords(bases, forced, (b) => (air ? airLegs(b, air, outs, plan.landDepth, cfg) : [{ kind: 'run', from: b, to: b, t0: t0Of(b) }]), [{ kind: 'round', from: 0, to: 1, t0: R.batterStart }]);
-  for (const b of [3, 2, 1]) if (bases[b - 1] && rs(b) !== undefined) recs.push({ from: b, to: b + 1, legs: [{ kind: 'run', from: b, to: Math.min(4, b + 1), t0: rs(b) }], spd: sp(b), sent: false, sentTo: null, recalled: false, forced: forced.has(b), running: true });
-  recs.sort((p, q) => q.from - p.from);
-  for (const o of (ORD || []).filter((q) => q.t >= R.sendFrom - 1e-6 && q.t < plan.downT).sort((p, q) => p.t - q.t)) applyOrder(recs, o, cfg);
-  let tEnd = end.t;
-  for (const r of recs) {
-    const to = Math.min(4, r.from + 2);
-    if (r.to < to) extendLegs(r.legs, r.from, to, Math.max(tRes, t0Of(r.from)), cfg, r.spd);
-    else if (r.to > to) backLegs(r.legs, r.from, to, Math.max(tRes, t0Of(r.from)), cfg, r.spd);
-    r.to = to;
-    const m = recToMove(r);
-    plan.moves.push(m);
-    tEnd = Math.max(tEnd, mFinish(cfg, m));
-  }
-  plan.endTime = tEnd + 0.8;
-  plan.events.push({ t: end.t, type: 'groundRule', x: end.x, z: end.z });
-  plan.send = { from: R.sendFrom, by: plan.downT, res: plan.downT + 1, pre: viewOf(recs, cfg), post: null };
-  plan.notes.push('ground-rule double');
-  return plan;
-}
-
-// His move: the runs he really made (never re-planned, cut short or taken over from an older plan - `prefixed` tells addMove,
-// coverArrival and keepOldRuns that his path is already complete), shaped like addMove's so the renderer draws it the same way
-// (a dive run in it is drawn as a dive, with the dive and touchdown moments as events).
-function controlledMove(plan, f, toX, toZ, t, role, diveGot) {
-  const runs = CTRL.runs.slice();
-  runs.prefixed = true;
-  plan.paths[f.pos] = runs;
-  const dives = runs.filter((r) => r.dive);
-  const first = runs[0];
-  const move = {
-    pos: f.pos,
-    keys: [{ t: 0, x: first.x0, z: first.z0 }, { t: first.tStart, x: first.x0, z: first.z0 }, { t, x: toX, z: toZ }],
-    run: dives.length ? dives[dives.length - 1] : runs[runs.length - 1], dive: dives.length > 0, watch: false, role, control: true,
-  };
-  dives.forEach((r, k) => {
-    const land = sampleRun(r, r.dive.tLand, {});
-    plan.events.push({ t: r.dive.tL, type: 'dive', pos: f.pos, catch: role === 'catch' && !!diveGot && k === dives.length - 1 });
-    plan.events.push({ t: r.dive.tLand, type: 'diveLand', pos: f.pos, x: land.x, z: land.z });
-  });
-  plan.fielderMoves.push(move);
-  return move;
-}
-
 const baseDist = (f, base) => dist(f.x, f.z, BASE_XZ[base][0], BASE_XZ[base][1]);
 
 function coverer(base, fielder, defense) {
@@ -650,7 +558,7 @@ function planPlayCore(i, cfg) {
   }
 
   // ---------------- caught in the air ----------------
-  const air = CTRL ? controlledCatch(defense) : findAirCatch(sim, defense, cfg);
+  const air = findAirCatch(sim, defense, cfg);
   if (air) {
     const f = air.f;
     plan.fielder = f.pos;
@@ -659,8 +567,7 @@ function planPlayCore(i, cfg) {
     plan.catchPos = { x: air.ball.x, y: air.ball.y, z: air.ball.z };
     // a ball above his standing reach is taken with a leap (feet off the ground at the catch); the renderer draws the jump
     plan.leap = !air.dive && air.ball.y - F.standReach > 0.3 ? { height: air.ball.y - F.standReach } : null;
-    if (CTRL) controlledMove(plan, f, air.ball.x, air.ball.z, air.t, 'catch', air.dive);
-    else addMove(plan, f, air.ball.x, air.ball.z, air.t, { dive: air.dive, avail: air.avail, role: 'catch' }, cfg);
+    addMove(plan, f, air.ball.x, air.ball.z, air.t, { dive: air.dive, avail: air.avail, role: 'catch' }, cfg);
     plan.ctx = { kind: 'air', x: air.ball.x, z: air.ball.z, t: air.t };
     // the infield fly rule: runners on first and second (or the bases loaded), fewer than two outs, an infielder settling under a
     // high pop-up - the batter is out whether it is caught or not (so a dropped one cannot be turned into a cheap double play)
@@ -668,14 +575,13 @@ function planPlayCore(i, cfg) {
     const infieldFly = fair && !i.simple && outs < 2 && !!bases[0] && !!bases[1] && f.type !== 'OF' && sim.apex.y >= IF.apex && Math.hypot(air.ball.x, air.ball.z) < IF.range;
     if (infieldFly) { plan.infieldFly = true; plan.notes.push('infield fly'); plan.events.push({ t: Math.max(0.6, Math.min(sim.apex.t + IF.callAfterApex, air.t - IF.callBefore)), type: 'infieldFly' }); }
     // a dropped fly ball (rare): it hits the glove and pops out; he picks it up and the runners take what they can
-    if (!CTRL && fair && !i.simple && errorHappens(i, F.errors.fly * (air.dive || plan.leap ? F.errors.hardFactor : 1))) {
+    if (fair && !i.simple && errorHappens(i, F.errors.fly * (air.dive || plan.leap ? F.errors.hardFactor : 1))) {
       if (infieldFly) return infieldFlyDrop(plan, i, f, air, bases, cfg);
       return dropFly(plan, i, f, air, bases, outs, defense, cfg);
     }
     plan.ballHitEnd = air.t;
     plan.carries.push({ pos: f.pos, t0: air.t, t1: air.t + 99 });
-    // (a live fielder may have dived, missed and then caught it on his feet: the catch is a diving one only if the catch was made in the dive)
-    plan.events.push({ t: air.t, type: 'catch', pos: f.pos, dive: CTRL ? !!air.dive : !!plan.fielderMoves[0].dive });
+    plan.events.push({ t: air.t, type: 'catch', pos: f.pos, dive: !!plan.fielderMoves[0].dive });
     if (!fair) {
       plan.result = 'foulOut';
       plan.outsMade = 1;
@@ -724,9 +630,7 @@ function planPlayCore(i, cfg) {
   }
 
   // ---------------- ground-rule double: it bounced in the field and went over the wall ----------------
-  // (a ball you steer for is only a ground-rule double once it has really come down without being caught)
-  if (sim.groundRule && fair && !sim.homerun && (!CTRL || (CTRL.outcome && (CTRL.outcome.kind === 'down' || CTRL.outcome.kind === 'pickup')))) {
-    if (CTRL) return controlledGroundRule(plan, i, bases, outs, cfg);
+  if (sim.groundRule && fair && !sim.homerun) {
     plan.groundRule = true;
     plan.result = 'double';
     plan.batterDest = 2;
@@ -760,7 +664,7 @@ function planPlayCore(i, cfg) {
   }
 
   // ---------------- fair ball on the ground / bouncing / off the wall ----------------
-  const pick = CTRL ? controlledPickup(sim, defense, cfg) : findGroundPickup(sim, defense, cfg);
+  const pick = findGroundPickup(sim, defense, cfg);
   const f = pick.f;
   const tF = pick.t;
   const pf = pick.ball;
@@ -770,16 +674,14 @@ function planPlayCore(i, cfg) {
   plan.ballHitEnd = tF;
   // (A ball off the wall: the pickup point is wherever the ball is when the first fielder can reach it - by then it has come off
   // the wall - and the target is kept in front of the wall, so he plays the carom, never the wall itself.)
-  if (CTRL) controlledMove(plan, f, pf.x, pf.z, tF, 'field', pick.dive);
-  else addMove(plan, f, pf.x, pf.z, tF, { dive: pick.dive, avail: pick.avail, start: pick.start, role: 'field' }, cfg);
+  addMove(plan, f, pf.x, pf.z, tF, { dive: pick.dive, avail: pick.avail, start: pick.start, role: 'field' }, cfg);
   plan.ctx = { kind: 'ground', x: pf.x, z: pf.z, t: tF };
   if (f.type === 'OF' && fair) infieldAttempt(plan, sim, defense, cfg);
   plan.downT = Math.min(sim.firstBounce ? sim.firstBounce.t : Infinity, sim.wallHit ? sim.wallHit.t : Infinity, tF); // (the ball is down)
   // (until then the runners do what they do on any ball in the air - unless nobody gets anywhere near it: then they see it is a hit
-  // as soon as it is past the infield and go. Not with a live fielder: you might get to a ball the planner's men could not, so the
-  // runners wait until it is down - exactly what they do before a catch, so the plan at contact and the one after are the same)
-  if (AIR[type]) plan.airRes = !CTRL && !i.simple && airShortfall(sim, defense, cfg) > cfg.runner.sureHitFeet ? Math.min(plan.downT, cfg.runner.sureHitRead) : plan.downT;
-  plan.events.push({ t: tF, type: 'field', pos: f.pos, dive: CTRL ? !!pick.dive : !!plan.fielderMoves[0].dive });
+  // as soon as it is past the infield and go)
+  if (AIR[type]) plan.airRes = !i.simple && airShortfall(sim, defense, cfg) > cfg.runner.sureHitFeet ? Math.min(plan.downT, cfg.runner.sureHitRead) : plan.downT;
+  plan.events.push({ t: tF, type: 'field', pos: f.pos, dive: !!plan.fielderMoves[0].dive });
   const tReady = readyAt(plan, f, tF, cfg); // (a fielder who dove throws only once he is back on his feet)
   plan.carries.push({ pos: f.pos, t0: tF, t1: tReady });
 
@@ -805,13 +707,6 @@ function planPlayCore(i, cfg) {
   // --- Try to record an out on an infield play ---
   const bunt = !!contact.bunt;
   plan.bunt = bunt;
-  // A live fielder's pickup is always a hit: the ball got past him or dropped in front of him, and the throw goes in to the base the
-  // planner chooses (no bobble roll, and no out at first from the outfield - so the plan at contact and the one at the pickup agree).
-  if (CTRL) {
-    finishHit(plan, { f, tF, tReady, pf, bases, forced, outs, defense, cfg });
-    if (controlPending()) { plan.pending = true; plan.endTime = tF + 1; }
-    return plan;
-  }
   // a bobbled grounder (rare): the out is gone; he picks it up again and throws to where the lead runner is going
   if (isInfieldPlay && groundBall && errorHappens(i, F.errors.ground * (contact.exitVelocity > 95 || plan.fielderMoves[0].dive ? F.errors.hardFactor : 1))) {
     const bobbled = bobble(plan, i, f, tF, pf, bases, forced, outs, defense, cfg);
@@ -862,22 +757,13 @@ const sp = (b) => (SPD && SPD[b]) || 1;
 let READ = 0;
 // Your runner orders (you tapped a base): `i.orders` = [{ base, t }] in the order given, t = seconds after contact.
 let ORD = null;
+// Where YOU sent the throw (you are in the field and tapped a teammate): `i.throwTo` = { base, t } - the fielder who gets the ball
+// makes his first throw to that base (1..4) instead of the one the planner would choose. Groundouts (an out there if one can be had,
+// else the batter is safe), hits (the throw goes there whoever is running), catches (doubled off or a tag-up there, else just a throw
+// in to that bag). Everything else about the play is the planner's own. Only set while planPlay runs.
+let THROW = null;
 // The play as it was planned before your latest order: { paths, tCut } (see addMove). Only set while planPlay runs.
 let PREV = null;
-// The outfielder YOU steer (game/fieldControl.js): `i.control` = { pos, runs, outcome }. Only set while planPlay runs; null = the
-// automatic planner, untouched. `runs` is what he really did (track runs, dive runs); `outcome` says what came of it:
-//   { kind: 'pending' } (or null, or { kind: 'down', t }: it came down and he is still after it)
-//                                        nobody knows yet: no catch is searched for, and the ball is picked up by him where it comes
-//                                        to rest at pendingPickupTime - later than he can possibly get to it - and `plan.pending` is
-//                                        set: the engine plans the play again at the catch or the real pickup, so that moment, the
-//                                        throw after it and plan.endTime are never reached;
-//   { kind: 'catch', t, dive, ball }     he caught it at time t at ball {x, y, z} (no error roll: a catch you made is a catch);
-//   { kind: 'pickup', t, x, z, dive }    it came down and he picked it up at (x, z) at time t.
-// From there on it is the planner's own code (the caught branch, the hit branch, support jobs), with two rules of its own that keep
-// the plan made at contact and the one made at the catch / pickup the same up to that moment: a ball in the air is read by the
-// runners only when it is down (no early "nobody will get near it" read - you might), and his pickup is always a hit (no bobble, no
-// throw-out at first from the outfield).
-let CTRL = null;
 const readDelay = (cfg, from) => (from >= 1 && READ > 0 && rs(from) === undefined ? cfg.runner.startDelay + READ : undefined);
 const arrivalAt = (cfg, from, to, tStart, kind = 'run') => runnerArrival(cfg, from, to, tStart ?? readDelay(cfg, from), kind, sp(from));
 const finishAt = (cfg, from, to, tStart, kind = 'run') => runnerFinish(cfg, from, to, tStart ?? readDelay(cfg, from), kind, sp(from));
@@ -1052,6 +938,28 @@ export function sendOptions(plan, t, cfg = CONFIG) {
  * before it on to it. A base only lights up when nobody (not out) is heading for it already - home always can - so a tap never moves
  * a runner you did not mean and never pushes a runner ahead along. Send the lead runner first.
  */
+/**
+ * The fielder's first throw after he has the ball (you choose where it goes - see THROW): { pos, t, base } - who throws, when the
+ * ball leaves his hand (or, carrying it to a bag himself, when he sets off) and the base it ends up at (through a cut-off man too).
+ * null when he never throws (nobody to throw at, a home run, a foul, an error ...).
+ */
+export function firstThrow(plan) {
+  if (!plan || !plan.fair || plan.homer || plan.groundRule || plan.error || plan.dropped || plan.steal || plan.foulTip) return null;
+  const pos = plan.fielder, tHave = plan.caught ? plan.catchT : plan.pickupT;
+  if (!pos || !(tHave >= 0)) return null;
+  const th = plan.throws.filter((q) => q.from === pos && q.t0 >= tHave - 1e-6).sort((a, b) => a.t0 - b.t0)[0];
+  const self = plan.events.filter((e) => e.type === 'out' && e.pos === pos && e.t >= tHave - 1e-6).sort((a, b) => a.t - b.t)[0]
+    || plan.events.filter((e) => e.type === 'throwEnd' && e.pos === pos && e.t >= tHave - 1e-6).sort((a, b) => a.t - b.t)[0];
+  if (th && !(self && self.t < th.t0)) {
+    let base = th.toBase;
+    if (!base) { const relay = plan.throws.find((q) => q.from === th.to && q.t0 >= th.t1 - 1e-6); base = relay ? relay.toBase : 0; } // (a cut-off man)
+    return base ? { pos, t: th.t0, base } : null;
+  }
+  // (he takes it to the bag himself: the choice is made by the time he has the ball)
+  if (self) return { pos, t: tHave, base: self.base };
+  return null;
+}
+
 export function tapOptions(plan, t) {
   const S = plan && plan.send;
   if (!windowOpen(S, t)) return [];
@@ -1288,7 +1196,6 @@ function caughtRunners(plan, i, f, air, type, bases, outs, defense, cfg) {
     for (const r of runners) {
       const m = recToMove(r);
       // (a live fielder's catch: a runner who ran on contact is drawn running and easing up, as in the plan made before the catch)
-      if (CTRL && !m.legs && r.legs.length) { m.legs = r.legs.map((q) => ({ ...q })); delete m.round; }
       m.to = r.from; m.stopAt = tC + R.easeUpReact;
       plan.moves.push(m);
     }
@@ -1346,7 +1253,9 @@ function caughtRunners(plan, i, f, air, type, bases, outs, defense, cfg) {
   if (!plan.doubledOff) {
     const tReady = readyAt(plan, f, tC, cfg);
     let done = false;
-    for (const r of runners.filter((q) => q.wasSent && q.to === q.from).sort((a, b) => b.from - a.from)) {
+    // (you picked the base: only a play there - and if there is none, the ball is simply thrown in to that bag)
+    const mine = (b) => !THROW || THROW.base === b;
+    for (const r of runners.filter((q) => q.wasSent && q.to === q.from && mine(q.from)).sort((a, b) => b.from - a.from)) {
       const arrive = recArrive(cfg, r, r.from);
       const way = coverOptions({ base: r.from, thrower: f, tReady, from: at, tHave: tC, runnerT: arrive }, plan, defense, cfg)[0];
       if (!way) continue;
@@ -1357,7 +1266,14 @@ function caughtRunners(plan, i, f, air, type, bases, outs, defense, cfg) {
       break;
     }
     if (!done) {
-      for (const r of runners.filter((q) => q.to > q.from).sort((a, b) => b.to - a.to)) {
+      const targets = runners.filter((q) => q.to > q.from && mine(q.to)).sort((a, b) => b.to - a.to);
+      // (you picked a base the throw cannot win at, or with nobody going there: it is simply thrown in to that bag - see after the loop)
+      const thrownIn = () => {
+        const way = coverOptions({ base: THROW.base, thrower: f, tReady, from: at, tHave: tC }, plan, defense, cfg).filter((w) => !w.self)[0];
+        if (way) liveThrow(plan, way, THROW.base, { holder: f, at, t: tReady }, cfg);
+      };
+      if (THROW && !targets.length) thrownIn();
+      for (const r of targets) {
         const base = r.to;
         const arrive = recArrive(cfg, r, base);
         const way = coverOptions({ base, thrower: f, tReady, from: at, runnerT: arrive, tag: R.sendTag }, plan, defense, cfg).filter((w) => !w.self)[0];
@@ -1377,7 +1293,7 @@ function caughtRunners(plan, i, f, air, type, bases, outs, defense, cfg) {
           const t1 = tReady + throwTime(dist(at.x, at.z, BASE_XZ[4][0], BASE_XZ[4][1]), f, cfg);
           plan.throws.push({ from: f.pos, to: 'C', t0: tReady, t1, ax: at.x, az: at.z, bx: BASE_XZ[4][0], bz: BASE_XZ[4][1], toBase: 4 });
           plan.events.push({ t: t1 + F.tagTime, type: 'throwLate' });
-        }
+        } else if (THROW) thrownIn(); // (a late throw to the base you picked: he is safe)
         break;
       }
     }
@@ -1656,14 +1572,20 @@ export function planPlay(i, cfg = CONFIG) {
   RUN = i.running || null;
   SPD = i.speeds || null;
   ORD = i.orders && i.orders.length ? i.orders : null;
+  THROW = i.throwTo && i.throwTo.base >= 1 && i.throwTo.base <= 4 ? i.throwTo : null;
   PREV = i.prev && i.prev.paths ? { paths: i.prev.paths, tCut: i.prev.t + cfg.fielding.replanReact } : null;
-  CTRL = i.control || null;
   READ = 0;
   try {
     const plan = planPlayCore(i, cfg);
     // (a runner who first waited to see a ball in the air - READ - set off late: every move the planner timed that way says so, so
     // the picture and the referee see him where the planner did)
     for (const m of plan.moves) if (m.tStart === undefined && !m.legs && !m.back && !m.trot && m.from >= 1) { const d = readDelay(cfg, m.from); if (d !== undefined) m.tStart = d; }
+    // (`i.batterThrough`, while you choose the throws) a batter safe at first on a ball the infield fields runs through the bag, as he
+    // would have if he were out - so the picture is the same whatever the throw, and you may choose it (see THROW); he walks back to
+    // the bag after the play
+    if (i.batterThrough && plan.fair && !plan.caught && !plan.homer && plan.fielder && fielderType(plan.fielder) !== 'OF') {
+      for (const m of plan.moves) if (m.from === 0 && m.to === 1 && !m.out && !m.round && (!m.legs || (m.legs.length === 1 && m.legs[0].kind === 'run' && m.legs[0].to === 1))) m.through = true;
+    }
     if (RUN) runningStarts(plan, cfg);
     if (PREV) keepOldRuns(plan);
     speedsOnMoves(plan);
@@ -1673,7 +1595,7 @@ export function planPlay(i, cfg = CONFIG) {
     settleThrows(plan);
     addCalls(plan, cfg);
     return plan;
-  } finally { RUN = null; SPD = null; ORD = null; PREV = null; CTRL = null; READ = 0; }
+  } finally { RUN = null; SPD = null; ORD = null; PREV = null; THROW = null; READ = 0; }
 }
 // When the inning's third out is made in this play.
 function thirdOutAt(plan, outs) {
@@ -1916,6 +1838,11 @@ function tryInfieldOut({ f, tF, tReady, pf, bases, forced, outs, defense, cfg, p
   let choice;
   const force = options.find((o) => o.kind === 'force');
   const first = options.find((o) => o.kind === 'first');
+  if (THROW) {
+    // you picked the base: the out there if he can get it - else no out at all (the throw goes there and everybody is safe: finishHit)
+    const mine = options.find((o) => o.base === THROW.base);
+    return mine ? { choice: mine, force, first, leadForced } : null;
+  }
   // On a bunt the fielder charging in takes the sure out at first, unless the lead runner is clearly beaten.
   // (A thin force play is not worth it when the batter can be had easily: take the sure out.)
   const thin = force && first && force.margin < cfg.fielding.thinForce && first.margin > force.margin + cfg.fielding.thinForceGain;
@@ -2236,7 +2163,8 @@ function finishHit(plan, ctx) {
   plan.leadDest = leadDest;
   plan.ctx.leadDest = leadDest;
   let tgtBase = Math.min(4, leadDest);
-  for (const r of [...snap].sort((p, q) => q.to - p.to)) {
+  if (THROW) tgtBase = THROW.base; // (you picked where it goes)
+  else for (const r of [...snap].sort((p, q) => q.to - p.to)) {
     if (!(r.sent || r.recalled) || r.to < 1 || (!r.recalled && r.to <= r.from)) continue; // (a runner who was not sent only took a base he was sure to reach)
     const arrive = recArrive(cfg, r, r.to);
     const tBall = D[r.to] - (r.to === 4 ? F.tagTime : 0); // (when the throw gets there)

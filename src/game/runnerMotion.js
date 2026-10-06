@@ -286,11 +286,12 @@ export function runnerFinish(cfg, from, to, tStart, kind = 'run', spd = 1) {
   return t0 + runnerProfile(from, to, kind, cfg, spd).duration;
 }
 
-/** Which profile does a move use? (`move` is a plan.moves entry: { from, to, out, outBase, tStart, trot }.) */
+/** Which profile does a move use? (`move` is a plan.moves entry: { from, to, out, outBase, tStart, trot, through }.) A batter who is
+ *  out at first - or safe at first on a ball the infield fields (`through`, set by the planner) - runs THROUGH the bag. */
 export function moveKind(move) {
   if (move.trot) return 'trot';
   const toBase = move.out && move.to === 0 ? move.outBase : move.to;
-  return move.from === 0 && move.out && toBase === 1 ? 'through' : 'run';
+  return move.from === 0 && (move.out || move.through) && toBase === 1 ? 'through' : 'run';
 }
 
 // A runner ROUNDING a base on a ball to the outfield: he takes the turn exactly as if he were going on (the route toward the next

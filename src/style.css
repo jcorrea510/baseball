@@ -342,17 +342,16 @@ svg.wordart { display: block; height: 1.08em; width: auto; max-width: 100%; marg
 .swingbtn svg.i { width: 30px; height: 30px; stroke-width: 2.4; }
 .swingbtn.on { transform: scale(.92); filter: brightness(1.12); }
 body.touch .swingbtn.show { display: flex; }
-/* steering your outfielder (phones): a thumb stick under the left thumb, Dive on the right */
-.fieldstick { position: absolute; left: 0; top: 0; bottom: 0; width: 50%; display: none; pointer-events: auto; touch-action: none; }
-body.touch .hud.fielding .fieldstick { display: block; }
-.fsbase { position: absolute; width: 132px; height: 132px; margin: -66px 0 0 -66px; border-radius: 50%; border: 3px solid rgba(255, 255, 255, .7); background: rgba(10, 20, 40, .28); display: none; align-items: center; justify-content: center; }
-.fieldstick.on .fsbase { display: flex; }
-.fsknob { width: 58px; height: 58px; border-radius: 50%; background: radial-gradient(circle at 50% 35%, rgba(255, 213, 106, .95), rgba(217, 146, 15, .92)); border: 3px solid rgba(255, 255, 255, .85); box-shadow: 0 4px 12px rgba(0, 0, 0, .4); }
-.divebtn { appearance: none; position: absolute; right: calc(var(--safe-r) + 18px); bottom: calc(var(--safe-b) + 22px); display: none; flex-direction: column; align-items: center; justify-content: center; gap: 2px; width: 96px; height: 96px; padding: 0; border-radius: 50%; border: 3px solid rgba(255, 255, 255, .85); background: radial-gradient(circle at 50% 35%, rgba(255, 213, 106, .95), rgba(217, 146, 15, .92)); color: var(--gold-ink); font: 800 13px/1 var(--cond); letter-spacing: .05em; text-transform: uppercase; pointer-events: auto; touch-action: none; box-shadow: 0 8px 24px rgba(0, 0, 0, .45); transition: transform .08s var(--ease), filter .08s; }
-.divebtn svg.i { width: 30px; height: 30px; stroke-width: 2.4; }
-.divebtn.on { transform: scale(.92); filter: brightness(1.12); }
-body.touch .hud.fielding .divebtn { display: flex; }
-.hud.fielding .ffbtn, .hud.fielding .swingbtn { display: none !important; }
+/* choosing the throw (you are in the field): a gold marker over each teammate the fielder can throw to; tap one */
+.throwpick { position: absolute; inset: 0; pointer-events: none; z-index: 6; } /* (over every other part of the HUD: a marker is always tappable) */
+.tpk { appearance: none; position: absolute; left: 0; top: 0; width: 0; height: 0; padding: 0; border: 0; background: none; display: none; pointer-events: none; touch-action: none; }
+.tpk.show { display: block; }
+.tpk .ring { position: absolute; left: -34px; top: -34px; width: 68px; height: 68px; border-radius: 50%; border: 4px solid var(--gold); background: radial-gradient(circle, rgba(255, 196, 64, .16) 55%, rgba(255, 196, 64, .34)); box-shadow: 0 0 0 3px rgba(40, 22, 4, .55), 0 6px 18px rgba(0, 0, 0, .45); pointer-events: auto; cursor: pointer; animation: tpkPulse 1.1s ease-in-out infinite; }
+.tpk .lab { position: absolute; left: 50%; top: -64px; transform: translateX(-50%); padding: 4px 10px 3px; border-radius: 9px; background: var(--gold); color: var(--gold-ink); font: 400 19px/1 var(--display); letter-spacing: .02em; white-space: nowrap; box-shadow: 0 3px 0 var(--gold-edge), 0 6px 14px rgba(0, 0, 0, .4); pointer-events: auto; cursor: pointer; }
+.tpk.hint .ring { border-color: #fff; box-shadow: 0 0 0 3px rgba(40, 22, 4, .55), 0 0 22px rgba(255, 220, 120, .9); }
+.tpk:active .ring, .tpk:active .lab { filter: brightness(1.2); }
+@keyframes tpkPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+.hud.throwing .ffbtn, .hud.throwing .swingbtn, .hud.throwing .lineup, .hud.throwing .pitchtag { display: none !important; }
 
 /* the base diamond (sending runners): bottom right while a hit is being played. A base lights up when you can send a runner there -
    tap it and the runner behind it goes. */
@@ -753,7 +752,6 @@ input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; 
   /* phones held upright: the Swing button and the Bunt / Steal pair sit above the score box (Swing right, the pair left), the
      timing meter above them */
   .swingbtn { width: 80px; height: 80px; right: calc(var(--safe-r) + 14px); bottom: calc(var(--safe-b) + 100px); }
-  .divebtn { width: 84px; height: 84px; right: calc(var(--safe-r) + 14px); bottom: calc(var(--safe-b) + 150px); } /* (above the score box and your pitcher's tag) */
   body.touch .acts { right: auto; left: calc(var(--safe-l) + 12px); bottom: calc(var(--safe-b) + 112px); }
   body.touch .meter { bottom: calc(var(--safe-b) + 196px); }
   .basepad { right: calc(var(--safe-r) + 8px); bottom: calc(var(--safe-b) + 96px); }

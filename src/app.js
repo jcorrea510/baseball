@@ -20,13 +20,13 @@ import { PitchGuide } from './render/pitchGuide.js';
 import { pitchGuide } from './game/pitchGuide.js';
 import { LandingRing } from './render/landingRing.js';
 import { FielderRing } from './render/fielderRing.js';
-import { screenToField } from './render/cameraViews.js';
+import { samplePath } from './game/fielderMotion.js';
 import { BatAim } from './render/batAim.js';
 import { PitchAim } from './render/pitchAim.js';
 import { landingSpot, landingRing } from './game/landing.js';
 import * as SEA from './game/season.js';
 import { runnerState, runnerProfile } from './game/runnerMotion.js';
-import { currentPark } from './physics/field.js';
+import { currentPark, BASE_XZ } from './physics/field.js';
 import { pitchTopMph, isPainted, staminaMax } from './game/pitching.js';
 const parkName = () => currentPark().name.toUpperCase();
 
@@ -82,6 +82,8 @@ export class App {
     this.hitStop = 0;
     this.slowMo = null;
     this.fast = false;
+    this.throwSlow = 1; // the slow motion while you choose a throw (1 = normal speed)
+    this.throwOpen = false;
     this.mode = null;
     this.lastMode = null;
     this.aimKeys = { left: false, right: false, up: false, down: false }; // arrow keys move the bat
@@ -175,9 +177,10 @@ export class App {
     this.guide = new PitchGuide(this.S.scene); // the soft circle that guesses where the pitch will cross the plate
     this.landing = null; // where the ball in the air will come down (see onContact)
     this.landRing = new LandingRing(this.S.scene); // ...and the ring on the grass that shows it
-    this.fielderRing = new FielderRing(this.S.scene); // the ring at the feet of the outfielder you steer
+    this.fielderRing = new FielderRing(this.S.scene); // the ring at the feet of the fielder whose throw you are choosing
     this.batAim = new BatAim(this.S.scene); // the see-through bat you aim with
-    this.pitchAim = new PitchAim(this.S.scene); // the dot, break arc, timing ring and grade word while you pitch
+    this.pitchAim = new PitchAim(this.S.scene); // the dot, timing ring, grade word and the at-bat's pitch marks while you pitch
+    this.pitchMarks = [];
   }
 
   get settings() { return this.prog.settings; }
@@ -280,7 +283,7 @@ export class App {
       case 'base': this.baseKey(d.base); break;
       case 'runnerBack': this.runnerBack(d.from); break;
       case 'swing': this.swingInput(d); break;
-      case 'dive': this.diveQueued = true; break; // (steering an outfielder: the Dive button)
+      case 'throwTo': this.throwKey(d.base); break; // (you are in the field: tap a teammate and the throw goes to him)
       case 'practice':
         if (!this.engine) break;
         if (d.role && d.role !== this.engine.practice.role) { Object.assign(this.engine.practice, d); this.startGame('practice'); break; } // (the other role starts clean: a new session)
@@ -407,38 +410,71 @@ export class App {
     if (!this.engine || this.engine.over) return;
     this.paused = p;
     this.nav = [];
-    if (p) this.releaseKeys(); // (a key held as the game pauses never keeps a fielder running after it)
+    if (p) this.releaseKeys(); // (a key held as the game pauses never keeps the bat moving after it)
     if (p) { this.ui.buildPause(this.settings, !!this.seasonGame, !!this.seasonGame || !!this.quickSave); this.ui.show('pause'); }
     else { this.ui.hideAll(); this.lastFrameStamp = performance.now(); blurFocus(); }
   }
 
   releaseKeys() {
     this.aimKeys.left = this.aimKeys.right = this.aimKeys.up = this.aimKeys.down = false;
-    this.diveQueued = false;
-    this.ui.setFielding({ active: false });
   }
 
-  // Steering the outfielder (once a frame, before the game moves on): the keys or the thumb stick, turned from the screen's directions
-  // (up = away from home, as the chase camera shows it) into the field's, and Dive.
-  updateFielding(e) {
-    const fc = e.control;
-    const active = !!fc && !this.paused && !this.ui.current && this.screen === 'game';
-    this.ui.setFielding({ active });
-    if (!active) { this.diveQueued = false; return; }
-    const K = this.aimKeys, st = this.ui.fieldStick;
-    let sx = (K.right ? 1 : 0) - (K.left ? 1 : 0), sy = (K.up ? 1 : 0) - (K.down ? 1 : 0);
-    const l = Math.hypot(sx, sy);
-    if (l > 1) { sx /= l; sy /= l; }
-    if (st.x || st.y) { sx = st.x; sy = st.y; } // (the thumb stick, when it is held)
-    const [dx, dz] = screenToField(sx, sy, this.cam.chaseYaw || 0);
-    e.fieldInput(dx, dz, !!this.diveQueued);
-    this.diveQueued = false;
+  // ---------------------------------------------------------------- choosing the throw (you are in the field)
+  // A tap on a teammate's marker (or 1 / 2 / 3 / 4 / H): the fielder with the ball throws there.
+  throwKey(base) {
+    const e = this.engine;
+    if (!e || this.paused || this.bot) return false;
+    if (!e.chooseThrow(base)) return false;
+    this.audio.uiClick();
+    return true;
+  }
+
+  // Every frame: while you can choose the throw, a marker floats over each teammate he can throw to (the man nearest that bag, on
+  // screen), the fielder with the ball wears the gold ring, and the game eases into slow motion (see tick).
+  updateThrowPick(e, realDt) {
+    const c = !this.paused && !this.ui.current && this.screen === 'game' && !this.bot ? e.throwChoice : null;
+    this.throwOpen = !!c;
+    if (!c) { if (this.throwShown) { this.throwShown = false; this.ui.setThrowPick(null); } this.fielderRing.hide(); return; }
+    this.throwShown = true;
+    const p = e.play, t = e.time - p.t0, cam = this.S.camera, W = this.S.size.w, H = this.S.size.h;
+    const v = this.throwV || (this.throwV = new THREE.Vector3());
+    const items = [];
+    for (const q of c.bases) {
+      if (!q.ok) continue;
+      // the teammate nearest the bag (not the man with the ball) - he is the one heading there to take it
+      const [bx, bz] = BASE_XZ[q.base];
+      let best = null;
+      for (const pos of Object.keys(this.actors.fielders)) {
+        if (pos === c.pos) continue;
+        const r = this.actors.fielders[pos].root.position;
+        const d = Math.hypot(r.x - bx, r.z - bz);
+        if (!best || d < best.d) best = { r, d };
+      }
+      const at = best && best.d < CONFIG.throwPick.nearFeet ? best.r : { x: bx, z: bz };
+      v.set(at.x, CONFIG.throwPick.height, at.z).project(cam);
+      if (v.z > 1) continue; // (behind the camera)
+      items.push({ base: q.base, ok: true, hint: q.base === c.base && this.engine.difficulty === 'rookie', x: (v.x + 1) / 2 * W, y: (1 - v.y) / 2 * H });
+    }
+    // (far away the bases bunch up on the screen: markers too close to each other are pushed apart sideways, keeping their order)
+    const gap = CONFIG.throwPick.gap;
+    for (let pass = 0; pass < 4; pass++) {
+      for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
+        const a = items[i], b = items[j], dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
+        if (d >= gap) continue;
+        const push = (gap - d) / 2, sx = dx === 0 ? (a.base < b.base ? 1 : -1) : Math.sign(dx);
+        a.x -= sx * push; b.x += sx * push;
+      }
+    }
+    for (const q of items) { q.x = clamp(q.x, 40, W - 40); q.y = clamp(q.y, 80, H - 40); }
+    this.ui.setThrowPick({ items });
+    const runs = p.plan.paths[c.pos];
+    if (runs) { const q = samplePath(runs, t); this.fielderRing.show(q.x, q.z, realDt); }
   }
 
   quitToMenu() {
     const toSeason = this.returnTo === 'season';
     this.gameToken++;
-    this.engine = null; this.bot = null; this.paused = false; this.fast = false; this.slowMo = null; this.hitStop = 0;
+    this.engine = null; this.bot = null; this.paused = false; this.fast = false; this.slowMo = null; this.hitStop = 0; this.throwSlow = 1; this.throwOpen = false;
     this.simSummary = null; this.pitchSig = null; this.ui.setPitching(null); this.pitchAim.hide();
     if (this.padShown) { this.padShown = false; this.ui.setBasePad(null); }
     this.ui.hideHud(); this.hideOverlays();
@@ -498,7 +534,7 @@ export class App {
     this.audio.setUmpire(eng.seed); // this game's umpire has his own voice
     this.engine.setAim(0);
     this.pitchesThisGame = 0;
-    this.paused = false; this.fast = false; this.slowMo = null; this.hitStop = 0;
+    this.paused = false; this.fast = false; this.slowMo = null; this.hitStop = 0; this.throwSlow = 1; this.throwOpen = false;
     this.simSummary = null; this.pitchSig = null;
     this.screen = 'game';
     this.cam.title = false;
@@ -546,6 +582,7 @@ export class App {
       this.refreshLineup();
       if (waiting) ui.showBatterUp(batter, e.lineOf(batter), (pitcher ? ['vs ' + pitcher.name] : []).concat(this.batterChips(batter))); else ui.hideBatterUp();
       this.pitchMarker.visible = false;
+      this.pitchMarks = []; this.pitchAim.setMarks(this.pitchMarks); // (a new batter: a clean zone)
       this.actors.loose.spent = false;
       this.actors.loose.active = false;
       this.actors.looseBat.visible = false;
@@ -591,13 +628,14 @@ export class App {
       if (say) ui.hint(say, 1500);
     });
     on('catch', ({ pitch, swung }) => {
-      audio.glovePop(clamp((pitch.speedMph - 40) / 60, 0.3, 1.2));
+      // (your strike - you pitch - snaps into the mitt a little louder: the sound of a good pitch)
+      audio.glovePop(clamp((pitch.speedMph - 40) / 60, 0.3, 1.2) * (e.pitching && pitch.isStrike ? CONFIG.pitching.moments.strikePop : 1));
       ui.showPitchInfo(LABEL[pitch.type], pitch.speedMph, false, 1500);
       // mark where it crossed the plate
       const inZone = pitch.isStrike;
       this.pitchMarker.material.color.set(inZone ? 0x3ddc7c : 0xff5a4d);
       this.pitchMarker.position.set(pitch.target.x, pitch.target.y, CONFIG.pitch.contactZ + 0.04);
-      this.pitchMarker.visible = this.settings.zone;
+      this.pitchMarker.visible = this.settings.zone && !e.pitching; // (you pitch: the at-bat's numbered marks show it)
       if (this.settings.shake) cam.shake(0.05);
       void swung;
     });
@@ -623,17 +661,14 @@ export class App {
       if (newInning && e.game && !e.over && !e.simming) ui.banner(`INNING ${inning}`, e.game.inning > e.game.innings ? 'Extra innings' : '', 'neutral');
     });
     on('gameOver', (p) => this.onGameOver(p));
-    on('controlStart', () => { this.cam.startChase(e.play); this.diveQueued = false; }); // (you steer the outfielder: the chase camera)
-    on('controlEnd', ({ outcome }) => { if (outcome.kind === 'catch') this.landing = null; }); // (you caught it: the ring goes)
   }
 
   onContact(c) {
     const e = this.engine, ui = this.ui, audio = this.audio, F = CONFIG.feel;
     this.playOuts = 0;
     this.groaned = false;
-    // (null for grounders, home runs and balls that hit the wall first; a ball you field yourself: where it really comes down)
-    const steer = !!(e.play && e.play.control);
-    this.landing = landingSpot(c.sim, steer ? null : c.plan, CONFIG, steer);
+    // (null for grounders, home runs and balls that hit the wall first)
+    this.landing = landingSpot(c.sim, c.plan, CONFIG);
     const grade = c.grade;
     if (c.contact && c.contact.bunt) {
       // a bunt: a soft tock off the bat, no sparks, no freeze-frame, no shake
@@ -650,6 +685,7 @@ export class App {
     const dirN = new THREE.Vector3(Math.sin(c.sprayAngle * Math.PI / 180), 0.3, -Math.cos(c.sprayAngle * Math.PI / 180));
     this.fx.contactSparks(start.x, start.y, start.z, q, [dirN.x, dirN.y, dirN.z]);
     const foul = c.plan.result === 'foul';
+    if (foul && !c.plan.foulTip) this.addPitchMark(c.pitch, true); // (a foul is a strike on the zone too)
     if (grade === 'perfect' && !foul && !e.pitching) ui.flash(0.22, 90);
     if (foul) audio.tick(); // (a foul ball gets no contact banner: the FOUL call says it)
     else if (e.pitching) { /* (their contact: no cheering banner - the result says what it is) */ }
@@ -667,8 +703,9 @@ export class App {
   }
 
   // What the plate umpire says and does for a pitch: a strike, a ball, strike three, ball four.
-  onPitchCall({ call, result, strikes }) {
+  onPitchCall({ call, result, strikes, pitch }) {
     const e = this.engine, audio = this.audio;
+    if (call === 'ball' || call === 'calledStrike' || call === 'swingingStrike') this.addPitchMark(pitch, call !== 'ball');
     const struckOut = !!result && /^strikeout/.test(result);
     let kind = null;
     if (call === 'ball') kind = result === 'walk' ? 'ball4' : 'ball';
@@ -1080,10 +1117,10 @@ export class App {
       const onControl = !inGame && t && t !== document.body && t.closest && !!t.closest('button, input, a, select, summary, [tabindex]:not(#game)');
       if (e.repeat) { if (inGame && ['Space', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault(); return; }
       this.audio.unlock();
-      // steering an outfielder: the arrows / WASD move him, Space or Shift dives
-      if (inGame && this.engine && this.engine.control) {
-        if (e.code === 'Space' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') { e.preventDefault(); this.diveQueued = true; return; }
-        if (e.code === 'KeyS') { e.preventDefault(); this.aimKeys.down = true; return; }
+      // choosing the throw: 1 / 2 / 3 / 4 (or H) = throw to that base
+      if (inGame && this.engine && this.throwOpen && !e.shiftKey) {
+        const b = { Digit1: 1, Digit2: 2, Digit3: 3, Digit4: 4, KeyH: 4, Numpad1: 1, Numpad2: 2, Numpad3: 3, Numpad4: 4 }[e.code];
+        if (b) { e.preventDefault(); this.throwKey(b); return; }
       }
       switch (e.code) {
         case 'Space': case 'Enter': case 'NumpadEnter':
@@ -1131,6 +1168,7 @@ export class App {
       }
     });
     window.addEventListener('keyup', (e) => {
+      if (e.code === 'Space') this.pitchRelease(e);
       if (e.code === 'ArrowLeft' || e.code === 'KeyA') this.aimKeys.left = false;
       if (e.code === 'ArrowRight' || e.code === 'KeyD') this.aimKeys.right = false;
       if (e.code === 'ArrowUp' || e.code === 'KeyW') this.aimKeys.up = false;
@@ -1188,6 +1226,7 @@ export class App {
       swing(e);
     });
     this.canvas.addEventListener('pointerup', (e) => {
+      if (e.pointerType !== 'touch') this.pitchRelease(e);
       if (this.touchAim && this.touchAim.id === e.pointerId) {
         const was = this.touchAim;
         this.touchAim = null;
@@ -1311,7 +1350,27 @@ export class App {
   // The aim dot, break arc, timing ring and grade word (render/pitchAim.js) while you pitch.
   updatePitchDot(e, dt) {
     const show = !!(e && !this.paused && !this.ui.current && !e.simming && this.isPitching(e) && this.screen === 'game');
-    this.pitchAim.update(e || {}, dt, show);
+    const marks = !!(e && !this.ui.current && !e.simming && this.screen === 'game' && this.isPitchView(e)); // (the at-bat's pitches, until a ball is put in play)
+    this.pitchAim.update(e || {}, dt, show, marks);
+  }
+
+  // A pitch of this at-bat to mark on the zone (you pitch): where it crossed and whether it was a strike.
+  addPitchMark(pitch, strike) {
+    const e = this.engine;
+    if (!e || !e.pitching || e.simming || !pitch || !pitch.target) return;
+    this.pitchMarks.push({ x: pitch.target.x, y: pitch.target.y, strike });
+    this.pitchAim.setMarks(this.pitchMarks);
+  }
+
+  // You held the button (or Space) down to start the delivery: letting go taps the ring - unless you let go at once (a plain click:
+  // then the next click taps it, as before).
+  pitchRelease(ev) {
+    const h = this.pitchHold;
+    this.pitchHold = null;
+    const e = this.engine;
+    if (!h || !e || this.paused || e.phase !== 'delivery' || !e.ring || e.ring.tapped) return;
+    if ((performance.now() - h.at) / 1000 < CONFIG.pitchAim.holdMin) return;
+    this.swingInput(ev);
   }
 
   // Sim: the computer pitches the rest of this half (nothing is drawn; the highlights come when it is over).
@@ -1356,7 +1415,7 @@ export class App {
     this.actors.cameraPos = this.S.camera.position;
     const A = CONFIG.batAim;
     if (this.aimMode === 'mouse' && this.mouse && batting) this.aimOnCursor();
-    if (this.aimMode === 'keys' && !e.control) { // (while you steer a fielder the keys are his)
+    if (this.aimMode === 'keys') {
       const k = A.keySpeed * dt;
       this.aimTarget.x += ((this.aimKeys.right ? 1 : 0) - (this.aimKeys.left ? 1 : 0)) * k;
       this.aimTarget.y += ((this.aimKeys.up ? 1 : 0) - (this.aimKeys.down ? 1 : 0)) * k;
@@ -1445,7 +1504,8 @@ export class App {
       case 'aim': // (you pitch: the aim is where the cursor is right now, then the delivery starts)
         if (!e.pitching || this.bot) break;
         if (this.aimMode === 'mouse' && this.mouse) { this.aimOnCursor(); this.clampAimTarget(); e.setPitchAim(this.aimTarget.x, this.aimTarget.y); }
-        e.startDelivery();
+        // (a mouse button or Space held down from here: letting go of it taps the ring - one press per pitch)
+        if (e.startDelivery() && ev && (ev.type === 'pointerdown' || ev.type === 'keydown')) this.pitchHold = { at: performance.now() };
         break;
       case 'delivery': if (e.pitching && !this.bot) e.ringTap(sinceTap()); break; // (graded against the engine's own clock)
       case 'play': if (ev && ev.type === 'keydown') this.fast = true; break; // (only the Space bar speeds a play up: a stray click or tap never does)
@@ -1490,14 +1550,14 @@ export class App {
     if (e) {
       if (this.simSummary && this.time >= this.simSummary.until) this.hideSimSummary();
       this.updateBatting(e, realDt);
-      this.updateFielding(e);
+      this.updateThrowPick(e, realDt);
       this.updatePitching(e);
       this.updateBasePad(e);
       // the Steal button is only there while a runner could go
       const can = e.canSteal && !this.paused, on = e.stealArmed || !!(e.steal && (e.phase === 'windup' || e.phase === 'pitch'));
       if (can !== this.stealShown || on !== this.stealOn) { this.stealShown = can; this.stealOn = on; this.ui.setSteal(can, on); }
       // the fast-forward button is up while a play runs
-      const ff = e.phase === 'play' && !e.control && !this.paused && !this.ui.current && !e.over; // (not while you steer a fielder)
+      const ff = e.phase === 'play' && !this.throwOpen && !this.paused && !this.ui.current && !e.over; // (not while you choose a throw)
       if (ff !== this.ffShown || this.fast !== this.ffOn) { this.ffShown = ff; this.ffOn = this.fast; this.ui.setFast(ff, this.fast); }
     }
     if (e && !this.paused && !e.over || (e && e.phase === 'gameOver')) {
@@ -1515,9 +1575,15 @@ export class App {
             if (s.t >= s.dur) this.slowMo = null;
           }
         }
-        if (this.fast && e.phase === 'play') scale = CONFIG.pace.fastForward;
+        if (this.fast && e.phase === 'play' && !this.throwOpen) scale = CONFIG.pace.fastForward;
         else if (e.phase !== 'play') this.fast = false;
-        simDt = realDt * scale;
+        // choosing the throw: the game eases into slow motion until you tap (or he throws by himself), then eases back out
+        const TC = CONFIG.fielding.throwChoice;
+        const want = this.throwOpen ? TC.slow : 1;
+        const rate = (1 - TC.slow) * realDt / (want < this.throwSlow ? TC.slowIn : TC.slowOut);
+        this.throwSlow = want < this.throwSlow ? Math.max(want, this.throwSlow - rate) : Math.min(want, this.throwSlow + rate);
+        if (this.throwOpen) this.fast = false;
+        simDt = realDt * scale * this.throwSlow;
       }
       if (simDt > 0) {
         // step in small pieces so fast-forward never skips events
@@ -1572,9 +1638,6 @@ export class App {
     if (this.landing && e && e.phase === 'play' && e.play && this.settings.landingRing && this.screen === 'game') {
       this.landRing.show(landingRing(this.landing, e.time - e.play.t0, CONFIG), cam);
     } else { this.landRing.hide(); if (!(e && e.phase === 'play')) this.landing = null; }
-    // the outfielder you are steering wears a ring
-    const fc = e && this.screen === 'game' ? e.control : null;
-    if (fc) { const s = fc.state; this.fielderRing.show(s.x, s.z, realDt); } else this.fielderRing.hide();
     // pitch marker fade
     if (this.pitchMarker.visible) {
       this.markerT += realDt;

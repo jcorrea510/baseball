@@ -1,6 +1,7 @@
 // Pure camera maths (no three.js): where the camera goes and what it looks at in the special views.
 import { CONFIG } from '../config.js';
-import { lerp, smoothstep, DEG } from '../util/math.js';
+import { fenceDistance, sprayOf } from '../physics/field.js';
+import { lerp, smoothstep, clamp, DEG } from '../util/math.js';
 
 // You are pitching and the computer has hit the ball: the camera starts exactly where the pitching view was (behind and above the
 // mound) and rises up and back toward the outfield, always looking at the ball, so it never cuts to home plate.
@@ -44,62 +45,121 @@ export function pitchHitView(ball, t, plan, hand, cfg = CONFIG) {
   return { pos, look, fov };
 }
 
-// You are steering an outfielder: the camera stands on the home-plate side of him, high, and looks out the way the ball went - so up on
-// the screen is away from home (toward the wall) and left / right are left / right. That direction (`yaw`) is fixed for the whole play
-// (from home toward where the ball comes down, `landing`); the camera only slides along with him. It keeps him, the ball and the
-// landing spot in the picture, widening as needed.
-//   fielder = {x, z}, ball = {x, y, z}, landing = {x, z} | null (none: toward the fielder), heading = optional fixed yaw (radians).
-// -> { pos, look, fov, yaw }   (yaw = 0 is straight out to center field; screenToField turns the stick by it)
-export function chaseView(fielder, ball, landing, cfg = CONFIG, heading) {
-  const C = cfg.camera.chase, K = cfg.camera.keepBall;
-  const yaw = heading ?? chaseYaw(landing || fielder);
-  const ux = Math.sin(yaw), uz = -Math.cos(yaw);
-  const g = landing || ball;
-  // aim between him and where the ball comes down (or the ball itself, on the ground), a little ahead of him
-  const aim0 = [lerp(fielder.x, g.x, 0.5) + ux * C.ahead, 2, lerp(fielder.z, g.z, 0.5) + uz * C.ahead];
+// A home run while you pitch: the camera stays behind the mound (rising a little) and looks up at the ball as it soars toward you,
+// widening to keep home in the picture too; once it is high overhead or past you it is let go - it sails out over the top of the
+// picture - and the eye settles on the diamond, where the batter rounds the bases. It never turns round.
+//   ball = {x, y, z}, t = s since contact, hand = 'L' | 'R' -> { pos, look, fov }
+export function homerView(ball, t, hand, cfg = CONFIG) {
+  const H = cfg.camera.homerView, P = cfg.camera.pitcher.pos, m = hand === 'L' ? -1 : 1;
+  const pos = [P[0] * m, P[1] + H.rise * smoothstep(0, H.riseTime, t), P[2]];
+  const ahead = ball.z - pos[2]; // (> 0: between the camera and home - in front of it)
+  const up = Math.atan2(ball.y - pos[1], Math.max(1, Math.hypot(ball.x - pos[0], ahead))) / DEG;
+  const diamond = [0, 2, H.diamondZ];
+  if (ahead > H.letGoAhead && up < H.letGoDeg) {
+    const { aim, half } = fitAim(pos, [[ball.x, ball.y, ball.z], [0, 0, 0]]);
+    return { pos, look: aim, fov: clamp(2 * (half + H.marginDeg), H.fovMin, H.fovMax) };
+  }
+  return { pos, look: diamond, fov: H.fovAfter };
+}
+
+// The play while you pitch, filmed from the outfield side looking in (the same way the pitching view looks, so nothing ever flips):
+// the camera stands behind `spot` - where the play happens: the catch, the pickup, a home run's landing - on the far side from home
+// plate (straight out toward center field for a spot near home, from out past second base), up high, and frames every point in `pts` ([x, y, z]: home, the
+// bases, the fielder, the ball ...), backing up and climbing (steps of `pullStep`) until they fit, aimed so the view is as narrow as
+// it can be.
+//   spot = {x, z} -> { pos, look, fov }
+//   extra = more points to fit when they can be (the bases away from the play): dropped when the view cannot hold them too.
+export function playView(spot, pts, cfg = CONFIG, extra = []) {
+  if (extra.length) {
+    const v = playViewOf(spot, [...pts, ...extra], cfg);
+    if (v.need <= cfg.camera.playView.maxFov) return v;
+  }
+  return playViewOf(spot, pts, cfg);
+}
+function playViewOf(spot, pts, cfg) {
+  const C = cfg.camera.playView;
+  const d = Math.hypot(spot.x, spot.z);
+  const far = smoothstep(C.nearHome[0], C.nearHome[1], d); // (0 = at home: straight out; 1 = far out: away from home)
+  let ux = lerp(0, d > 1 ? spot.x / d : 0, far), uz = lerp(-1, d > 1 ? spot.z / d : -1, far);
+  const ul = Math.hypot(ux, uz) || 1;
+  ux /= ul; uz /= ul;
+  const all = [[spot.x, 3, spot.z], ...pts];
+  const R0 = Math.max(d + C.back, C.minFromHome);
+  // (home-centred: for a spot out in the field this is `back` beyond it; never nearer home than `minFromHome`, so a play near home is
+  // still filmed from out past second base, looking in at all four bases; never past the outfield wall - `wallGap` inside it, never
+  // in the stands. Where the wall leaves no room - a ball at the wall - the camera slides along it to the side of the spot instead,
+  // toward center field first. It backs up and climbs, a step of `pullStep` at a time, until everything fits; the first fit wins.)
+  const toCenter = sprayOf(ux, uz) > 0 ? -1 : 1;
+  const turns = [0, ...C.sideTurns.map((a) => a * toCenter * DEG), ...C.sideTurns.map((a) => -a * toCenter * DEG)];
   let best = null;
-  // when he is far from the landing spot the camera backs up and climbs (steps of `pullStep`) until both fit
   for (let k = 0; k <= C.pullSteps; k++) {
     const grow = 1 + C.pullStep * k;
-    const pos = [fielder.x - ux * C.back * grow, C.up * grow, fielder.z - uz * C.back * grow];
-    // (early in its flight the ball is still behind the camera, on its way out over it: it is kept in the picture once it is out in front)
-    const ahead = (ball.x - pos[0]) * ux + (ball.z - pos[2]) * uz > C.ballAhead;
-    const pts = [[fielder.x, 3, fielder.z]];
-    if (landing) pts.push([landing.x, 0, landing.z]);
-    const ground = fitHalf(pos, pts, aim0);
-    if (ground + C.marginDeg > K.maxFov / 2 && k < C.pullSteps) continue;
-    let aim = aim0, fov = Math.max(C.fovMin, 2 * (ground + C.marginDeg));
-    if (ahead) {
-      // the ball too: widen, and if even the widest view cannot hold it, tilt toward it (it matters most)
-      const all = pts.concat([[ball.x, Math.max(0.5, ball.y), ball.z]]);
-      for (let i = 0; i < 16; i++) {
-        const need = 2 * (fitHalf(pos, all, aim) + C.marginDeg);
-        if (need <= K.maxFov) { fov = Math.max(C.fovMin, need); break; }
-        fov = K.maxFov;
-        aim = [lerp(aim[0], ball.x, 0.25), lerp(aim[1], ball.y, 0.25), lerp(aim[2], ball.z, 0.25)];
+    for (const turn of turns) {
+      const c = Math.cos(turn), sn = Math.sin(turn);
+      const vx = ux * c - uz * sn, vz = ux * sn + uz * c;
+      const fence = fenceDistance(clamp(sprayOf(vx, vz), -45, 45));
+      // (inside the wall; or, when there is no room for it there, a little way past the wall but high over the bleachers, the
+      // batter's eye and the scoreboard - `overWall` ft past it, `overUp` ft up at least)
+      for (const over of R0 * grow > fence - C.wallGap ? [false, true] : [false]) {
+        const R = Math.min(R0 * grow, over ? fence + C.overWall : fence - C.wallGap);
+        const off = Math.hypot(vx * R - spot.x, vz * R - spot.z);
+        // (never nearly on top of the spot: from this close it would be looking straight down)
+        if (off < C.minOff) continue;
+        // high enough to look down on the play, never so high (for how far off it is) that the spot is straight below
+        const up = clamp(off * C.upRatio, C.upMin, C.up * grow);
+        const pos = [vx * R, over ? Math.max(up, C.overUp) : up, vz * R];
+        const { aim, half } = fitAim(pos, all);
+        const need = 2 * (half + C.marginDeg) + (over ? C.overCost : 0);
+        const v = { pos, look: aim, fov: clamp(need, C.fovMin, C.maxFov), need };
+        if (!best || need < best.need) best = v;
+        if (need <= C.fovMax) return v;
       }
     }
-    best = { pos, look: aim, fov: Math.min(K.maxFov, fov), yaw };
-    break;
   }
   return best;
 }
+
+/**
+ * From a camera spot already chosen (playView), where to look and how wide, to hold `pts` - and `extra` too when that fits within
+ * the widest view: { look, fov }.
+ */
+export function playAim(pos, pts, cfg = CONFIG, extra = []) {
+  const C = cfg.camera.playView;
+  if (extra.length) {
+    const f = fitAim(pos, [...pts, ...extra]);
+    if (2 * (f.half + C.marginDeg) <= C.maxFov) return { look: f.aim, fov: clamp(2 * (f.half + C.marginDeg), C.fovMin, C.maxFov) };
+  }
+  const f = fitAim(pos, pts);
+  return { look: f.aim, fov: clamp(2 * (f.half + C.marginDeg), C.fovMin, C.maxFov) };
+}
+
+// The aim that needs the narrowest view to hold every point (it starts at their middle and leans toward whichever is furthest out
+// until no lean helps): { aim, half } (half = degrees from the aim to the furthest point).
+function fitAim(pos, pts) {
+  let ax = 0, ay = 0, az = 0;
+  for (const q of pts) { ax += q[0]; ay += q[1]; az += q[2]; }
+  let aim = [ax / pts.length, ay / pts.length, az / pts.length];
+  let half = fitHalf(pos, pts, aim);
+  for (let i = 0; i < 24; i++) {
+    let worst = null, wa = -1;
+    for (const q of pts) { const a = angleBetween(pos, q, aim); if (a > wa) { wa = a; worst = q; } }
+    // lean toward the worst point: aim along a direction part of the way from the current aim to it (as unit vectors from the camera)
+    const u = unit([aim[0] - pos[0], aim[1] - pos[1], aim[2] - pos[2]]), w = unit([worst[0] - pos[0], worst[1] - pos[1], worst[2] - pos[2]]);
+    const k = 0.5 / (i + 2);
+    const dir = unit([u[0] + (w[0] - u[0]) * k, u[1] + (w[1] - u[1]) * k, u[2] + (w[2] - u[2]) * k]);
+    const next = [pos[0] + dir[0] * 100, pos[1] + dir[1] * 100, pos[2] + dir[2] * 100];
+    const h = fitHalf(pos, pts, next);
+    if (h < half) { half = h; aim = next; }
+  }
+  return { aim, half };
+}
+const unit = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
+
 // the widest angle (degrees) from the view axis (pos -> aim) to any of the points
 function fitHalf(pos, pts, aim) {
   let half = 0;
   for (const q of pts) half = Math.max(half, angleBetween(pos, q, aim));
   return half;
-}
-
-/** The fixed direction of the chase camera: from home plate toward a spot on the field (radians, 0 = straight out to center). */
-export function chaseYaw(spot) {
-  return Math.hypot(spot.x, spot.z) > 1 ? Math.atan2(spot.x, -spot.z) : 0;
-}
-
-/** The stick (sx right, sy up on the screen, length <= 1) in field coordinates for a chase camera turned by `yaw`: [dx, dz]. */
-export function screenToField(sx, sy, yaw) {
-  const ux = Math.sin(yaw), uz = -Math.cos(yaw); // up on the screen
-  return [sx * -uz + sy * ux, sx * ux + sy * uz]; // (right on the screen = (-uz, ux))
 }
 
 // the angle (degrees) at `from` between the directions to two points

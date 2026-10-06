@@ -158,17 +158,6 @@ function buildPlayable() {
   return poly.concat(side(1), back, side(-1).reverse());
 }
 let PLAYABLE = buildPlayable();
-let SPAN = null; // (cached for the PLAYABLE it was measured on)
-
-/** The longest straight line inside the ballpark outline: the farthest apart any two of its corners are (ft). */
-export function parkSpan() {
-  if (SPAN && SPAN.poly === PLAYABLE) return SPAN.d;
-  let d = 0;
-  for (let i = 0; i < PLAYABLE.length; i++) for (let j = i + 1; j < PLAYABLE.length; j++) d = Math.max(d, Math.hypot(PLAYABLE[i][0] - PLAYABLE[j][0], PLAYABLE[i][1] - PLAYABLE[j][1]));
-  SPAN = { poly: PLAYABLE, d };
-  return d;
-}
-
 function pointInPolygon(x, z, poly) {
   let inside = false;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
