@@ -178,6 +178,7 @@ export const CONFIG = {
     rimColor: 0x0b1230, rimOpacity: 0.5, rimScale: 1.06, // (a thin dark edge so the white ball never melts into a white background - thin enough that it still looks like a ball)
     shadowOpacity: 0.55, shadowRadius: 0.2, // (a ball-sized shadow, not a puddle)
     trailColor: 0xdfe9ff, trailSize: 0.36, trailSeconds: 0.11, trailStrength: 0.6, // (a longer streak shows which way it is heading)
+    trailPitching: 0.45, trailPitchingSize: 0.4, // while you pitch (the zoomed-in view): the streak this faint and this thin
     // ...and on screen at least this many pixels across (or this fraction of the screen height, whichever is bigger) while it still
     // grows as it comes in: at release a real-size ball is only ~2.5 px on a phone held sideways. Only the picture: timing is unchanged.
     minScreenPx: 6,
@@ -442,11 +443,9 @@ export const CONFIG = {
     callColor: 0xffc23a, callLocked: 0x5dff8f, callR: 0.3, // the catcher's call: a gold target (ft radius) - green when you are on it with the pitch he called
   },
 
-  // The big aiming panel while you pitch (ui.setAimPad, App.updateAimPad): the strike zone drawn large over the plate.
+  // The aiming marks while you pitch (ui.setAimPad, App.updateAimPad), drawn exactly on the real strike zone.
   aimPad: {
-    zoneShare: 0.28, // the strike zone is this share of the screen's height
-    dot: 0.26, // ft: your dot's radius on it (the ring closes onto it when you should let go / tap)
-    margin: 8, marginTop: 64, // px it keeps from the screen's edges (and from the top, under the pitch pill)
+    dot: 0.26, // ft: your dot's radius (the ring closes onto it when you should let go / tap)
   },
 
   // The see-through bat you aim with (render/batAim.js) and how the cursor / keys / a finger move it
@@ -939,7 +938,7 @@ export const CONFIG = {
     batter: { pos: [0.0, 13.5, 24.0], pitch: -14.5, fov: 36 }, // camera behind the plate; pitch in degrees
     // the catcher's view you bat from (after Ready): through the catcher's eyes, over his glove (the rest of him is hidden)
     catcher: { pos: [0, 3.3, 7.0], look: [0, 1.2, -30], fov: 42, zoom: 5, clearDist: 6, umpireHead: 4.2, mittY: 1.75, mittReach: 0.16, firstDelay: 0.5 }, // zoom = how quickly it moves in; clearDist = the catcher and umpire are hidden while the camera is closer than this (ft) to them (the batting view, and the pull-back after a swing) (umpireHead = his head's height); the catcher's mitt waits low at mittY and reaches for the ball in the last mittReach s
-    pitcher: { pos: [-3.5, 12, -110], look: [0, 2.0, 0], fov: 10, ease: 4, minHorizontalFov: 16, twoStrikeZoom: 0.9 }, // (twoStrikeZoom: x the view with two strikes on him - the camera leans in) // the pitching view: the TV center-field camera - well behind and above the mound with a long lens, so the zone and the batter are big and the pitcher stands off to one side in front (x is for a right-hander; a left-hander is mirrored); ease = how quickly it moves in (bigger = quicker); minHorizontalFov = how wide (deg) a narrow screen makes it at least
+    pitcher: { pos: [-2.5, 11, -80], look: [0, 2.4, 0], fov: 7.5, ease: 4, minHorizontalFov: 12, twoStrikeZoom: 0.92 }, // (twoStrikeZoom: x the view with two strikes on him - the camera leans in) // the pitching view: over your pitcher's head with a long lens - the batter, the catcher and the strike zone big in the middle, your pitcher just out of the picture (x is for a right-hander; a left-hander is mirrored); ease = how quickly it moves in (bigger = quicker); minHorizontalFov = how wide (deg) a narrow screen makes it at least
     fieldView: { // the computer hit it (you pitch): the camera behind home plate, looking out - low and close on the action
       up: [14, 38], // ft above the grass: for the action at home ... farFeet out
       back: [34, 2], // ft behind the plate (z) for the same: it moves in a little for a deep ball

@@ -1185,7 +1185,9 @@ export class App {
         t.lx = e.clientX; t.ly = e.clientY;
         if (Math.hypot(e.clientX - t.x0, e.clientY - t.y0) > CONFIG.batAim.tapPx) t.moved = true;
         const k = this.ftPerPx() * CONFIG.batAim.touchGain;
-        this.aimTarget.x += dx * k; this.aimTarget.y -= dy * k;
+        // (the pitching view looks in from center field: the screen's right is the field's -x - a drag to the right moves the dot right)
+        const mirror = t.pitch ? -1 : 1;
+        this.aimTarget.x += mirror * dx * k; this.aimTarget.y -= dy * k;
         this.clampAimTarget();
         return;
       }
@@ -1362,23 +1364,23 @@ export class App {
     this.updateAimPad(e, dt);
   }
 
-  // The big aiming panel (ui.setAimPad): the strike zone drawn large over the plate while you pitch - the batter's hot / cold zones,
-  // the catcher's call, your dot and the shrinking ring, the grade word, and this at-bat's pitches. It steps aside while the pitch
-  // is in the air (only the marks and the word stay) and comes back for the call. `aimPadGeo` maps the cursor / a finger onto it.
+  // The aiming marks (ui.setAimPad), drawn exactly on the real strike zone (its size and place come from the camera every frame): the
+  // batter's hot / cold cells, the catcher's call, your dot and the shrinking ring, the grade word, and this at-bat's pitches. While the
+  // pitch is in the air only the marks and the word stay. `aimPadGeo` maps the cursor / a finger onto it.
   updateAimPad(e, dt) {
     const on = !!(e && !this.paused && !this.ui.current && !e.simming && this.screen === 'game' && this.isPitchView(e) && e.mound);
     if (this.padWord) { this.padWord.t += dt; if (this.padWord.t > CONFIG.pitchAim.flashTime) this.padWord = null; }
+    this.zone.visible = !!(this.settings.zone && this.engine && !on); // (while you pitch the marks draw the zone themselves)
     if (!on) { if (this.aimPadGeo) { this.aimPadGeo = null; this.ui.setAimPad(null); } return; }
     const AP = CONFIG.aimPad, PA = CONFIG.pitchAim, P = CONFIG.pitch, R = CONFIG.swing.reach;
     const mid = (P.zoneTop + P.zoneBottom) / 2;
-    const v = (this.padV || (this.padV = new THREE.Vector3())).set(0, mid, P.contactZ).project(this.S.camera);
-    const W = this.S.size.w, H = this.S.size.h;
-    const k = (H * AP.zoneShare) / (P.zoneTop - P.zoneBottom);
-    const w = 2 * R.x * k, h = (R.yMax - R.yMin) * k;
-    const cx0 = ((v.x + 1) / 2) * W, cy0 = ((1 - v.y) / 2) * H;
-    const left = clamp(cx0 - R.x * k, AP.margin, Math.max(AP.margin, W - w - AP.margin));
-    const top = clamp(cy0 - (R.yMax - mid) * k, AP.marginTop, Math.max(AP.marginTop, H - h - AP.margin));
-    this.aimPadGeo = { k, mid, cx: left + R.x * k, cy: top + (R.yMax - mid) * k };
+    const W = this.S.size.w, H = this.S.size.h, cam = this.S.camera;
+    const v = (this.padV || (this.padV = new THREE.Vector3())).set(0, mid, P.contactZ).project(cam);
+    const cx = ((v.x + 1) / 2) * W, cy = ((1 - v.y) / 2) * H;
+    v.set(0, mid + 1, P.contactZ).project(cam);
+    const k = Math.max(1, cy - ((1 - v.y) / 2) * H); // (px per ft on the plane over the plate)
+    const left = cx - R.x * k, top = cy - (R.yMax - mid) * k;
+    this.aimPadGeo = { k, mid, cx, cy };
     const aiming = e.phase === 'aim' || e.phase === 'delivery';
     const ring = e.phase === 'delivery' ? e.ring : null;
     const aim = ring ? ring.aim : e.pitchAim;
@@ -1464,7 +1466,8 @@ export class App {
     if (this.aimMode === 'mouse' && this.mouse && batting) this.aimOnCursor();
     if (this.aimMode === 'keys') {
       const k = A.keySpeed * dt;
-      this.aimTarget.x += ((this.aimKeys.right ? 1 : 0) - (this.aimKeys.left ? 1 : 0)) * k;
+      const mirror = this.isPitching(e) ? -1 : 1; // (pitching: the view looks in from center field - right on the screen is the field's -x)
+      this.aimTarget.x += mirror * ((this.aimKeys.right ? 1 : 0) - (this.aimKeys.left ? 1 : 0)) * k;
       this.aimTarget.y += ((this.aimKeys.up ? 1 : 0) - (this.aimKeys.down ? 1 : 0)) * k;
     }
     this.clampAimTarget();

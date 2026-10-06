@@ -128,6 +128,7 @@ export class UI {
     hud.innerHTML = `
       <div class="vignette"></div>
       <svg class="aimpad" aria-hidden="true"><rect class="ap-reach"/><g class="ap-cells"></g><rect class="ap-zone"/><g class="ap-marks"></g><g class="ap-call"><circle class="ap-callring"/><path class="ap-callticks"/></g><circle class="ap-dot"/><circle class="ap-ring"/><text class="ap-word"></text></svg>
+      <div class="aplegend" aria-hidden="true"><span class="hot">Hot</span><span class="cold">Cold</span><span class="call">Catcher</span></div>
       <div class="throwpad" aria-label="Throw to">
         <svg class="tpfield" viewBox="0 0 200 200" aria-hidden="true"><path d="M100 172 L172 100 L100 28 L28 100 Z"/></svg>
         <svg class="tpfield tpdots" viewBox="0 0 200 200" aria-hidden="true"><g class="runners"></g><circle class="tpball" r="0"/></svg>
@@ -1089,8 +1090,11 @@ export class UI {
    *     faded (true while the pitch is in the air: only the marks and the word stay) }
    */
   setAimPad(o) {
-    const el = this.hud.querySelector('.aimpad');
-    if (!o) { if (this.aimPadOn) { this.aimPadOn = false; el.classList.remove('show'); } return; }
+    const el = this.hud.querySelector('.aimpad'), lg = this.hud.querySelector('.aplegend');
+    if (!o) { if (this.aimPadOn) { this.aimPadOn = false; el.classList.remove('show'); lg.classList.remove('show'); } return; }
+    // the legend under the zone while you aim: what the colours and the crosshair are
+    lg.classList.toggle('show', !!o.dot && !o.faded);
+    if (o.dot) { lg.style.left = `${o.left + o.reach.x * o.pxPerFt}px`; lg.style.top = `${o.top + (o.reach.yMax - o.zone.bottom) * o.pxPerFt + 10}px`; }
     if (!this.aimPadOn) { this.aimPadOn = true; el.classList.add('show'); }
     el.classList.toggle('faded', !!o.faded);
     const R = o.reach, Z = o.zone, k = o.pxPerFt;

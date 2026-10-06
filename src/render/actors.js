@@ -1062,7 +1062,8 @@ export class Actors {
         const T = cfg.pitch.trailSeconds, pts = [];
         for (let k = 0; k < 30; k++) { const w = f.at(Math.max(0, pt - (k * T) / 29)); pts.push(new THREE.Vector3(w.x, w.y, w.z)); }
         this.trailPts = pts;
-        trail = pt > 0.02 ? cfg.pitch.trailStrength : 0;
+        trail = pt > 0.02 ? cfg.pitch.trailStrength * (E.pitching ? cfg.pitch.trailPitching : 1) : 0;
+        this.ball.trailScale = E.pitching ? cfg.pitch.trailPitchingSize : 1;
         spinRate = pitch.flight.spin.rpm * 0.0105 * (pitch.type === 'changeup' ? 0.6 : 1);
         this.ballSpinAxis(pitch.flight.spin.axis);
       } else {

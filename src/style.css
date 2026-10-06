@@ -349,20 +349,30 @@ body.touch .swingbtn.show { display: flex; }
 .aimpad.show { display: block; }
 .aimpad.faded > :not(.ap-marks):not(.ap-word) { opacity: 0; }
 .aimpad > * { transition: opacity .14s; }
-.ap-reach { fill: rgba(8, 14, 28, .22); stroke: rgba(255, 255, 255, .18); stroke-width: .02; }
-.ap-zone { fill: rgba(255, 255, 255, .05); stroke: rgba(255, 255, 255, .9); stroke-width: .035; }
-.ap-cells .hot { fill: rgba(255, 70, 50, .33); }
-.ap-cells .cold { fill: rgba(60, 140, 255, .33); }
+.ap-reach { display: none; }
+.ap-zone { fill: none; stroke: rgba(255, 255, 255, .85); stroke-width: .022; }
+.ap-cells .hot { fill: rgba(255, 70, 50, .3); }
+.ap-cells .cold { fill: rgba(60, 140, 255, .3); }
 .ap-marks circle { stroke: #0a1020; stroke-width: .025; }
 .ap-marks .strike circle { fill: #ffc23a; } .ap-marks .ball circle { fill: #6fb8ff; }
 .ap-marks text { font: 400 .15px/1 var(--display); fill: #1a1206; text-anchor: middle; }
-.ap-call circle { fill: none; stroke: #ffc23a; stroke-width: .045; }
-.ap-call path { stroke: #ffc23a; stroke-width: .045; stroke-linecap: round; }
+.ap-call circle { fill: none; stroke: #ffc23a; stroke-width: .035; }
+.ap-call path { stroke: #ffc23a; stroke-width: .035; stroke-linecap: round; }
 .ap-call.locked circle, .ap-call.locked path { stroke: #5dff8f; }
-.ap-dot { fill: rgba(255, 255, 255, .55); stroke: #fff; stroke-width: .035; }
-.ap-ring { fill: none; stroke: #fff; stroke-width: .06; }
+.ap-dot { fill: rgba(255, 255, 255, .45); stroke: #fff; stroke-width: .03; }
+.ap-ring { fill: none; stroke: #fff; stroke-width: .045; }
 .ap-ring.gold { stroke: #ffd24a; }
-.ap-word { font: 400 .42px/1 var(--display); text-anchor: middle; paint-order: stroke; stroke: #3a2008; stroke-width: .07; }
+.ap-word { font: 400 .3px/1 var(--display); text-anchor: middle; paint-order: stroke; stroke: #3a2008; stroke-width: .07; }
+/* under the zone while you aim: what the colours and the crosshair mean (labels only) */
+.aplegend { position: absolute; display: none; transform: translateX(-50%); gap: 10px; padding: 4px 10px; border-radius: 9px; background: rgba(8, 14, 28, .55); font: 700 11px/1 var(--cond); letter-spacing: .1em; text-transform: uppercase; color: rgba(255, 255, 255, .85); pointer-events: none; white-space: nowrap; z-index: 2; }
+.aplegend.show { display: flex; }
+.aplegend span::before { content: ''; display: inline-block; width: 9px; height: 9px; margin-right: 5px; border-radius: 2px; vertical-align: -1px; }
+.aplegend .hot::before { background: rgba(255, 70, 50, .85); }
+.aplegend .cold::before { background: rgba(60, 140, 255, .85); }
+.aplegend .call::before { border-radius: 50%; border: 2px solid #ffc23a; width: 6px; height: 6px; }
+/* while you aim the batting order steps aside for the batter's name */
+.hud.pitching.ctl .lineup { display: none !important; }
+.hud.pitching.ctl .batter-tag:not(:empty) { display: block !important; }
 /* your throws (you are in the field): the throw pad - four big bases in a diamond and the mound in the middle; tap where it goes */
 .throwpad { --tp: 280px; position: absolute; right: calc(var(--safe-r) + 14px); bottom: calc(var(--safe-b) + 14px); width: var(--tp); height: var(--tp); display: none; pointer-events: none; z-index: 6; }
 .throwpad.show { display: block; }
