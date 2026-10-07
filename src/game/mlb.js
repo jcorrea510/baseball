@@ -6,6 +6,7 @@
 import { CONFIG } from '../config.js';
 import { createRng } from '../util/rng.js';
 import { SKINS } from './teams.js';
+import { realNumber, lookOf } from './looks.js';
 
 // strength tiers: 1 (rebuilding) .. 5 (the team to beat). A team's CPU strength rating comes from it (see config.season.tierRating).
 // stars: [name, position, batting average, home runs, stolen bases, bats] - last season's numbers
@@ -261,9 +262,9 @@ export function starPlayer(team, row, k, rng) {
   void fn;
   return {
     id: `${team.id}-${k}`, name, short: shortName(name), last: rest.join(' '), team: team.abbr, teamId: team.id, star: true,
-    number: [24, 7, 12, 27, 99, 2, 44, 19, 3, 8][(k * 3 + team.abbr.charCodeAt(0)) % 10],
+    number: realNumber(name) ?? [24, 7, 12, 27, 99, 2, 44, 19, 3, 8][(k * 3 + team.abbr.charCodeAt(0)) % 10], // (his real number when the look table knows it)
     pos, hand: bats === 'L' ? 'L' : 'R', switch: bats === 'S',
-    skin: SKINS[(team.abbr.charCodeAt(0) + k * 3 + team.abbr.charCodeAt(1)) % SKINS.length],
+    skin: lookOf({ name }).skin, // (the picture uses looks.js lookOf; kept for older code)
     scale: +(0.97 + rng.range(0, 0.06)).toFixed(3), build: +(0.97 + rng.range(0, 0.1)).toFixed(3),
     con, pow, spd, real: { avg, hr, sb }, // (last season's real numbers)
   };
@@ -288,12 +289,12 @@ export function pitcherRatings(row, cfg = CONFIG) {
 }
 
 const ARM_NUMBERS = [31, 45, 54, 58, 35, 47, 62, 41, 22, 39, 57, 66];
-/** The look of the k-th arm of a team (skin, height, build, jersey number), the same every time. */
-function armLook(team, k) {
+/** The look of the k-th arm of a team (skin, height, build, jersey number - his real one when looks.js knows it), the same every time. */
+function armLook(team, k, name = '') {
   const rng = createRng(team.id.charCodeAt(0) * 173 + k * 29 + team.id.charCodeAt(team.id.length - 1) * 7 + 0x5eed);
   return {
-    number: ARM_NUMBERS[(k * 5 + team.abbr.charCodeAt(0)) % ARM_NUMBERS.length],
-    skin: SKINS[(team.abbr.charCodeAt(0) + k * 5 + team.abbr.charCodeAt(1)) % SKINS.length],
+    number: realNumber(name) ?? ARM_NUMBERS[(k * 5 + team.abbr.charCodeAt(0)) % ARM_NUMBERS.length],
+    skin: name ? lookOf({ name }).skin : SKINS[(team.abbr.charCodeAt(0) + k * 5 + team.abbr.charCodeAt(1)) % SKINS.length],
     scale: +(1.0 + rng.range(0, 0.07)).toFixed(3), build: +(0.98 + rng.range(0, 0.08)).toFixed(3),
   };
 }
@@ -303,7 +304,7 @@ export function armPlayer(team, row, k) {
   const [name, role, throws, era, k9, bb9, velo, pitches, ip] = row;
   return {
     id: `${team.id}-p${k}`, name, short: shortName(name), team: team.abbr, teamId: team.id, star: true, role, hand: throws === 'L' ? 'L' : 'R',
-    ...pitcherRatings(row), pitches: [...pitches], ...armLook(team, k),
+    ...pitcherRatings(row), pitches: [...pitches], ...armLook(team, k, name),
     real: { era, k9, bb9, velo, ip }, // (last season's real line)
   };
 }

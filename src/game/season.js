@@ -1,6 +1,7 @@
 // Season mode: a league of nine teams, a schedule that goes from the weakest opponent to the strongest, standings (the other
 // games are simulated), playoffs and a World Series, coins for results, a roster of rated players and a shop to buy better ones.
 // Pure logic on a plain object (it is saved as JSON in the player's save): no graphics, no DOM, easy to test.
+import { realNumber } from './looks.js';
 import { CONFIG } from '../config.js';
 import { createRng } from '../util/rng.js';
 import { clamp } from '../util/math.js';
@@ -636,6 +637,8 @@ export function ensureStaff(s, cfg = CONFIG) {
   s.rest ||= {};
   s.pstats ||= {};
   for (const p of s.staff) if (typeof s.rest[p.id] !== 'number') s.rest[p.id] = 1;
+  // (a league saved before the real jersey numbers were known: a real player gets his own number - picture and labels only)
+  for (const p of [...(s.roster || []), ...s.staff, ...(s.shop || [])]) if (p && p.star) { const n = realNumber(p.name); if (n != null) p.number = n; }
   return s;
 }
 

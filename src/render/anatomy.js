@@ -17,7 +17,17 @@ function bumpAt(bumps, th) {
   return k;
 }
 
-const cr = (p0, p1, p2, p3, t) => {
+// A point round a ring at angle `th` (see loft): an ellipse, or a squarer superellipse when the ring has an exponent `n` > 2 (a face is
+// flatter in front and turns more sharply at the sides than an ellipse).
+export function ringPoint(r, th, out = [0, 0, 0]) {
+  const k = bumpAt(r.bumps, th);
+  let s = Math.sin(th), c = Math.cos(th);
+  if (r.n && r.n !== 2) { const e = 2 / r.n; s = Math.sign(s) * Math.pow(Math.abs(s), e); c = Math.sign(c) * Math.pow(Math.abs(c), e); }
+  out[0] = (r.x || 0) + s * r.rx * k; out[1] = r.y; out[2] = (r.z || 0) + c * r.rz * k;
+  return out;
+}
+
+export const cr = (p0, p1, p2, p3, t) => {
   const t2 = t * t, t3 = t2 * t;
   return 0.5 * (2 * p1 + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (-p0 + 3 * p1 - 3 * p2 + p3) * t3);
 };
@@ -26,7 +36,7 @@ const cr = (p0, p1, p2, p3, t) => {
  * A smooth closed surface swept through `rings` (in order along the part, usually from the joint down).
  * Ring: { y, rx, rz, x = 0, z = 0, bumps = [{ a, w, h }] } - an ellipse of half-widths rx (left-right) and rz (front-back) centred at
  * (x, y, z); a bump pushes it out by h x the radius around angle a (+- w, a cosine bump). Between rings the surface follows a
- * Catmull-Rom curve (`sub` steps per span). Columns start at the figure's right (-x) and go round through the front, so the
+ * Catmull-Rom curve (`sub` steps per span). A ring may also carry `n`, a superellipse exponent (see ringPoint). Columns start at the figure's right (-x) and go round through the front, so the
  * front is at u = 0.25 (the jersey texture's convention). Ends are closed with a rounded cap (`dome` x the end radius).
  * @returns {THREE.BufferGeometry} (cached when `key` is given - never dispose a cached one)
  */
@@ -37,9 +47,7 @@ export function loft(rings, { seg = 16, sub = 2, cap = true, dome = 0.35, key = 
   const P = rings.map((r) => {
     const pts = [];
     for (let j = 0; j < cols; j++) {
-      const th = -Math.PI / 2 + (2 * Math.PI * j) / seg;
-      const k = bumpAt(r.bumps, th);
-      pts.push([(r.x || 0) + Math.sin(th) * r.rx * k, r.y, (r.z || 0) + Math.cos(th) * r.rz * k]);
+      pts.push(ringPoint(r, -Math.PI / 2 + (2 * Math.PI * j) / seg, []));
     }
     return pts;
   });
@@ -125,9 +133,9 @@ const L = (rings, dl, key, extra = {}) => { const o = { ...lod(dl), ...extra }; 
 export function upperArmParts({ side, dl, len, arm, armMat = 'skin', sleeve, trim }) {
   const out = H * side;
   const skin = [
-    { y: 0.1, rx: 0.16, rz: 0.16 },
-    { y: -0.05, rx: 0.2, rz: 0.19, bumps: [{ a: out, w: 1.1, h: 0.12 }] },
-    { y: -0.25, rx: 0.178, rz: 0.17, bumps: [{ a: out, w: 0.9, h: 0.13 }, { a: 0, w: 0.9, h: 0.05 }] },
+    { y: 0.1, rx: 0.15, rz: 0.15 },
+    { y: -0.05, rx: 0.18, rz: 0.172, bumps: [{ a: out, w: 1.1, h: 0.1 }] },
+    { y: -0.25, rx: 0.168, rz: 0.162, bumps: [{ a: out, w: 0.9, h: 0.12 }, { a: 0, w: 0.9, h: 0.05 }] },
     { y: -0.45, rx: 0.152, rz: 0.158, bumps: [{ a: out, w: 0.6, h: 0.06 }, { a: Math.PI, w: 1.1, h: 0.1 }] },
     { y: -0.6, rx: 0.146, rz: 0.168, bumps: [{ a: 0, w: 1.0, h: 0.17 }, { a: Math.PI, w: 1.2, h: 0.12 }] },
     { y: -0.78, rx: 0.138, rz: 0.15, bumps: [{ a: 0, w: 1.0, h: 0.1 }, { a: Math.PI, w: 1.0, h: 0.05 }] },
@@ -137,14 +145,14 @@ export function upperArmParts({ side, dl, len, arm, armMat = 'skin', sleeve, tri
   // (the sleeve's top is a round cap over the shoulder joint: it closes in a dome, never a point)
   const sl = [
     { y: 0.27, rx: 0.06, rz: 0.06 },
-    { y: 0.24, rx: 0.15, rz: 0.145 },
-    { y: 0.15, rx: 0.218, rz: 0.21 },
-    { y: 0.02, rx: 0.245, rz: 0.235, bumps: [{ a: out, w: 1.2, h: 0.06 }] },
-    { y: -0.25, rx: 0.232, rz: 0.222 },
-    { y: -0.5, rx: 0.212, rz: 0.212 },
-    { y: -0.52, rx: 0.2, rz: 0.2 },
+    { y: 0.24, rx: 0.14, rz: 0.136 },
+    { y: 0.15, rx: 0.2, rz: 0.192 },
+    { y: 0.02, rx: 0.218, rz: 0.21, bumps: [{ a: out, w: 1.2, h: 0.05 }] },
+    { y: -0.25, rx: 0.208, rz: 0.2 },
+    { y: -0.5, rx: 0.19, rz: 0.19 },
+    { y: -0.52, rx: 0.18, rz: 0.18 },
   ];
-  const hem = [{ y: -0.47, rx: 0.218, rz: 0.218 }, { y: -0.52, rx: 0.218, rz: 0.218 }];
+  const hem = [{ y: -0.47, rx: 0.196, rz: 0.196 }, { y: -0.52, rx: 0.196, rz: 0.196 }];
   return [
     { geo: L(skin, dl, `uarm${side}|${len}`), color: arm, ao: 0.06, mat: armMat },
     { geo: L(sl, dl, `sleeve${side}`, { dome: 0.3 }), color: sleeve },
@@ -372,9 +380,13 @@ function handParts0(kind, { side, dl, color, cuff, strap, gp }) {
     for (let f = 0; f < 4; f++) parts.push({ geo: tor(0.088 - f * 0.004, 0.03 - f * 0.002, Math.PI * 1.5, fine ? 6 : 4, fine ? 14 : 10), color: f % 2 ? dark : color, x: (-0.075 + f * 0.05) * s, y: gp.y, z: gp.z, ry: Math.PI / 2, rz: 1.2 });
     return parts;
   }
-  // a bare (or gloved) open hand: palm with the pad of the thumb, four fingers of three bones, a thumb of two
+  // a bare (or gloved) open hand: palm with the pad of the thumb, four fingers of three bones, a thumb of two. The palm is lighter
+  // than the back of the hand (much lighter on dark skin, as on real hands).
+  const cc = new THREE.Color(color), lum = 0.3 * cc.r + 0.59 * cc.g + 0.11 * cc.b;
+  const lift = 1 + 1.4 * Math.max(0, 0.32 - lum) + 0.06;
+  const palmPaint = (x, y, z) => { const t = Math.max(0, Math.min(1, (z + 0.005) / 0.04)); const k = 1 + (lift - 1) * t; return [k, k * 0.98, k * 0.96]; };
   const parts = [
-    { geo: L([{ y: 0.03, rx: 0.078, rz: 0.055 }, { y: -0.06, rx: 0.106, rz: 0.056, bumps: [{ a: -s * 0.75, w: 0.8, h: 0.24 }] }, { y: -0.16, rx: 0.12, rz: 0.048, bumps: [{ a: -s * 0.8, w: 0.7, h: 0.14 }, { a: Math.PI, w: 0.9, h: -0.1 }] }, { y: -0.25, rx: 0.114, rz: 0.04 }], dl, `palm2${s}`, { dome: 0.45 }), color },
+    { paint: palmPaint, geo: L([{ y: 0.03, rx: 0.078, rz: 0.055 }, { y: -0.06, rx: 0.106, rz: 0.056, bumps: [{ a: -s * 0.75, w: 0.8, h: 0.24 }] }, { y: -0.16, rx: 0.12, rz: 0.048, bumps: [{ a: -s * 0.8, w: 0.7, h: 0.14 }, { a: Math.PI, w: 0.9, h: -0.1 }] }, { y: -0.25, rx: 0.114, rz: 0.04 }], dl, `palm2${s}`, { dome: 0.45 }), color },
   ];
   if (!fine) {
     // (far away or on a phone: the fingers together, like a mitten, loosely curled)
@@ -448,29 +460,82 @@ function gloveParts0(kind, { dl, gy, leather, lace, web, patch }) {
     at({ geo: cap(0.055, 0.26, 3, 8), color: shade(leather, 0.94), y: -0.01, z: 0.14, rz: Math.PI / 2 }), // the heel's padded roll
     at({ geo: cyl(0.128, 0.134, 0.09, fine ? 14 : 8), color: dark, y: 0.06 }), // wrist strap
     at({ geo: box3(0.09, 0.06, 0.012), color: patch, x: 0.04, y: 0.0, z: -0.04 }), // the maker's patch on the back
+    at({ geo: tor(0.205, 0.016, Math.PI * 1.1, 4, fine ? 18 : 8), color: dark, y: -0.3, z: 0.14, rz: Math.PI * 0.95, sx: 1.08, sy: 1.25, rx: 0.08 }), // the binding round the pocket's heel
   );
-  // four finger stalls, each a little longer toward the middle, fanning out and curling forward to make the pocket
+  // four finger stalls side by side, each a little longer toward the middle, fanning out and curling forward to make the pocket, with
+  // the welting (a darker seam) between them and the lace that ties their tips together
   const stall = [0.3, 0.34, 0.33, 0.28];
   for (let f = 0; f < 4; f++) {
-    const x = -0.12 + f * 0.085, len = stall[f], fan = (f - 1.2) * 0.07;
-    parts.push(at({ geo: cap(0.056, len, fine ? 3 : 2, fine ? 10 : 6), color: f % 2 ? leather : shade(leather, 0.95), x: x + Math.sin(fan) * len * 0.45, y: -0.4 - len * 0.45, z: 0.12, rx: 0.16, rz: -fan, sz: 0.85 }));
-    if (fine) parts.push(at({ geo: cap(0.012, 0.05, 2, 5), color: lace, x: x + Math.sin(fan) * len * 0.92, y: -0.42 - len * 0.92, z: 0.16, rz: Math.PI / 2 - fan })); // the lace across the tip
+    const x = -0.12 + f * 0.082, len = stall[f], fan = (f - 1.2) * 0.07;
+    parts.push(at({ geo: cap(0.058, len, fine ? 3 : 2, fine ? 12 : 6), color: leather, x: x + Math.sin(fan) * len * 0.45, y: -0.4 - len * 0.45, z: 0.12, rx: 0.16, rz: -fan, sx: 1.12, sz: 0.78, paint: (px, py) => { const k = 1 - 0.1 * Math.max(0, Math.min(1, -py / 0.2)); return [k, k, k]; } }));
+    if (fine) {
+      parts.push(at({ geo: cap(0.011, 0.06, 2, 5), color: lace, x: x + Math.sin(fan) * len * 0.93, y: -0.41 - len * 0.93, z: 0.155, rz: Math.PI / 2 - fan, sy: 1.4 })); // the lace across the tip
+      if (f > 0) parts.push(at({ geo: cap(0.012, len * 0.8, 2, 5), color: dark, x: x - 0.041 + Math.sin(fan) * len * 0.45, y: -0.42 - len * 0.45, z: 0.158, rx: 0.16, rz: -fan })); // the welting
+    }
   }
   // the thumb stall: down the -x side and forward
   parts.push(at({ geo: cap(0.066, 0.3, fine ? 3 : 2, fine ? 10 : 6), color: leather, x: -0.25, y: -0.3, z: 0.15, rx: 0.2, rz: -0.32, sz: 0.85 }));
-  // the H-web between the thumb and the first finger: two uprights and three cross straps
-  const wx = -0.19, wy = -0.55, wz = 0.18;
+  // the web between the thumb and the first finger: a leather panel with a post down each side and laces across it
+  const wx = -0.2, wy = -0.56, wz = 0.165;
   parts.push(
-    at({ geo: box3(0.025, 0.3, 0.02), color: web, x: wx - 0.035, y: wy, z: wz, rz: -0.18 }),
-    at({ geo: box3(0.025, 0.3, 0.02), color: web, x: wx + 0.035, y: wy, z: wz, rz: -0.12 }),
+    at({ geo: sph(0.12, fine ? 12 : 6, fine ? 10 : 5), color: web, x: wx, y: wy, z: wz, rz: -0.16, sx: 0.62, sy: 1.35, sz: 0.14 }),
+    at({ geo: cap(0.016, 0.28, 2, 6), color: web, x: wx - 0.07, y: wy, z: wz + 0.01, rz: -0.2 }),
+    at({ geo: cap(0.016, 0.28, 2, 6), color: web, x: wx + 0.07, y: wy, z: wz + 0.01, rz: -0.12 }),
   );
-  for (let k = 0; k < 3; k++) parts.push(at({ geo: box3(0.11, 0.022, 0.018), color: web, x: wx + 0.01 * k, y: wy + 0.1 - k * 0.1, z: wz + 0.004, rz: -0.15 }));
+  if (fine) for (let k = 0; k < 4; k++) parts.push(at({ geo: cap(0.009, 0.13, 2, 5), color: lace, x: wx + 0.012 * (k - 1.5), y: wy + 0.12 - k * 0.08, z: wz + 0.02, rz: Math.PI / 2 - 0.15 }));
   if (fine) {
     // the lace stitched down the little-finger side (half sunk into the leather)
     for (let k = 0; k < 5; k++) parts.push(at({ geo: cap(0.012, 0.035, 2, 5), color: lace, x: 0.226 - k * 0.004, y: -0.1 - k * 0.07, z: 0.09, rx: Math.PI / 2 }));
   }
   return parts;
 }
+// ---------------------------------------------------------------------------------------------------------------- cleats
+/**
+ * A baseball cleat in ankle space (the ankle joint at the origin, the ground at -0.26, the toe toward +z): a lofted leather upper
+ * (heel counter, instep, a low toe box), the sole, the spikes under it, the laces, the collar and a stripe down each side.
+ * @param {object} o { dl, shoe, sole, accent }
+ */
+export function cleatParts({ dl, shoe, sole = '#121316', accent = '#e6e6e6' }) {
+  const fine = dl > 0.7;
+  // rings along the foot from the heel to the toe (built along y, turned so y points at the toe); rz = half the height, z = how far the
+  // middle sits BELOW the ankle (it becomes -y)
+  const up = [
+    { y: -0.215, rx: 0.06, rz: 0.06, z: 0.13 },
+    { y: -0.17, rx: 0.105, rz: 0.11, z: 0.1 },
+    { y: -0.06, rx: 0.12, rz: 0.14, z: 0.075 },
+    { y: 0.1, rx: 0.127, rz: 0.12, z: 0.095 },
+    { y: 0.28, rx: 0.132, rz: 0.088, z: 0.145, n: 2.4 },
+    { y: 0.45, rx: 0.122, rz: 0.066, z: 0.172, n: 2.4 },
+    { y: 0.57, rx: 0.09, rz: 0.05, z: 0.188 },
+    { y: 0.63, rx: 0.04, rz: 0.035, z: 0.195 },
+  ];
+  const so = [
+    { y: -0.225, rx: 0.07, rz: 0.018 },
+    { y: -0.17, rx: 0.115, rz: 0.02 },
+    { y: 0.1, rx: 0.122, rz: 0.02 },
+    { y: 0.3, rx: 0.142, rz: 0.02 },
+    { y: 0.5, rx: 0.13, rz: 0.02 },
+    { y: 0.64, rx: 0.06, rz: 0.018 },
+  ];
+  const turn = { rx: Math.PI / 2 }; // (local +y -> +z, local +z -> -y)
+  const parts = [
+    { geo: L(up, dl, 'cleatup', { dome: 0.5 }), color: shoe, ...turn, ao: 0.05, mat: 'leather' },
+    { geo: L(so, dl, 'cleatsole', { dome: 0.6 }), color: sole, ...turn, y: -0.238, mat: 'leather' },
+    { geo: cyl(0.112, 0.124, 0.08, fine ? 16 : 8), color: shade0(shoe, 0.6), y: -0.02, z: -0.03, sz: 1.15, mat: 'leather' }, // the collar round the ankle
+  ];
+  for (const sd of [-1, 1]) {
+    // a stripe down the side, from the heel up toward the laces
+    const stripe = [{ y: -0.12, rx: 0.012, rz: 0.022 }, { y: 0.04, rx: 0.012, rz: 0.03 }, { y: 0.24, rx: 0.012, rz: 0.018 }];
+    parts.push({ geo: L(stripe, dl, 'cleatstripe', { seg: 6, sub: 1 }), color: accent, ...turn, x: sd * 0.124, y: -0.13, z: 0.0, ry: sd * 0.06, mat: 'leather' });
+  }
+  if (fine) {
+    for (let k = 0; k < 4; k++) parts.push({ geo: cap(0.009, 0.13, 2, 5), color: '#eceae4', y: -0.01 - k * 0.025, z: 0.1 + k * 0.075, rz: Math.PI / 2, rx: 0.5, mat: 'leather' }); // laces
+    for (const [x, z] of [[-0.06, 0.48], [0.06, 0.48], [-0.08, 0.3], [0.08, 0.3], [0, 0.56], [-0.06, -0.13], [0.06, -0.13]]) parts.push({ geo: cyl(0.016, 0.01, 0.03, 6), color: '#9aa0a8', x, y: -0.268, z, mat: 'leather' }); // spikes
+  }
+  return parts;
+}
+const shade0 = (hex, k) => '#' + new THREE.Color(hex).multiplyScalar(k).getHexString();
+
 const boxCache = new Map();
 function box3(w, h, d) { const k = `${w}|${h}|${d}`; return boxCache.get(k) || boxCache.set(k, new THREE.BoxGeometry(w, h, d)).get(k); }
 

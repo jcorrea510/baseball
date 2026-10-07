@@ -4,7 +4,9 @@
 // +x = the person's LEFT hand side.
 import * as THREE from 'three';
 import { jerseyTexture, makeCanvas, toTexture, surfaceNormalTexture } from './textures.js';
-import { torsoGeometry, upperArmParts, foreArmParts, thighParts, shinParts, headParts as headParts_, handParts as handParts_, gloveParts, maskParts } from './anatomy.js';
+import { torsoGeometry, upperArmParts, foreArmParts, thighParts, shinParts, handParts as handParts_, gloveParts, maskParts, cleatParts } from './anatomy.js';
+import { headParts as faceParts, capParts, helmetParts } from './face.js';
+import { CONFIG } from '../config.js';
 
 // ---------------------------------------------------------------- proportions (feet)
 export const DIM = {
@@ -73,11 +75,11 @@ export function getMat(hex, rough = 0.88, metal = 0) {
 // Jersey materials are shared by everybody wearing the same shirt and counted: when the last figure wearing one is
 // disposed (a new game builds new teams), its texture is freed from the graphics card too.
 const jerseyCache = new Map();
-function getJerseyMat(u, mirror) {
-  const key = [u.primary, u.secondary, u.trim, u.text, u.number, u.stripe, mirror].join('|');
+function getJerseyMat(u, mirror, size = 512) {
+  const key = [u.primary, u.secondary, u.trim, u.text, u.number, u.stripe, u.back || '', mirror, size].join('|');
   let e = jerseyCache.get(key);
   if (!e) {
-    const m = new THREE.MeshStandardMaterial({ map: jerseyTexture({ primary: u.primary, secondary: u.secondary, trim: u.trim, text: u.text || '', number: u.number || 0, stripe: !!u.stripe, mirror }), roughness: 0.9, normalMap: surfaceNormalTexture('fabric'), normalScale: new THREE.Vector2(0.32, 0.32) });
+    const m = new THREE.MeshStandardMaterial({ map: jerseyTexture({ primary: u.primary, secondary: u.secondary, trim: u.trim, text: u.text || '', number: u.number || 0, stripe: !!u.stripe, mirror, back: u.back || '', size }), roughness: 0.9, normalMap: surfaceNormalTexture('fabric'), normalScale: new THREE.Vector2(0.32, 0.32) });
     e = { m, key, users: 0 };
     jerseyCache.set(key, e);
   }
@@ -120,9 +122,12 @@ function vertexMat() {
 // leather with a pebbled grain and a little gloss, matte hair. Far away (fielders, phones) everything shares vertexMat().
 const SURF = {
   fabric: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.93, metalness: 0, normalMap: surfaceNormalTexture('fabric'), normalScale: new THREE.Vector2(0.35, 0.35) }),
-  skin: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0 }),
+  // skin: a soft sheen at the edges (the fine hair on real skin) and fine pores - never shiny like plastic
+  skin: () => new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: CONFIG.looks.skinRoughness, metalness: 0, sheen: CONFIG.looks.skinSheen, sheenRoughness: 0.7, sheenColor: new THREE.Color('#ffd9c4'), normalMap: surfaceNormalTexture('skin'), normalScale: new THREE.Vector2(0.07, 0.07) }),
   leather: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0, normalMap: surfaceNormalTexture('leather'), normalScale: new THREE.Vector2(0.6, 0.6) }),
-  hair: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0 }),
+  hair: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0, normalMap: surfaceNormalTexture('hair'), normalScale: new THREE.Vector2(0.7, 0.7) }),
+  eye: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.12, metalness: 0 }), // (wet: the eyes catch the light)
+  helmet: () => new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.28, metalness: 0.05, clearcoat: 0.6, clearcoatRoughness: 0.2 }),
 };
 const surfMats = {};
 function surfMat(kind) { return surfMats[kind] || (surfMats[kind] = SURF[kind]()); }
@@ -324,9 +329,11 @@ export class Person {
 
   _buildMeshes(o) {
     const u = o.uniform;
-    const skinHex = o.skin || '#e0ac82';
+    // how he looks (game/looks.js lookOf): skin, hair, facial hair, the shape of his face. Without a look: the old skin colour.
+    const look = o.look || { skin: o.skin || '#cf9a72', hair: hairColor(o.skin || '#cf9a72', u.number), beard: 'none', long: false, face: ((Math.abs(u.number || 0) * 37) % 100) / 100 };
+    const skinHex = look.skin;
     this.ownGeos = [];
-    this.jersey = getJerseyMat(u, this.mirror);
+    this.jersey = getJerseyMat(u, this.mirror, (o.detail ?? 1) >= 0.9 ? 512 : 256); // (a sharper shirt up close; far away and on phones half the size)
     const shirt = this.jersey.m;
     const pantsHex = u.pants || '#f2f2ee';
     // Jersey sleeves are short; where a team wears a contrasting long-sleeve undershirt (u.sleeve) it shows on the arms.
@@ -339,7 +346,7 @@ export class Person {
     const shoeHex = u.shoes || '#15171b';
     const beltHex = '#141414';
     const helmHex = u.helmet || u.cap || u.primary;
-    const hairHex = hairColor(skinHex, u.number);
+    const hairHex = look.hair;
     const isCatcher = this.role === 'catcher', isUmpire = this.role === 'umpire';
     this.meshes = [];
     // level of detail: 1 = full, lower = fewer polygons (distant fielders, phones)
@@ -381,51 +388,29 @@ export class Person {
       chest.scale.set(1.03 * B, 1, 0.72 * B);
     }
 
-    // --- head group: neck, skull, face, ears, hair, cap - one mesh
+    // --- head group: neck, skull, face, ears, hair and facial hair, cap or helmet - one mesh per surface (face.js)
     this.headG = new THREE.Group();
     this.headG.position.set(0, DIM.spine + DIM.neck * 0.5 + 0.2, 0);
     this.spine.add(this.headG);
-    const R = DIM.headR;
-    // (a sculpted face: jaw, cheekbones, brow, nose, lips, eyes with lids, ears - anatomy.js; a little different for every number)
-    const n = Math.abs(u.number || 0);
-    const eyeHex = ['#3b2414', '#2a1a10', '#4a3420', '#2f4f6f', '#3e5a3a', '#5a4630'][(n * 7 + 3) % 6];
+    const fh = Math.round((look.face ?? 0.5) * 997);
+    // eyes: mostly brown; blue, green or hazel now and then on fair skin
+    const eyeHex = (look.tone ?? 5) <= 3 && fh % 3 === 0 ? ['#4a6f8f', '#56704a', '#6b5a3a'][fh % 7 % 3] : ['#3a2416', '#2b1a10', '#4a3220'][fh % 3];
     _mc.set(skinHex);
-    const lipHex = '#' + _mc.clone().lerp(new THREE.Color('#9a4a4a'), 0.35).multiplyScalar(0.92).getHexString();
-    const headParts = [
-      ...headParts_({ dl, skin: skinHex, lip: lipHex, eye: eyeHex, brow: hairHex, variant: ((n * 37) % 100) / 100 }),
-      // hair: over the top and down the back to the nape, the hairline well above the brow (it shows under the cap at the back and sides)
-      { mat: 'hair', geo: hemi(R + 0.02, 0.5), color: hairHex, y: 0.25, z: -0.035, rx: -0.42, sx: 0.92, sy: 0.92, sz: 1.0 },
-      { mat: 'hair', geo: sphere(0.3, 14, 10), color: hairHex, y: 0.17, z: -0.15, sx: 0.98, sy: 0.95, sz: 0.85 },
-    ];
-    for (const sd of [-1, 1]) headParts.push({ mat: 'hair', geo: sphere(0.06, 8, 6), color: hairHex, x: sd * 0.305, y: 0.24, z: 0.08, sx: 0.35, sy: 1.3, sz: 0.7 }); // sideburn
-    if (!o.helmet) {
-      // the cap sits on the forehead, its edge just above the brow (the eyes show under the bill)
-      headParts.push({ mat: 'fabric', geo: hemi(R + 0.035, 0.53), color: capHex, y: 0.29, sx: 0.93, sy: 0.84, sz: 1.06 });
-      headParts.push({ mat: 'fabric', geo: sphere(0.045, 8, 6), color: capHex, y: 0.635 }); // button
-      headParts.push({ mat: 'fabric', geo: sphere(0.09, 10, 8), color: trimHex, y: 0.43, z: 0.375, rx: -0.35, sx: 1.05, sy: 0.9, sz: 0.2 }); // team badge
-      headParts.push({ mat: 'fabric', geo: torus(0.375, 0.014, Math.PI * 2, 4, 20), color: capHex, y: 0.315, rx: Math.PI / 2, sx: 0.93, sz: 1.04 }); // band
-      headParts.push({ mat: 'fabric', geo: cylHalf(0.4, 0.028), color: u.capBill || capHex, y: 0.345, z: 0.07, ry: -Math.PI * 0.5, rx: 0.2, sz: 0.8 });
-    }
+    const lipHex = '#' + _mc.clone().lerp(new THREE.Color('#8f4f4a'), 0.16).multiplyScalar(0.92).getHexString();
+    const head = faceParts({ dl, skin: skinHex, lip: lipHex, eye: eyeHex, hair: hairHex, beard: look.beard || 'none', long: !!look.long && !o.helmet, face: look.face ?? 0.5, stubble: CONFIG.looks.stubble });
+    const headParts = head.parts;
+    if (o.helmet) headParts.push(...helmetParts(head.surf, { color: helmHex, badge: trimHex, dl, q: head.q }));
+    // (the catcher wears his cap backwards under the mask)
+    else headParts.push(...capParts(head.surf, { color: capHex, bill: u.capBill || capHex, badge: trimHex, dl, q: head.q, backward: isCatcher }));
     this._merged(this.headG, headParts, 'skin');
-    if (o.helmet) {
-      const hm = getMat(helmHex, 0.32, 0.06);
-      const helm = this._mesh(hemi(R + 0.045, 0.6), hm, this.headG, 0, 0.255, -0.01);
-      helm.scale.set(0.95, 0.98, 1.05);
-      const brim = this._mesh(cylHalf(0.42, 0.03), hm, this.headG, 0, 0.335, 0.06);
-      brim.rotation.x = 0.08; brim.scale.set(0.9, 1, 1.0); brim.rotation.y = Math.PI;
-      const flap = this._mesh(sphere(0.2, 12, 8), hm, this.headG, 0.345, 0.12, 0.02);
-      flap.scale.set(0.35, 0.9, 0.9);
-      // team badge on the front and a stripe over the top
-      this._merged(this.headG, [
-        { geo: sphere(0.085, 10, 8), color: trimHex, y: 0.48, z: 0.4, rx: -0.3, sx: 1.05, sy: 0.9, sz: 0.2 },
-        { geo: box(0.05, 0.02, 0.86), color: trimHex, y: 0.685, z: -0.01, rx: 0.0 },
-      ]);
-    }
     if (isCatcher || isUmpire) this._merged(this.headG, maskParts({ dl }), 'leather'); // (a cage mask: the face shows between the bars)
 
     // --- arms (left = +x, right = -x): short jersey sleeve over (undershirt | bare) arm, forearm, hand / glove
     this.arms = [];
-    const gloveLeather = ['#6b4226', '#7a4a2a', '#4a3020', '#8a5a2e'][(u.number || 0) % 4];
+    // the glove's leather: tan, caramel, brown, dark brown or black (the catcher's mitt: black, brown or tan), laces to go with it
+    const gl = Math.round((look.face ?? 0.5) * 991) + (u.number || 0);
+    const gloveLeather = isCatcher ? ['#1c1b1a', '#4c2a17', '#7a431f', '#262a33'][gl % 4] : ['#b47a40', '#9c5c2a', '#6e3e1f', '#4a2a17', '#1c1b1a'][gl % 5];
+    const gloveLace = ['#1c1b1a', '#262a33', '#4a2a17'].includes(gloveLeather) ? '#c9a06a' : gloveLeather === '#b47a40' ? '#7a4a24' : '#d0a670';
     for (const side of [1, -1]) {
       const sh = new THREE.Group();
       sh.position.set(side * DIM.shoulderW * B, DIM.shoulderY, 0);
@@ -440,8 +425,8 @@ export class Person {
       const handParts = [];
       if (isGloveHand) {
         // (a stitched fielder's glove, or the catcher's round padded mitt - anatomy.js)
-        const leather = isCatcher ? '#3a2416' : gloveLeather;
-        foreParts.push(...gloveParts(isCatcher ? 'mitt' : 'glove', { dl, gy: -DIM.foreArm, leather, lace: isCatcher ? '#8a6a44' : '#d8b878', web: isCatcher ? '#2c1a10' : '#5a3a20', patch: trimHex }));
+        const webHex = new THREE.Color(gloveLeather).multiplyScalar(0.8).getHexString();
+        foreParts.push(...gloveParts(isCatcher ? 'mitt' : 'glove', { dl, gy: -DIM.foreArm, leather: gloveLeather, lace: gloveLace, web: '#' + webHex, patch: trimHex }));
       } else if (this.role === 'batter') {
         // a batter's hand is a closed fist (in batting gloves) round the handle: the back of the hand and the knuckles, then four
         // fingers that wrap right round the bat (rings round the grip line, open only on the palm side) and the thumb across the
@@ -472,15 +457,7 @@ export class Person {
       this._merged(knee, shin);
       const ankle = new THREE.Group(); ankle.position.set(0, -DIM.shin, 0); knee.add(ankle);
       const accent = u.secondary && u.secondary !== shoeHex ? u.secondary : '#d8dbe0';
-      this._merged(ankle, [
-        { geo: box(0.29, 0.07, 0.86), color: '#0b0c0f', y: -0.225, z: 0.2 }, // sole
-        { geo: capsule(0.13, 0.4, 4, 10), color: shoeHex, y: -0.1, z: 0.16, rx: Math.PI / 2, sx: 1.05, sy: 0.9 }, // upper
-        { geo: sphere(0.135, 10, 8), color: shoeHex, y: -0.13, z: 0.5, sy: 0.75 }, // toe cap
-        { geo: sphere(0.12, 10, 8), color: shoeHex, y: -0.13, z: -0.12 }, // heel
-        { geo: cyl(0.115, 0.13, 0.12, 10), color: '#0e1013', y: 0.0 }, // shoe collar
-        { geo: box(0.018, 0.07, 0.34), color: accent, x: 0.138, y: -0.1, z: 0.2 }, // side accent
-        { geo: box(0.018, 0.07, 0.34), color: accent, x: -0.138, y: -0.1, z: 0.2 },
-      ], 'leather');
+      this._merged(ankle, cleatParts({ dl, shoe: shoeHex, sole: shoeHex === '#15171b' ? '#0d0e10' : '#f1f1ee', accent }), 'leather');
       this.legs.push({ side, hip, thigh, knee, ankle });
     }
 

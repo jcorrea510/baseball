@@ -30,7 +30,9 @@ export const PLAYER_TEAM = { id: 'sandlot', name: 'Sandlot Sluggers', abbr: 'SLG
 export const FIRST = ['J.', 'M.', 'D.', 'T.', 'C.', 'R.', 'A.', 'L.', 'K.', 'B.', 'S.', 'E.', 'N.', 'P.', 'G.', 'H.', 'W.', 'F.'];
 export const LAST = ['Alvarez', 'Bennett', 'Castillo', 'Dawson', 'Ellis', 'Fontaine', 'Grayson', 'Hollis', 'Ishikawa', 'Jimenez', 'Kowalski', 'Lindgren', 'Marlow', 'Nakamura', 'Okafor', 'Pruitt', 'Quinn', 'Rourke', 'Santos', 'Tanaka', 'Underhill', 'Vasquez', 'Whitaker', 'Yoder', 'Zielinski', 'Brennan', 'Delgado', 'Faulkner', 'Haddad', 'Iverson', 'Mercer', 'Novak', 'Ortega', 'Petrov', 'Reyes', 'Sutton', 'Thibodeaux', 'Voss', 'Walsh', 'Abbott',
   'Acosta', 'Barnes', 'Caldwell', 'Dominguez', 'Espinal', 'Fischer', 'Gallagher', 'Herrera', 'Kim', 'Lockhart', 'McAllister', 'Navarro', 'O\'Brien', 'Park', 'Ramos', 'Sandoval', 'Torres', 'Valdez', 'Whitfield', 'Young', 'Archer', 'Beltran', 'Carver', 'Duran', 'Foster', 'Garza', 'Holloway', 'Jansen', 'Keller', 'Lowery', 'Mendoza', 'Nolan', 'Pena', 'Rios', 'Strickland', 'Tate', 'Vega', 'Wheeler', 'Yamada', 'Bishop'];
-export const SKINS = ['#f2c9a0', '#e0ac82', '#c68642', '#a3683b', '#7b4a2a', '#f7d7b5', '#5d3a22', '#d9a066'];
+// Skin tones light to deep (the same steps as config.looks.skin). A player's picture takes its look from game/looks.js lookOf (by
+// his name); this `skin` field is only kept for older code and saves.
+export const SKINS = ['#f3d2bd', '#ebc2a3', '#dfae8a', '#cf9a72', '#bd855c', '#a66f48', '#8d5937', '#74462a', '#5a3420', '#432618'];
 
 export function makeLineup(seed, prefix = '') {
   const rng = createRng(seed);

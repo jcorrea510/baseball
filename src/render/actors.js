@@ -4,6 +4,8 @@ import { CONFIG } from '../config.js';
 import { Person, makeBat, restyleBat, disposeBat, mixPose, makePose, copyPose } from './rig.js';
 import { batterPose, buntPose, pitcherPose, catcherPose, fielderReady, runPose, runReachPose, runCadence, runnerLeadPose, slidePose, slideGetUp, throwPose, catchPose, divePose, celebratePose, standingPose, umpirePose, THROW_RELEASE_U, PITCHER_BALL_TO_HAND, pitcherSetAfter } from './poses.js';
 import { UNIFORMS } from '../game/teams.js';
+import { lookOf, umpireLook, fieldersFrom } from '../game/looks.js';
+import { allStars } from '../game/mlb.js';
 import { BASE_XZ, MOUND_XZ, clampToField, dugoutSpot } from '../physics/field.js';
 import { sampleBall } from '../physics/ballistics.js';
 import { POSITIONS, fielderFreeTime } from '../game/fielding.js';
@@ -12,6 +14,11 @@ import { Mover, samplePath, turnToward, TAIL_MAX } from '../game/fielderMotion.j
 import { clamp, lerp, smoothstep, damp, wrapAngle, TAU, DEG } from '../util/math.js';
 
 const P0 = CONFIG.field;
+// a real star's position by his name (an opponent's lineup does not carry positions): where he stands when his team is in the field
+let STAR_POS = null;
+const starPos = (p) => p.pos || (STAR_POS ||= new Map(allStars().map((s) => [s.name, s.pos]))).get(p.name);
+// the last name for the back of a jersey ('' for nobody in particular)
+const backName = (p) => { const n = String((p && p.name) || '').replace(/ (Jr\.|II|III)$/, ''); const i = n.indexOf(' '); return i < 0 ? '' : n.slice(i + 1); };
 const V = () => new THREE.Vector3();
 const BOX_X = 2.9; // batter's box x offset
 const BOX_Z = -0.7;
@@ -58,7 +65,7 @@ export class Actors {
 
   // ---------------------------------------------------------------- setup
   configure({ engine, playerUniformKey = 'classic', batStyle = 'ash' }) {
-    const key = [engine.opponent.id, engine.playerTeam.id, engine.playerSide, engine.pitcher.hand, engine.seed, playerUniformKey, batStyle, engine.lineup.map((b) => b.hand + b.id + (b.skin || '')).join(',')].join('|');
+    const key = [engine.opponent.id, engine.playerTeam.id, engine.playerSide, engine.pitcher.hand, engine.seed, playerUniformKey, batStyle, engine.lineup.map((b) => b.hand + b.id + (b.name || '')).join(',')].join('|');
     this.batStyle = batStyle;
     this.walkers = []; this.walkPlan = null; this.playRunnerP = {};
     if (key === this.cfgKey) return;
@@ -88,7 +95,7 @@ export class Actors {
     this.coachSide = 'mine';
     this.coaches = this.coachSets.mine;
     // plate umpire (dark uniform), crouched behind the catcher
-    this.umpire = new Person({ role: 'umpire', detail: this.detailScale, uniform: { primary: '#22262e', secondary: '#c9d1dc', trim: '#c9d1dc', pants: '#5c6473', cap: '#171a20', capBill: '#171a20', socks: '#171a20', gear: '#1a1d24', text: '', number: 23 }, skin: '#e0ac82', scale: 1.02 });
+    this.umpire = new Person({ role: 'umpire', detail: this.detailScale, uniform: { primary: '#22262e', secondary: '#c9d1dc', trim: '#c9d1dc', pants: '#5c6473', cap: '#171a20', capBill: '#171a20', socks: '#171a20', gear: '#1a1d24', text: '', number: 23 }, look: umpireLook(), scale: 1.02 });
     this.umpire.place(1.95, 0, 6.6, Math.PI);
     this.umpire.root.updateMatrixWorld(true);
     this.group.add(this.umpire.root);
@@ -104,15 +111,17 @@ export class Actors {
 
   // One defender (the pitcher comes from the team's own pitcher: `kind` 'opp' = theirs, 'mine' = yours).
   makeFielder(kind, pos, i, engine) {
-    const skins = ['#f2c9a0', '#e0ac82', '#c68642', '#a3683b', '#7b4a2a', '#f7d7b5', '#5d3a22', '#d9a066'];
     const uni = kind === 'opp' ? this.oppUniform : this.playerUniform;
     const pit = kind === 'opp' ? (engine.oppPitcher || engine.pitcher) : (engine.myPitcher || engine.pitcher);
+    // (the fielders are the team's own batters at their positions: a real star looks like himself in the field too)
+    const nine = fieldersFrom(kind === 'opp' ? engine.oppLineup : engine.lineup, starPos);
+    const who = pos === 'P' ? pit : nine[pos] || { name: `${kind}|${uni.primary}|${pos}`, number: 10 + i * 4 };
     const person = new Person({
       role: pos === 'P' ? 'pitcher' : pos === 'C' ? 'catcher' : 'fielder',
-      uniform: { ...uni, number: pos === 'P' ? pit.number : 10 + i * 4 },
-      glove: true, detail: (pos === 'P' || pos === 'C' ? 1 : 0.62) * this.detailScale, skin: pos === 'P' ? pit.skin : skins[(i * 3 + 1 + (kind === 'mine' ? 2 : 0)) % skins.length],
-      scale: pos === 'P' ? pit.scale : 0.97 + ((i * 7) % 6) * 0.012,
-      build: 0.97 + ((i * 5) % 5) * 0.02,
+      uniform: { ...uni, number: who.number ?? 10 + i * 4, back: backName(who) },
+      glove: true, detail: (pos === 'P' || pos === 'C' ? 1 : 0.62) * this.detailScale, look: lookOf(who),
+      scale: who.scale || 0.97 + ((i * 7) % 6) * 0.012,
+      build: who.build || 0.97 + ((i * 5) % 5) * 0.02,
       mirror: pos === 'P' ? pit.hand === 'L' : false,
       helmet: false,
     });
@@ -130,10 +139,9 @@ export class Actors {
   }
 
   buildCoaches(uniform) {
-    const skins = { 1: '#e0ac82', 3: '#a3683b' };
     const out = [];
     for (const [i, base] of [[1, 1], [3, 3]]) {
-      const c = new Person({ role: 'runner', detail: 0.62 * this.detailScale, uniform: { ...uniform, number: 60 + i }, helmet: true, skin: skins[base], scale: 1 });
+      const c = new Person({ role: 'runner', detail: 0.62 * this.detailScale, uniform: { ...uniform, number: 60 + i }, helmet: true, look: lookOf({ name: `coach ${uniform.primary} ${base}` }), scale: 1 });
       const bx = BASE_XZ[base][0], bz = BASE_XZ[base][1];
       const side = base === 1 ? 1 : -1;
       c.place(bx + side * 9, 0, bz - 9, Math.atan2(-side, 0.6));
@@ -179,9 +187,9 @@ export class Actors {
     if (!p) {
       const ghost = !entry || entry.ghost;
       const theirs = !ghost && !!engine && !!engine.oppLineup && engine.oppLineup.some((b) => b === entry || b.id === entry.id) && !(engine.lineup || []).some((b) => b.id === entry.id);
-      const u = { ...(theirs ? this.oppUniform : this.playerUniform), number: ghost ? 0 : entry.number };
+      const u = { ...(theirs ? this.oppUniform : this.playerUniform), number: ghost ? 0 : entry.number, back: ghost ? '' : backName(entry) };
       p = new Person({
-        role: 'batter', detail: this.detailScale, uniform: u, helmet: true, skin: ghost ? '#d9a066' : entry.skin, scale: ghost ? 1 : entry.scale, build: ghost ? 1 : entry.build,
+        role: 'batter', detail: this.detailScale, uniform: u, helmet: true, look: lookOf(ghost ? { name: 'ghost runner' } : entry), scale: ghost ? 1 : entry.scale, build: ghost ? 1 : entry.build,
         mirror: !ghost && entry.hand === 'L', batStyle: this.batStyle,
       });
       p.entry = entry;
