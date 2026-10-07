@@ -8,6 +8,7 @@ import { grassTexture, dirtTexture, infieldTexture, wallTexture, seatTexture, so
 import { createScoreboard } from './scoreboard.js';
 import { createCrowd } from './crowd.js';
 import { buildParkLook, MOW } from './parkLook.js';
+import { mergeStatic } from './mergeStatic.js';
 
 const F = CONFIG.field;
 
@@ -412,8 +413,15 @@ export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {
       add(new THREE.BoxGeometry(L, Hh, 0.5), inside, 0, Hh / 2, back);
       for (const e of [-1, 1]) add(new THREE.BoxGeometry(0.8, Hh + 0.4, depth), concrete, e * (L / 2 - 0.4), (Hh + 0.4) / 2, (D + back) / 2, true);
       add(new THREE.BoxGeometry(L + 0.6, 0.6, depth + 1.2), roofM, 0, Hh + 0.3, (D + back) / 2 + 0.6, true);
-      const fas = add(new THREE.BoxGeometry(L + 0.6, 1.4, 0.3), [roofM, roofM, roofM, roofM, fascia, roofM], 0, Hh + 0.1, D + 1.25);
-      void fas;
+      // (the fascia board: only its front face carries the team lettering - that face goes last, so the board is two draws, not six)
+      const fasGeo = new THREE.BoxGeometry(L + 0.6, 1.4, 0.3);
+      {
+        const ix = fasGeo.index.array, mv = new ix.constructor(ix.length);
+        mv.set(ix.subarray(0, 24), 0); mv.set(ix.subarray(30, 36), 24); mv.set(ix.subarray(24, 30), 30); // (faces +x -x +y -y | -z | +z)
+        fasGeo.setIndex(new THREE.BufferAttribute(mv, 1));
+        fasGeo.clearGroups(); fasGeo.addGroup(0, 30, 0); fasGeo.addGroup(30, 6, 1);
+      }
+      add(fasGeo, [roofM, fascia], 0, Hh + 0.1, D + 1.25);
       add(new THREE.BoxGeometry(L - 1.6, 3.3, 0.7), pad, 0, 1.65, D - 0.35, true); // padded front wall
       add(new THREE.CylinderGeometry(0.12, 0.12, L - 1.6, 8), railM, 0, 4.1, D - 0.35).rotation.z = Math.PI / 2;
       for (const px of [-L / 4, 0, L / 4]) add(new THREE.CylinderGeometry(0.16, 0.16, Hh - 3.3, 8), railM, px, 3.3 + (Hh - 3.3) / 2, D - 0.35);
@@ -438,6 +446,7 @@ export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {
       const [ccx, ccz] = spot.center, [nx, nz] = spot.inward;
       g.position.set(ccx, 0, ccz);
       g.rotation.y = Math.atan2(nx, nz); // local +z faces the field
+      mergeStatic(g); // (one mesh per surface, not one per bat and bolt)
       root.add(g);
     }
   }
@@ -503,6 +512,7 @@ export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {
     bank.rotation.order = 'YXZ';
     bank.rotation.y = Math.atan2(dx, dz);
     bank.rotation.x = Math.atan2(150, Math.hypot(dx, dz)) * 0.7;
+    mergeStatic(g);
     root.add(g);
   }
 
