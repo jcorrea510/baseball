@@ -76,21 +76,22 @@ const OTHER = ['#7a2433', '#5d6b3a', '#b9a37c', '#8fb3d9', '#d98fa6', '#d9822b',
 
 /**
  * @param {Array} perimeter  perimeter points (with arc length `s`)
- * @param {object} o { count, colors: [primary, secondary] of the home club }
+ * @param {object} o { count, colors: [primary, secondary] of the home club,
+ *   decks: more bowls of seats [{ points, offset (ft out from the points), base(p) (height of the first row), rows, rowDepth, slope }] }
  */
-export function createCrowd(perimeter, { count = 9000, colors = ['#1d3a7e', '#c0392b'] } = {}) {
+export function createCrowd(perimeter, { count = 9000, colors = ['#1d3a7e', '#c0392b'], decks = [] } = {}) {
   const rng = createRng(4242);
   const C = CONFIG.crowd;
   const S = CONFIG.field.stands;
-  const rd = 2.5;
-  const rows = Math.floor(S.depth / rd);
-  const rr = rd * S.slope;
+  const lower = { points: perimeter, offset: 0, base: (p) => p.h0, rowDepth: 2.5, slope: S.slope, rows: Math.floor(S.depth / 2.5) };
 
   // every seat: along the stands every `seatWidth` ft, every row
   const seats = [];
   let wSum = 0;
-  for (let i = 0; i < perimeter.length - 1; i++) {
-    const a = perimeter[i], b = perimeter[i + 1];
+  for (const bowl of [lower, ...decks]) {
+  const pts = bowl.points, rows = bowl.rows;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
     if (a.kind === 'of' && Math.abs(a.a) < 8.5) continue; // batter's eye is a solid backdrop
     const len = Math.hypot(b.x - a.x, b.z - a.z);
     if (len < 1e-3) continue;
@@ -99,15 +100,16 @@ export function createCrowd(perimeter, { count = 9000, colors = ['#1d3a7e', '#c0
     for (let s = first; s < s0 + len; s += C.seatWidth) {
       const t = (s - s0) / len;
       const section = Math.floor(s / C.sectionFeet);
-      const secFill = C.sectionFill[0] + (C.sectionFill[1] - C.sectionFill[0]) * hash(section * 12.9898 + perimeter.length);
+      const secFill = C.sectionFill[0] + (C.sectionFill[1] - C.sectionFill[0]) * hash(section * 12.9898 + pts.length + bowl.offset);
       const kindW = a.kind === 'back' ? C.fill.back : a.kind === 'foul' ? C.fill.foul : C.fill.of;
       for (let r = 0; r < rows; r++) {
         const rowW = 1 - C.fill.highRows * (r / rows);
         const w = kindW * rowW * secFill;
-        seats.push({ a, b, t, r, w });
+        seats.push({ a, b, t, r, w, bowl });
         wSum += w;
       }
     }
+  }
   }
   const k = Math.min(count, seats.length * 0.97) / Math.max(1e-6, wSum);
   const take = [];
@@ -133,19 +135,20 @@ export function createCrowd(perimeter, { count = 9000, colors = ['#1d3a7e', '#c0
     return rng.pick(OTHER);
   };
   for (let i = 0; i < n; i++) {
-    const { a, b, t, r } = take[i];
+    const { a, b, t, r, bowl } = take[i];
+    const rd = bowl.rowDepth, rr = rd * bowl.slope;
     const px = a.x + (b.x - a.x) * t, pz = a.z + (b.z - a.z) * t;
     let nx = a.nx + (b.nx - a.nx) * t, nz = a.nz + (b.nz - a.nz) * t;
     const nl = Math.hypot(nx, nz) || 1; nx /= nl; nz /= nl;
-    const h0 = a.h0 + (b.h0 - a.h0) * t;
-    const depth = r * rd + rd * 0.55 + rng.range(-0.12, 0.12);
+    const h0 = bowl.base(a) + (bowl.base(b) - bowl.base(a)) * t;
+    const depth = bowl.offset + r * rd + rd * 0.55 + rng.range(-0.12, 0.12);
     const lateral = rng.range(-0.15, 0.15);
     pos[i * 3] = px + nx * depth - nz * lateral;
     pos[i * 3 + 1] = h0 + r * rr + 0.2;
     pos[i * 3 + 2] = pz + nz * depth + nx * lateral;
     seed[i * 4] = rng.next();
     seed[i * 4 + 1] = rng.range(0.88, 1.1);
-    seed[i * 4 + 2] = r / rows;
+    seed[i * 4 + 2] = r / bowl.rows;
     // silhouette: 0 short hair, 1 cap, 2 long hair, 3 hood
     const v = rng.next();
     const variant = v < C.caps ? 1 : v < C.caps + C.longHair ? 2 : v < C.caps + C.longHair + C.hoods ? 3 : 0;

@@ -132,23 +132,6 @@ function friezeTexture() {
   }
   return toTexture(canvas, { wrap: true, anisotropy: 4 });
 }
-// upper-deck seats with people in them (the crowd figures only fill the lower bowl)
-function peopleSeatTexture() {
-  const { canvas, ctx } = makeCanvas(256, 64);
-  ctx.fillStyle = '#6a6f78'; ctx.fillRect(0, 0, 256, 26); // the tread
-  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 26, 256, 38); // seat backs (tinted by the vertex colour)
-  const shirts = ['#d93a32', '#f2f2f2', '#2c5aa0', '#f4c430', '#1f1f24', '#3a8f4b', '#e07b2c', '#8a8f99'];
-  const skins = ['#f1c9a5', '#d7a17a', '#a8714a', '#6e4429'];
-  for (let x = 4; x < 256; x += 12) {
-    if (Math.random() < 0.28) continue;
-    ctx.fillStyle = shirts[Math.floor(Math.random() * shirts.length)];
-    ctx.fillRect(x, 30, 9, 26);
-    ctx.fillStyle = skins[Math.floor(Math.random() * skins.length)];
-    ctx.beginPath(); ctx.arc(x + 4.5, 26, 4.2, 0, TAU); ctx.fill();
-  }
-  return toTexture(canvas, { wrap: true, anisotropy: 4 });
-}
-
 // ---------------------------------------------------------------- shapes
 // A coloured piece for the merged mesh: transform a geometry and paint it one colour.
 function piece(geo, o = {}) {
@@ -228,6 +211,7 @@ export function buildParkLook(root, c) {
   const parts = []; // plain coloured pieces (one merged mesh)
   const glowParts = []; // pieces that light up at night (signs, neon)
   const updaters = [];
+  const crowdDecks = []; // the upper decks' seats, for the crowd
   const has = (f) => (L.features || []).includes(f);
   const back = new Set(Array.isArray(L.backdrop) ? L.backdrop : L.backdrop ? [L.backdrop] : []);
   const outR = (a) => fenceDistance(Math.max(-45, Math.min(45, a))) + c.standsDepth; // back of the outfield stands
@@ -240,12 +224,13 @@ export function buildParkLook(root, c) {
   const deckCount = L.decks ?? 1;
   let deckTop = c.standsRise; // height of the top of the highest deck at its back
   if (deckCount > 0 && infieldPts.length > 2) {
-    const seatsMat = new THREE.MeshStandardMaterial({ map: peopleSeatTexture(), vertexColors: true, roughness: 0.85, side: THREE.DoubleSide });
+    const seatsMat = new THREE.MeshStandardMaterial({ map: c.seatTexture, vertexColors: true, roughness: 0.85, side: THREE.DoubleSide });
     const fasciaMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(L.facade || '#272e3a'), roughness: 0.8, side: THREE.DoubleSide });
     for (let d = 0; d < deckCount; d++) {
       const offset = c.standsDepth * 0.58 + d * 26;
       const baseY = (p) => p.h0 + c.standsRise + 14 + d * 38;
       const bowl = bowlGeometry(infieldPts, { offset, depth: 46, base: baseY, slope: 0.78, colors: (t) => c.seatHex(0.55 + 0.45 * t + d * 0.3) });
+      crowdDecks.push({ points: infieldPts, offset, base: baseY, rows: Math.max(2, Math.floor(46 / 2.5)), rowDepth: 2.5, slope: 0.78 });
       root.add(new THREE.Mesh(bowl.geometry, seatsMat));
       // the front of the deck (a fascia) and the back wall + roof
       root.add(new THREE.Mesh(ribbonGeometry(infieldPts, { offset: offset - 0.2, y0: (p) => baseY(p) - 7, y1: (p) => baseY(p) + 0.6, uPerFt: 0.05 }), fasciaMat));
@@ -689,7 +674,7 @@ export function buildParkLook(root, c) {
     root.add(new THREE.Mesh(mergeGeometries(glowParts), gm));
     updaters.push((dt, t, env) => { gm.emissiveIntensity = 0.1 + (env ? env.lamps : 0) * 0.9; });
   }
-  return { update(dt, time, env) { for (const u of updaters) u(dt, time, env); }, celebrate() { if (celebrate) celebrate(); } }; // (celebrate: a home run by the home team)
+  return { crowdDecks, update(dt, time, env) { for (const u of updaters) u(dt, time, env); }, celebrate() { if (celebrate) celebrate(); } }; // (celebrate: a home run by the home team)
 }
 
 /** Shader code for the grass: the park's mowing pattern (0 stripes, 1 checkerboard, 2 diamonds, 3 waves from home, 4 turf). */

@@ -996,8 +996,8 @@ export const CONFIG = {
   },
 
   quality: {
-    crowdCount: 11000,
-    crowdCountMobile: 5200,
+    crowdCount: 15000,
+    crowdCountMobile: 6500,
     shadowMapSize: 2048,
     shadowMapSizeMobile: 1024,
     // Sharpness = screen dots drawn per layout point (phones have 3; 2 looks sharp at a fraction of the cost). Edges are smoothed

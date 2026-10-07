@@ -461,18 +461,27 @@ export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {
   })();
   const lampMat = new THREE.MeshBasicMaterial({ map: lampTex, color: 0x2b2f36, toneMapped: false });
   const glowMats = [];
+  const steel = new THREE.MeshStandardMaterial({ color: 0x8a919b, roughness: 0.55, metalness: 0.6 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x3a4048, roughness: 0.7, metalness: 0.5 });
   const towerSpots = [polar(-53, 420), polar(53, 420), { x: -205, z: 30 }, { x: 205, z: 30 }];
   for (const tp of towerSpots) {
     const g = new THREE.Group();
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 2.0, 150, 8), new THREE.MeshStandardMaterial({ color: 0x8a919b, roughness: 0.6, metalness: 0.6 }));
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 2.6, 150, 10), steel);
     pole.position.y = 75; g.add(pole);
     const bank = new THREE.Group();
-    bank.position.y = 150;
-    const frame = new THREE.Mesh(new THREE.BoxGeometry(46, 26, 2), new THREE.MeshStandardMaterial({ color: 0x3a4048, roughness: 0.7, metalness: 0.5 }));
+    bank.position.y = 152;
+    // the lamp bank: a frame with the lamps on its face, a catwalk under it, the back braced
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(46, 26, 2), dark);
     bank.add(frame);
     const lamps = new THREE.Mesh(new THREE.PlaneGeometry(44, 24), lampMat);
     lamps.position.z = 1.1;
     bank.add(lamps);
+    for (const y of [-6.5, 0, 6.5]) { const bar = new THREE.Mesh(new THREE.BoxGeometry(46, 0.5, 0.6), dark); bar.position.set(0, y, 1.4); bank.add(bar); }
+    const walk = new THREE.Mesh(new THREE.BoxGeometry(46, 0.6, 5), dark);
+    walk.position.set(0, -14, 1.2); bank.add(walk);
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(46, 0.3, 0.3), steel);
+    rail.position.set(0, -11, 3.6); bank.add(rail);
+    for (const x of [-12, 12]) { const brace = new THREE.Mesh(new THREE.BoxGeometry(1.2, 30, 1.2), steel); brace.position.set(x, -4, -2); brace.rotation.z = x > 0 ? -0.5 : 0.5; bank.add(brace); }
     const gm = new THREE.SpriteMaterial({ map: towerGlow, color: 0xfff1d6, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
     glowMats.push(gm);
     const glow = new THREE.Sprite(gm);
@@ -481,8 +490,11 @@ export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {
     bank.add(glow);
     g.add(bank);
     g.position.set(tp.x, 0, tp.z);
-    // face the field center
-    bank.rotation.y = Math.atan2(-tp.x, -(tp.z + 90)) + Math.PI;
+    // the lamps face the middle of the field and tilt down at it (+z of the bank is the lamp side)
+    const dx = 0 - tp.x, dz = -110 - tp.z;
+    bank.rotation.order = 'YXZ';
+    bank.rotation.y = Math.atan2(dx, dz);
+    bank.rotation.x = Math.atan2(150, Math.hypot(dx, dz)) * 0.7;
     root.add(g);
   }
 
@@ -504,12 +516,12 @@ export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {
   }
 
   // ---------------------------------------------------------------- the park's own look: decks, roof, backdrop, landmarks
-  const parkLook = buildParkLook(root, { perimeter, ofPts, standsDepth: rows * rd, standsRise: rows * rr, look, parkId: park.id, isMobile, seatHex });
+  const parkLook = buildParkLook(root, { perimeter, ofPts, standsDepth: rows * rd, standsRise: rows * rr, look, parkId: park.id, isMobile, seatHex, seatTexture: seatTex });
 
   // ---------------------------------------------------------------- crowd
   // (the home club's colours: its fans wear them; Sandlot Park's own navy and red)
   const home = MLB_TEAMS.find((t) => t.id === park.id);
-  const crowd = createCrowd(perimeter, { count: crowdCount, colors: home ? [home.color, home.color2] : ['#1d3a7e', '#b8312a'] });
+  const crowd = createCrowd(perimeter, { count: crowdCount, colors: home ? [home.color, home.color2] : ['#1d3a7e', '#b8312a'], decks: parkLook.crowdDecks });
   root.add(crowd.mesh);
 
   return {
@@ -522,7 +534,7 @@ export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {
     // Called every frame. env supplies brightness/lamp levels.
     update(dt, time, env) {
       const lamps = env ? env.lamps : 0;
-      lampMat.color.setRGB(0.17 + lamps * 2.2, 0.18 + lamps * 2.1, 0.21 + lamps * 1.8);
+      lampMat.color.setRGB(0.5 + lamps * 1.9, 0.52 + lamps * 1.8, 0.56 + lamps * 1.5); // (by day the reflectors are pale silver; lit at night)
       for (const m of glowMats) m.opacity = lamps * 0.75;
       crowd.update(dt, time, env ? env.crowdBrightness : 1, env ? env.glass : 0);
       scoreboard.update(dt);
