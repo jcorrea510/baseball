@@ -328,21 +328,52 @@ export function softDotTexture(size = 128, inner = 0.0, color = '255,255,255') {
 }
 
 // Crowd figure mask: R = shirt, G = skin, B = hair; alpha = silhouette.
+// The crowd's silhouettes: an atlas of CROWD_VARIANTS columns (0 short hair, 1 cap, 2 long hair, 3 hood) and two rows
+// (bottom: seated, top: standing with the arms up). Red = clothes, green = skin, blue = hair / cap / hood.
+export const CROWD_VARIANTS = 4;
 export function crowdMaskTexture() {
-  const { canvas, ctx } = makeCanvas(64, 96);
-  ctx.clearRect(0, 0, 64, 96);
-  // body / shoulders (shirt = red channel)
-  ctx.fillStyle = 'rgb(255,0,0)';
-  ctx.beginPath();
-  ctx.moveTo(8, 96); ctx.lineTo(8, 60); ctx.quadraticCurveTo(10, 44, 32, 42); ctx.quadraticCurveTo(54, 44, 56, 60); ctx.lineTo(56, 96); ctx.closePath();
-  ctx.fill();
-  // neck + head (skin = green channel)
-  ctx.fillStyle = 'rgb(0,255,0)';
-  ctx.fillRect(27, 34, 10, 12);
-  ctx.beginPath(); ctx.ellipse(32, 24, 12, 14, 0, 0, Math.PI * 2); ctx.fill();
-  // hair cap (blue channel)
-  ctx.fillStyle = 'rgb(0,0,255)';
-  ctx.beginPath(); ctx.ellipse(32, 17, 12.5, 9.5, 0, Math.PI, Math.PI * 2); ctx.fill();
+  const W = 64, H = 96;
+  const { canvas, ctx } = makeCanvas(W * CROWD_VARIANTS, H * 2);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const R = 'rgb(255,0,0)', G = 'rgb(0,255,0)', B = 'rgb(0,0,255)';
+  const ell = (x, y, rx, ry, c, a0 = 0, a1 = Math.PI * 2) => { ctx.fillStyle = c; ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, a0, a1); ctx.fill(); };
+  for (let up = 0; up < 2; up++) {
+    for (let v = 0; v < CROWD_VARIANTS; v++) {
+      ctx.save();
+      ctx.translate(v * W, up ? 0 : H);
+      // standing: the whole figure a little higher in its cell (the quad is taller), arms up in a V
+      const hy = up ? 22 : 30; // head centre
+      const sh = hy + 19; // shoulder line
+      if (v === 2) { ctx.fillStyle = B; ctx.beginPath(); ctx.moveTo(19, hy - 4); ctx.quadraticCurveTo(18, sh + 6, 22, sh + 8); ctx.lineTo(42, sh + 8); ctx.quadraticCurveTo(46, sh + 6, 45, hy - 4); ctx.closePath(); ctx.fill(); }
+      if (v === 3) ell(32, hy + 1, 14.5, 15.5, B);
+      // arms
+      ctx.fillStyle = R;
+      if (up) {
+        for (const sd of [-1, 1]) {
+          ctx.beginPath();
+          ctx.moveTo(32 + sd * 15, sh + 4); ctx.lineTo(32 + sd * 25, hy - 12); ctx.lineTo(32 + sd * 19, hy - 14); ctx.lineTo(32 + sd * 9, sh + 2); ctx.closePath(); ctx.fill();
+          ell(32 + sd * 23, hy - 16, 3.6, 4.4, G); // hands
+        }
+        ctx.fillStyle = R;
+      }
+      // body / shoulders
+      ctx.beginPath();
+      ctx.moveTo(9, H); ctx.lineTo(9, sh + 12); ctx.quadraticCurveTo(10, sh, 32, sh - 2); ctx.quadraticCurveTo(54, sh, 55, sh + 12); ctx.lineTo(55, H); ctx.closePath();
+      ctx.fill();
+      // seated: forearms resting in front (skin hands on the lap)
+      if (!up) { ell(22, sh + 30, 4, 3, G); ell(42, sh + 31, 4, 3, G); }
+      // neck + head
+      ctx.fillStyle = G; ctx.fillRect(28, hy + 9, 8, 10);
+      ell(32, hy, 10.5, 12.5, G);
+      ell(21.5, hy + 1, 2, 3, G); ell(42.5, hy + 1, 2, 3, G); // ears
+      // hair / cap / hood on top
+      if (v === 0) ell(32, hy - 5, 11, 8.5, B, Math.PI, Math.PI * 2);
+      if (v === 1) { ell(32, hy - 5, 11.5, 9.5, B, Math.PI, Math.PI * 2); ctx.fillStyle = B; ctx.fillRect(19, hy - 6, 26, 3.5); }
+      if (v === 2) ell(32, hy - 5, 11.5, 9, B, Math.PI, Math.PI * 2);
+      if (v === 3) { ctx.save(); ctx.globalCompositeOperation = 'source-over'; ell(32, hy - 6, 12, 8, B, Math.PI, Math.PI * 2); ctx.restore(); }
+      ctx.restore();
+    }
+  }
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.NoColorSpace;
   tex.minFilter = THREE.LinearMipmapLinearFilter;

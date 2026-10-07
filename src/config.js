@@ -52,6 +52,10 @@ export const CONFIG = {
     // Citi Field's home-run apple: its top hat stands `back` ft behind the centre-field fence at `angle` deg (just behind the batter's
     // eye, the brim over the hedge at `hatTop` ft), the apple (radius `r`) hidden inside; a home run by the home team brings it up
     // in `rise` s, it stays `stay` s and sinks back in `sink` s
+    // The skyline beyond the outfield (render/parkLook.js, picture only): `towers` tall buildings bunched round one direction
+    // between `centre` deg either side of center field (within `spread` deg of it), `dist` ft behind the outfield stands,
+    // `height` ft (tallest in the middle of the bunch), and `blocks` lower buildings round them.
+    skyline: { towers: 24, blocks: 34, centre: [18, 42], spread: 22, dist: [480, 1500], height: [140, 620] },
     apple: { angle: 5, back: 16, hatR: 13, hatTop: 44, r: 10, rise: 2.5, stay: 9, sink: 3 },
     list: {
       sandlot: { name: 'Sandlot Park', wall: '#0f3d24' },
@@ -978,9 +982,22 @@ export const CONFIG = {
     },
   },
 
+  // The crowd (render/crowd.js, picture only): fans sit in the seats - one every `seatWidth` ft along the stands, every row -
+  // fuller behind the plate and down the lines than in the bleachers (`fill`), the top rows `highRows` emptier, and each
+  // `sectionFeet` stretch a section of its own between `sectionFill` full; what they wear (`wear`: shares in the home club's
+  // primary and secondary colour and in white / grey / black / navy, the rest anything) and their heads (`caps`, `longHair`, `hoods`).
+  crowd: {
+    seatWidth: 2.0,
+    sectionFeet: 36,
+    sectionFill: [0.62, 1.12],
+    fill: { back: 1.25, foul: 1.1, of: 0.85, highRows: 0.4 },
+    wear: { primary: 0.32, secondary: 0.12, neutral: 0.38 },
+    caps: 0.4, longHair: 0.18, hoods: 0.06,
+  },
+
   quality: {
-    crowdCount: 6500,
-    crowdCountMobile: 3200,
+    crowdCount: 11000,
+    crowdCountMobile: 5200,
     shadowMapSize: 2048,
     shadowMapSizeMobile: 1024,
     // Sharpness = screen dots drawn per layout point (phones have 3; 2 looks sharp at a fraction of the cost). Edges are smoothed

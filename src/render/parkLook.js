@@ -19,24 +19,59 @@ function rand(seed) {
 }
 
 // ---------------------------------------------------------------- textures
-function windowsTexture(r) {
-  const { canvas, ctx } = makeCanvas(128, 256);
-  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, 128, 256);
-  for (let y = 6; y < 256; y += 12) for (let x = 5; x < 128; x += 10) {
-    const lit = r() < 0.42;
-    ctx.fillStyle = lit ? '#fff1c8' : '#2a3140';
-    ctx.fillRect(x, y, 6, 7);
+// Building facades for the skyline: one tile = FACADE.bays window bays x FACADE.floors floors (a floor ~12.5 ft, a bay ~10 ft,
+// so windows are the real size on every building). Styles: 0 glass curtain wall, 1 stone office, 2 brick, 3 dark glass.
+// `glow` draws only the lit windows (the emissive map: the city comes on at dusk) - the same layout from the same seed.
+const FACADE = { px: 256, bays: 8, floors: 8, tileW: 80, tileH: 100 };
+function facadeTexture(style, seed, glow) {
+  const N = FACADE.px, bw = N / FACADE.bays, fh = N / FACADE.floors;
+  const { canvas, ctx } = makeCanvas(N, N);
+  const r = rand(seed * 7 + style * 131 + 1);
+  const shade = (hex, k) => { const c = new THREE.Color(hex).multiplyScalar(k); return '#' + c.getHexString(); };
+  ctx.fillStyle = glow ? '#000000' : ['#5d7286', '#cfc8b8', '#7b4433', '#262c35'][style];
+  ctx.fillRect(0, 0, N, N);
+  const lit = () => r() < [0.34, 0.4, 0.45, 0.28][style];
+  const warm = () => ['#ffe2a8', '#ffd58a', '#fff1d2', '#d8e6ff', '#ffe9bd'][Math.floor(r() * 5)];
+  for (let f = 0; f < FACADE.floors; f++) {
+    const y = f * fh;
+    // whole floors dark or lit together more often than not (offices)
+    const floorLit = r() < 0.5;
+    for (let b = 0; b < FACADE.bays; b++) {
+      const x = b * bw;
+      const on = floorLit ? r() < 0.75 && lit() || r() < 0.5 : lit() && r() < 0.6;
+      if (style === 0 || style === 3) {
+        // curtain wall: the whole bay is glass between thin mullions, a dark spandrel band at each floor
+        if (glow) { if (on) { ctx.fillStyle = warm(); ctx.fillRect(x + 2, y + 6, bw - 4, fh - 8); } continue; }
+        const base = style === 0 ? ['#4f6880', '#58728c', '#466077', '#6a8299', '#3f566c'] : ['#20262e', '#262d37', '#1b2028', '#2c3440'];
+        const g = ctx.createLinearGradient(x, y, x + bw, y + fh);
+        const c0 = base[Math.floor(r() * base.length)];
+        g.addColorStop(0, shade(c0, 1.15)); g.addColorStop(1, shade(c0, 0.85));
+        ctx.fillStyle = g; ctx.fillRect(x + 1, y + 5, bw - 2, fh - 6);
+        ctx.fillStyle = style === 0 ? '#2e3d4c' : '#14181e'; ctx.fillRect(x, y, bw, 5); // spandrel
+        ctx.fillStyle = style === 0 ? '#9fb0bf' : '#3a434f'; ctx.fillRect(x, y, 1.5, fh); // mullion
+        ctx.fillRect(x + bw / 2, y + 5, 1, fh - 6);
+      } else if (style === 1) {
+        // stone office: a band of windows per floor, stone between
+        if (glow) { if (on) { ctx.fillStyle = warm(); ctx.fillRect(x + 3, y + 9, bw - 6, fh - 16); } continue; }
+        ctx.fillStyle = r() < 0.15 ? '#3b4656' : '#28313d'; ctx.fillRect(x + 3, y + 9, bw - 6, fh - 16);
+        ctx.fillStyle = 'rgba(160,180,200,0.25)'; ctx.fillRect(x + 3, y + 9, bw - 6, 3); // a glint along the top of the glass
+        ctx.fillStyle = '#b9b2a2'; ctx.fillRect(x + bw / 2 - 1, y + 9, 2, fh - 16);
+        ctx.fillStyle = '#e2dccd'; ctx.fillRect(x, y + fh - 7, bw, 2); // sill line
+      } else {
+        // brick: bricks, then punched windows with stone sills and lintels
+        if (glow) { if (on) { ctx.fillStyle = warm(); ctx.fillRect(x + 9, y + 7, bw - 18, fh - 13); } continue; }
+        for (let yy = y; yy < y + fh; yy += 4) for (let xx = x + ((yy / 4) % 2 ? -4 : 0); xx < x + bw; xx += 8) {
+          const v = r() * 0.2;
+          ctx.fillStyle = `rgb(${Math.round(124 - v * 120)},${Math.round(64 - v * 60)},${Math.round(48 - v * 45)})`;
+          ctx.fillRect(xx + 0.5, yy + 0.5, 7, 3);
+        }
+        ctx.fillStyle = '#1f252d'; ctx.fillRect(x + 9, y + 7, bw - 18, fh - 13);
+        ctx.fillStyle = '#5a6574'; ctx.fillRect(x + 9, y + 7 + (fh - 13) / 2, bw - 18, 1.5); // sash
+        ctx.fillStyle = '#d8d0bf'; ctx.fillRect(x + 7, y + fh - 6, bw - 14, 2.5); ctx.fillRect(x + 8, y + 5, bw - 16, 2);
+      }
+    }
   }
-  return toTexture(canvas, { wrap: true, anisotropy: 4 });
-}
-function windowsGlow(r) {
-  // the same windows as light (only the lit ones): the skyline comes on at dusk
-  const { canvas, ctx } = makeCanvas(128, 256);
-  ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, 128, 256);
-  for (let y = 6; y < 256; y += 12) for (let x = 5; x < 128; x += 10) {
-    if (r() < 0.42) { ctx.fillStyle = '#ffd98a'; ctx.fillRect(x, y, 6, 7); }
-  }
-  return toTexture(canvas, { wrap: true, anisotropy: 4 });
+  return toTexture(canvas, { wrap: true, anisotropy: 8 });
 }
 function brickTexture(withWindows) {
   const { canvas, ctx } = makeCanvas(256, 256);
@@ -240,22 +275,93 @@ export function buildParkLook(root, c) {
 
   // ---------------- what is beyond the outfield
   if (back.has('skyline')) {
-    const list = [];
-    const N = Math.round(26 * many);
+    // A downtown: a cluster of towers in one direction beyond the outfield (tallest in the middle of it), lower blocks round it,
+    // each building with real-size windows (four facade styles), set-backs, a roof, a penthouse, now and then an antenna,
+    // a spire or a wooden water tank. The windows light up at dusk.
+    const SK = CONFIG.parks.skyline;
     const keepClear = has('arch') ? 16 : 10; // (nothing tall right behind the batter's eye - or in front of the Arch)
-    for (let i = 0; i < N; i++) {
-      let a = -64 + r() * 128;
-      if (Math.abs(a) < keepClear) a = (a < 0 ? -1 : 1) * (keepClear + r() * 8);
-      const d = outR(a) + 520 + r() * 900;
-      const h = 110 + r() * 300 + (d - 900) * 0.1;
-      const w = 50 + r() * 70, dd = 50 + r() * 70;
-      const p = P(a, d);
-      const tone = ['#8a93a3', '#6f7a8c', '#a7a08f', '#5c6677', '#b9bcc2', '#7f8a96'][Math.floor(r() * 6)];
-      list.push(texturedBox(w, h, dd, 30, { x: p.x, y: h / 2, z: p.z, ry: faceHome(p.x, p.z) + (r() - 0.5) * 0.5, color: tone }));
+    const centre = (r() < 0.5 ? -1 : 1) * (SK.centre[0] + r() * (SK.centre[1] - SK.centre[0]));
+    const walls = [[], [], [], []]; // facades by style
+    const tile = (g) => {
+      // box uvs in tiles of FACADE.tileW x tileH ft (faces +x, -x, +y, -y, +z, -z)
+      const uv = g.getAttribute('uv'), p = g.parameters, dims = [[p.depth, p.height], [p.depth, p.height], [p.width, p.depth], [p.width, p.depth], [p.width, p.height], [p.width, p.height]];
+      for (let f = 0; f < 6; f++) for (let k = 0; k < 4; k++) { const i = f * 4 + k; uv.setXY(i, uv.getX(i) * dims[f][0] / FACADE.tileW, uv.getY(i) * dims[f][1] / FACADE.tileH); }
+      return g;
+    };
+    const tone = (k) => { const v = 0.88 + r() * 0.2 * k; return '#' + new THREE.Color(v, v, v * (0.98 + r() * 0.04)).getHexString(); };
+    const building = (a, d, h, w, dd, style) => {
+      const p = P(a, d), ry = faceHome(p.x, p.z) + (r() - 0.5) * 0.6;
+      const at = (lx, lz) => ({ x: p.x + lx * Math.cos(ry) + lz * Math.sin(ry), z: p.z - lx * Math.sin(ry) + lz * Math.cos(ry) });
+      // the floors snap to whole storeys so a set-back sits on a floor line
+      const storey = FACADE.tileH / FACADE.floors;
+      let hb = Math.max(storey * 3, Math.round(h / storey) * storey);
+      const setback = h > 220 && r() < 0.55;
+      const h1 = setback ? Math.round((hb * (0.55 + r() * 0.2)) / storey) * storey : hb;
+      walls[style].push(piece(tile(new THREE.BoxGeometry(w, h1, dd)), { x: p.x, y: h1 / 2, z: p.z, ry, color: tone(1) }));
+      let top = h1, tw = w, td = dd;
+      if (setback) {
+        tw = w * (0.62 + r() * 0.2); td = dd * (0.62 + r() * 0.2);
+        const h2 = hb - h1;
+        walls[style].push(piece(tile(new THREE.BoxGeometry(tw, h2, td)), { x: p.x, y: h1 + h2 / 2, z: p.z, ry, color: tone(1) }));
+        parts.push(piece(new THREE.BoxGeometry(w + 1, 1.6, dd + 1), { x: p.x, y: h1 + 0.6, z: p.z, ry, color: '#4b5058' }));
+        top = hb;
+      }
+      // the roof: a parapet cap, a penthouse for the lifts and air conditioning
+      const roofCol = style === 2 ? '#3d3330' : style === 1 ? '#8f8a80' : '#2f363f';
+      parts.push(piece(new THREE.BoxGeometry(tw + 1.2, 2.2, td + 1.2), { x: p.x, y: top + 1.0, z: p.z, ry, color: roofCol }));
+      const ph = 10 + r() * 14, pw = tw * (0.3 + r() * 0.25), pd = td * (0.3 + r() * 0.25);
+      const off = at((r() - 0.5) * (tw - pw) * 0.6, (r() - 0.5) * (td - pd) * 0.6);
+      parts.push(piece(new THREE.BoxGeometry(pw, ph, pd), { x: off.x, y: top + ph / 2, z: off.z, ry, color: style === 1 ? '#a9a395' : '#4a525d' }));
+      if (style === 0 && top > 300 && r() < 0.35) {
+        // a glass crown
+        parts.push(piece(new THREE.ConeGeometry(Math.min(tw, td) * 0.6, 40 + r() * 50, 4, 1), { x: p.x, y: top + 25, z: p.z, ry: ry + Math.PI / 4, color: '#56708a' }));
+      } else if (top > 260 && r() < 0.5) {
+        // an antenna mast with a red light
+        const mh = 40 + r() * 90;
+        parts.push(piece(new THREE.CylinderGeometry(0.8, 1.4, mh, 5), { x: p.x, y: top + ph + mh / 2, z: p.z, color: '#9aa0a8' }));
+        glowParts.push(piece(new THREE.SphereGeometry(2.2, 6, 4), { x: p.x, y: top + ph + mh, z: p.z, color: '#ff3a2a' }));
+      } else if (style === 2 && top < 200 && r() < 0.6) {
+        // a wooden water tank on legs
+        const tx = at((r() - 0.5) * tw * 0.5, (r() - 0.5) * td * 0.5);
+        parts.push(piece(new THREE.CylinderGeometry(6, 6, 12, 10), { x: tx.x, y: top + 14, z: tx.z, color: '#6e5642' }));
+        parts.push(piece(new THREE.ConeGeometry(6.6, 5, 10), { x: tx.x, y: top + 22.5, z: tx.z, color: '#4c3d30' }));
+        parts.push(piece(new THREE.BoxGeometry(9, 8, 9), { x: tx.x, y: top + 4, z: tx.z, color: '#3a3532' }));
+      }
+    };
+    const angle = (spread) => {
+      let a = centre + (r() + r() + r() - 1.5) * spread;
+      a = Math.max(-66, Math.min(66, a));
+      if (Math.abs(a) < keepClear) a = (a < 0 ? -1 : 1) * (keepClear + r() * 6);
+      return a;
+    };
+    // the towers
+    for (let i = 0; i < Math.round(SK.towers * many); i++) {
+      const a = angle(SK.spread), near = 1 - Math.min(1, Math.abs(a - centre) / SK.spread);
+      const d = outR(a) + SK.dist[0] + r() * (SK.dist[1] - SK.dist[0]);
+      const h = SK.height[0] + (SK.height[1] - SK.height[0]) * (0.35 * r() + 0.65 * near * r() ** 0.6) + (d - 900) * 0.08;
+      const style = h < 200 && r() < 0.35 ? 2 : r() < 0.45 ? 0 : r() < 0.55 ? 1 : 3; // (tall brick buildings are rare: brick is for the lower blocks)
+      building(a, d, h, 55 + r() * 60, 55 + r() * 55, style);
     }
-    const sky = new THREE.MeshStandardMaterial({ map: windowsTexture(r), emissiveMap: windowsGlow(r), emissive: 0xffffff, emissiveIntensity: 0, vertexColors: true, roughness: 0.75 });
-    root.add(new THREE.Mesh(mergeGeometries(list), sky));
-    updaters.push((dt, t, env) => { sky.emissiveIntensity = 0.04 + (env ? env.lamps : 0) * 0.9; });
+    // the lower blocks round them (brick and stone, some glass)
+    for (let i = 0; i < Math.round(SK.blocks * many); i++) {
+      const a = angle(SK.spread * 1.7);
+      const d = outR(a) + SK.dist[0] * 0.6 + r() * (SK.dist[1] - SK.dist[0] * 0.6);
+      const style = r() < 0.45 ? 2 : r() < 0.6 ? 1 : 0;
+      building(a, d, 50 + r() * 110, 60 + r() * 80, 50 + r() * 60, style);
+    }
+    const lamps = [];
+    for (let st = 0; st < 4; st++) {
+      if (!walls[st].length) continue;
+      const seed = Math.floor(r() * 1e6);
+      const glass = st === 0 || st === 3;
+      const mat = new THREE.MeshStandardMaterial({
+        map: facadeTexture(st, seed, false), emissiveMap: facadeTexture(st, seed, true), emissive: 0xffffff, emissiveIntensity: 0,
+        vertexColors: true, roughness: glass ? 0.32 : 0.85, metalness: glass ? 0.35 : 0,
+      });
+      lamps.push(mat);
+      root.add(new THREE.Mesh(mergeGeometries(walls[st]), mat));
+    }
+    updaters.push((dt, t, env) => { for (const m of lamps) m.emissiveIntensity = 0.03 + (env ? env.lamps : 0) * 0.95; });
   }
   const ridge = (count, rMin, rMax, hMin, hMax, colors, cap = null, flat = false) => {
     for (let i = 0; i < Math.round(count * many); i++) {

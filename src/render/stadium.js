@@ -507,7 +507,9 @@ export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {
   const parkLook = buildParkLook(root, { perimeter, ofPts, standsDepth: rows * rd, standsRise: rows * rr, look, parkId: park.id, isMobile, seatHex });
 
   // ---------------------------------------------------------------- crowd
-  const crowd = createCrowd(perimeter, { count: crowdCount });
+  // (the home club's colours: its fans wear them; Sandlot Park's own navy and red)
+  const home = MLB_TEAMS.find((t) => t.id === park.id);
+  const crowd = createCrowd(perimeter, { count: crowdCount, colors: home ? [home.color, home.color2] : ['#1d3a7e', '#b8312a'] });
   root.add(crowd.mesh);
 
   return {

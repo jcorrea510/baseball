@@ -220,8 +220,8 @@ export class App {
         }
         break;
       case 'parkPrev': case 'parkNext': {
-        const ids = Object.keys(CONFIG.parks.list);
-        const i = Math.max(0, ids.indexOf(this.settings.park || 'sandlot'));
+        const ids = ['random', ...Object.keys(CONFIG.parks.list)];
+        const i = Math.max(0, ids.indexOf(this.settings.park || 'random'));
         this.settings.park = ids[(i + (a === 'parkNext' ? 1 : ids.length - 1)) % ids.length];
         this.prog.save(); this.audio.uiClick(); this.ui.buildModes(this.prog); break;
       }
@@ -491,7 +491,7 @@ export class App {
     if (mode === 'quick' && !extra && !this.params.get('bot') && !this.params.get('seed')) {
       const q = this.prog.data.quick;
       if (q && q.state && q.state.game) { quickResume = q.state; this.quickSave = { seed: q.seed, difficulty: q.difficulty, park: q.park }; }
-      else this.quickSave = { seed: (Math.random() * 2 ** 32) >>> 0, difficulty: st.difficulty, park: st.park || 'sandlot' };
+      else this.quickSave = { seed: (Math.random() * 2 ** 32) >>> 0, difficulty: st.difficulty, park: pickPark(st.park) };
     }
     // your League club plays every mode: the same team, jersey and batters (a resumed Quick Game keeps the nine it started with)
     const sea = this.prog.data.season;
@@ -499,7 +499,7 @@ export class App {
     if (club && quickResume) club = this.prog.data.quick.lineup ? { ...club, lineup: this.prog.data.quick.lineup } : null; // (a game saved before: its own nine)
     if (club && this.quickSave) this.quickSave.lineup = club.lineup;
     // the ballpark: a League game in the home team's park, a resumed Quick Game where it started, anything else where you chose
-    const park = extra ? extra.park || 'sandlot' : (this.quickSave && this.quickSave.park) || st.park || 'sandlot';
+    const park = extra ? extra.park || 'sandlot' : (this.quickSave && this.quickSave.park) || pickPark(st.park, this.params.get('seed') || this.params.get('bot'));
     this.S.setPark(park);
     // you pitch the computer's half (aim, start, tap the ring); a bot-run game lets the computer pitch for you
     const cpuHalf = !this.params.get('bot') && (mode === 'quick' || (mode === 'practice' && this.engine && this.engine.mode === 'practice' && this.engine.practice.role === 'pitch')) ? 'pitch' : 'auto';
@@ -1710,6 +1710,13 @@ function breathe() {
     requestAnimationFrame(() => setTimeout(go, 0));
     setTimeout(go, 60);
   });
+}
+// the ballpark for a new game: 'random' (the default) is a different one of the 31 every game
+function pickPark(id, fixed) {
+  const ids = Object.keys(CONFIG.parks.list);
+  if (id && id !== 'random' && CONFIG.parks.list[id]) return id;
+  if (fixed) return 'sandlot'; // (QA links with a seed / the bot: always the same park)
+  return ids[Math.floor(Math.random() * ids.length)];
 }
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 function blurFocus() { try { const a = document.activeElement; if (a && a !== document.body && a.blur) a.blur(); } catch (e) { /* ignore */ } }
