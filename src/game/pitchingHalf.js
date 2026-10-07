@@ -13,7 +13,7 @@ import { buildPitch, isStrike, hitsBatter, releasePoint } from '../physics/pitch
 import { alignDefense, tapOptions } from './fielding.js';
 import * as rules from './rules.js';
 import { ringTiming, throwPitch, gradeTap, fatigue, pitchCost, staminaMax } from './pitching.js';
-import { decideSwing } from './cpuBatter.js';
+import { decideSwing, wantsBunt, zoneBoxRatio } from './cpuBatter.js';
 import { hotZones, heatAt, catcherCall, onCall } from './scouting.js';
 import { chooseSend, stealDecision } from './cpuRunner.js';
 import { choosePitch } from './pitcherAI.js';
@@ -162,6 +162,13 @@ const methods = {
     alignDefense(this.defense, this.bases, this.outs, this.cfg); // (a steal may have changed the situation)
     this.ring = { tStart: this.time, ...ringTiming(pitcher, type, this.fatigueF(), this.cfg), tapped: false, errMs: null, type, aim: { ...this.pitchAim }, release: releasePoint(type, pitcher.hand || 'R', this.cfg) }; // (release: where the hand lets go - drawn from the first move)
     this.setPhase('delivery');
+    // their batter may square around to bunt the runners over (he shows it as you deliver)
+    const g = this.game;
+    this.cpuBunt = !this.practicePitch && !!g && !this.cpuSwingOverride && wantsBunt({
+      bases: this.bases, outs: this.outs, count: this.count, batter: this.batter, inning: g.inning, innings: g.innings,
+      lead: (g.score[g.half] || 0) - (g.score[g.half === 'top' ? 'bottom' : 'top'] || 0), rng: this.rng,
+    }, this.cfg);
+    this.buntStance = this.cpuBunt;
     // their runners may go with your delivery: they break `stealBreak` before the release (the rest is rolled at the release)
     this.steal = null;
     if (this.diamond && stealDecision({ bases: this.bases, count: this.count, outs: this.outs, speeds: this.runnerSpeeds(), rng: this.rng }, this.cfg)) {
@@ -300,7 +307,20 @@ const methods = {
       strength: this.d.cpuStrength ?? 0, rng: this.rng, heat: this.pitch.heat,
     }, cfg);
     this.cpuSwing = null;
-    if (dec && dec.swing) {
+    if (this.cpuBunt) {
+      // squared around: he bunts a pitch he can reach where he reads it, and pulls the bat back on one he reads as a ball
+      const Bc = cfg.cpuBat.bunt, pitch = this.pitch;
+      pitch.buntDecided = true; // (the engine's own hold-the-bunt for YOUR batter stays out of it)
+      const ball = pitch.flight.at(Math.min(pitch.tCross - pitch.tRelease, pitch.flight.T));
+      if (zoneBoxRatio(ball.x, ball.y, cfg) > Bc.takeRatio) { this.cpuBunt = false; this.buntStance = false; }
+      else {
+        const R = cfg.swing.reach;
+        const aim = { x: clamp(ball.x + this.rng.gauss(0, Bc.aimSd), -R.x, R.x), y: clamp(ball.y + this.rng.gauss(0, Bc.aimSd), R.yMin, R.yMax) };
+        const errorMs = clamp(this.rng.gauss(0, cfg.bunt.holdTimingSd), -cfg.bunt.windowMs[0], cfg.bunt.windowMs[0]);
+        this.batAim = { ...aim }; // (the bat is held out there)
+        this.cpuSwing = { tPress: pitch.tCross + errorMs / 1000 - cfg.timing.swingDelay, aim, bunt: true };
+      }
+    } else if (dec && dec.swing) {
       const R = cfg.swing.reach;
       const aim = { x: clamp(dec.aim.x, -R.x, R.x), y: clamp(dec.aim.y, R.yMin, R.yMax) }; // (his bat reaches as far as yours)
       this.cpuSwing = { tPress: this.pitch.tCross + dec.errorMs / 1000 - cfg.timing.swingDelay, aim, protect: !!dec.protect };

@@ -463,7 +463,7 @@ export class Engine {
       // protect swing is a slower bat (`cpuBat.protectSpeed` of the full bat speed - computeSwing takes extra bat speed in mph)
       const ci = cpuSwingInputs(this.difficulty, this.batter, this.d.cpuStrength ?? 0, this.cfg, pitch.heat || 0); // (pitch.heat: his hot / cold zones)
       const slower = opts.protect ? (1 - this.cfg.cpuBat.protectSpeed) * this.cfg.swing.batSpeed : 0;
-      contact = computeSwing({
+      contact = bunting ? computeBunt({ errorMs: times.errorMs, ball, aim, window: ci.window, windowScale: ci.windowScale, batterHand: this.batterHand, side: 'bat', rng: this.rng }, this.cfg) : computeSwing({
         errorMs: times.errorMs, ball, aim, window: ci.window, vBall, wBall, windowScale: ci.windowScale,
         speedScale: pitchWindowScale(pitch.type), batterHand: this.batterHand, batBonus: ci.batBonus - slower, aimAssist: ci.aimAssist,
         evBonus: ci.evBonus, rng: this.rng,
@@ -500,7 +500,7 @@ export class Engine {
     if (this.buntStance && !this.swing && !pitch.buntDecided && this.time >= pitch.tCross - this.cfg.timing.swingDelay) this.holdBunt();
     // the computer's batter swings at the moment he chose at the release (exactly then, whatever the frame rate - see pitchingHalf)
     const cs = this.cpuSwing;
-    if (cs && !this.swing && this.time >= cs.tPress) { this.cpuSwing = null; this.commitSwing(cs.tPress, cs.aim, false, 0, { protect: cs.protect }); }
+    if (cs && !this.swing && this.time >= cs.tPress) { this.cpuSwing = null; this.commitSwing(cs.tPress, cs.aim, !!cs.bunt, 0, { protect: cs.protect }); }
     const s = this.swing;
     if (s && !s.resolved && this.time >= s.tHit) {
       s.resolved = true;
@@ -515,7 +515,7 @@ export class Engine {
     if (!pitch.caught && this.time >= pitch.tCatch) {
       // (the computer's batter decided to swing and is still coming round, far too late: it is a swing all the same - a strike)
       const late = this.cpuSwing;
-      if (late) { this.cpuSwing = null; this.commitSwing(late.tPress, late.aim, false, 0, { protect: late.protect }); }
+      if (late) { this.cpuSwing = null; this.commitSwing(late.tPress, late.aim, !!late.bunt, 0, { protect: late.protect }); }
       pitch.caught = true;
       pitch.wild = this.rollWildPitch(); // (one in the dirt may get past him)
       if (!pitch.wild) this.emit('catch', { pitch, swung: !!this.swing });

@@ -98,7 +98,7 @@ export const CONFIG = {
     //   'ivy' or 'brick' (else padded in the wall colour); mow: the grass pattern ('stripes', 'checker', 'diamond', 'waves',
     //   'turf'); grass / dirt: tints; features: the park's landmarks (built in render/parkLook.js).
     looks: {
-      sandlot: { backdrop: ['trees'], mow: 'stripes' },
+      sandlot: { backdrop: ['trees', 'hills'], facade: '#5d636e', mow: 'stripes' },
       bal: { seats: '#1f5a36', facade: '#6e3a2a', backdrop: ['skyline'], features: ['warehouse'], mow: 'stripes' },
       bos: { seats: '#26553a', facade: '#2a3a30', backdrop: ['skyline'], features: ['citgo'], mow: 'checker', decks: 0 },
       nyy: { seats: '#1c3770', facade: '#c9ccd0', decks: 2, frieze: true, backdrop: ['skyline'], mow: 'stripes' },
@@ -349,6 +349,12 @@ export const CONFIG = {
     edgeFrom: 0.9, // ...meaning a perceived zoneBoxRatio above this
     protectSd: 0.8, // two strikes: timing spread x this (he just tries to make contact)...
     protectSpeed: 0.92, // ...and his bat speed x this (more fouls) - the engine uses this
+    // The sacrifice bunt: with nobody out, a runner on first and/or second, third base empty and fewer than two strikes, a batter
+    // with Power under `maxPower` (a generated batter counts as 50) squares around on a pitch with chance `chance` (x `late` in the
+    // last two innings of a game within a run, x (1 + `speedBonus` x his Speed above 50 / 50)). He pulls the bat back on a pitch he
+    // reads beyond `takeRatio` of the zone (the umpire's box), else he holds it out where he read it (off by `aimSd` ft, his timing
+    // by the bunt's `holdTimingSd`).
+    bunt: { chance: 0.16, maxPower: 62, late: 1.8, speedBonus: 0.6, takeRatio: 1.12, aimSd: 0.05 },
     under: 0.25, // how far under the middle of the ball he aims (share of his sweet zone: fly balls)
     strengthSd: 0.12, // a batter with no ratings: errors x(1 - this x team strength k)
     strengthEv: 2, // ...and exit velocity +this many mph x k

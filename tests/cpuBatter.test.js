@@ -6,7 +6,7 @@ import { buildPitch, zoneRatio } from '../src/physics/pitch.js';
 import { contactPoint, computeSwing } from '../src/game/contact.js';
 import { resolveSwingTimes } from '../src/game/timing.js';
 import { pitchWindowScale } from '../src/game/pitcherAI.js';
-import { decideSwing, startSpot, perceivedSpot, cpuSwingInputs } from '../src/game/cpuBatter.js';
+import { decideSwing, startSpot, perceivedSpot, cpuSwingInputs, wantsBunt } from '../src/game/cpuBatter.js';
 
 const SEEDS = 2000;
 
@@ -145,5 +145,24 @@ describe('the computer batter', () => {
     const strong = cpuSwingInputs('pro', null, 1.5, CONFIG), weakT = cpuSwingInputs('pro', null, -1.5, CONFIG);
     expect(strong.evBonus).toBeGreaterThan(weakT.evBonus);
     expect(strong.windowScale).toBeGreaterThan(weakT.windowScale);
+  });
+});
+
+describe('the sacrifice bunt (wantsBunt)', () => {
+  const rng = { next: () => 0 }; // (always under the chance)
+  const base = { bases: [{}, null, null], outs: 0, count: { balls: 0, strikes: 0 }, batter: { pow: 40, spd: 50 }, inning: 1, innings: 3, lead: 0, rng };
+  it('bunts only in a bunting situation', () => {
+    expect(wantsBunt(base)).toBe(true);
+    expect(wantsBunt({ ...base, outs: 1 })).toBe(false);
+    expect(wantsBunt({ ...base, count: { balls: 1, strikes: 2 } })).toBe(false);
+    expect(wantsBunt({ ...base, bases: [null, null, null] })).toBe(false);
+    expect(wantsBunt({ ...base, bases: [{}, null, {}] })).toBe(false);
+    expect(wantsBunt({ ...base, batter: { pow: 80 } })).toBe(false);
+    expect(wantsBunt({ ...base, bases: [null, {}, null] })).toBe(true);
+  });
+  it('draws no random number outside a bunting situation', () => {
+    let n = 0; const r = { next: () => { n++; return 0.5; } };
+    wantsBunt({ ...base, outs: 2, rng: r });
+    expect(n).toBe(0);
   });
 });

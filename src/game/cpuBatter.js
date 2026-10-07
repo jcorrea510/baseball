@@ -146,3 +146,19 @@ export function cpuSwingInputs(level, batter, strength, cfg = CONFIG, heat = 0) 
     aimAssist: L.aimAssist,
   };
 }
+
+/**
+ * Does the computer's batter square around to bunt on this pitch (the sacrifice)? Pure but for the rng draw, which is only made
+ * when the situation is a bunting one (so other situations keep their random sequence).
+ * @param {object} i { bases [1st, 2nd, 3rd], outs, count {balls, strikes}, batter, inning, innings, lead (his side's runs minus yours), rng }
+ */
+export function wantsBunt(i, cfg = CONFIG) {
+  const B = cfg.cpuBat.bunt;
+  if (!B || i.outs !== 0 || i.count.strikes >= 2 || i.bases[2] || !(i.bases[0] || i.bases[1])) return false;
+  const b = i.batter || {};
+  const pow = b.pow ?? 50, spd = b.spd ?? 50;
+  if (pow >= B.maxPower) return false;
+  let p = B.chance * (1 + B.speedBonus * Math.max(0, spd - 50) / 50);
+  if (i.inning >= (i.innings || 9) - 1 && Math.abs(i.lead || 0) <= 1) p *= B.late;
+  return i.rng.next() < Math.min(0.9, p);
+}
