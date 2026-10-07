@@ -78,9 +78,8 @@ const ICONS = {
 };
 const icon = (name, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`;
 
-// A results headline in the logo's letters, or plain text if it cannot be drawn.
-let headlineN = 0;
-const headline = (text, tone) => wordSVG(text, { id: 'hl' + ++headlineN, tone }) || text;
+// A results headline (YOU WIN, CHAMPIONS...) in the broadcast type; the logo's letters are kept for the home-run celebration.
+const headline = (text, tone) => `<span class="hl ${tone}">${text}</span>`;
 
 // A selector that finds "the same" control again after its screen is rebuilt.
 function focusSelector(el) {
@@ -282,7 +281,7 @@ export class UI {
       this.act('practice', { type: b.dataset.type });
     });
     const rng = $(hud, '.practice input');
-    rng.addEventListener('input', () => { $(hud, '.practice .sv').textContent = rng.value + ' mph'; this.act('practice', { speed: +rng.value }); });
+    rng.addEventListener('input', () => { $(hud, '.practice .sv').textContent = speedText(+rng.value); this.act('practice', { speed: +rng.value }); });
     $(hud, '.practice .loc').addEventListener('click', (e) => {
       const b = e.target.closest('button'); if (!b) return;
       for (const x of b.parentNode.children) x.classList.toggle('on', x === b);
@@ -674,11 +673,11 @@ export class UI {
       let hdr = '<tr><th></th>' + Array.from({ length: n }, (_, i) => `<th>${i + 1}</th>`).join('') + '<th>R</th><th>H</th><th>E</th></tr>';
       const row = (name, ab, arr, R, H, E) => `<tr><td class="tn"><span class="full">${name}</span><span class="ab">${ab}</span></td>` + Array.from({ length: n }, (_, i) => `<td>${arr[i] === undefined ? '' : arr[i]}</td>`).join('') + `<td class="r">${R}</td><td>${H}</td><td>${E}</td></tr>`;
       table = `<table class="linescore">${hdr}${row(teamNames.away, teamNames.awayAbbr, g.line.top, g.score.top, g.hits.top, (g.errors || {}).top || 0)}${row(teamNames.home, teamNames.homeAbbr, g.line.bottom, g.score.bottom, g.hits.bottom, (g.errors || {}).bottom || 0)}</table>`;
-      grid = [[avgText(st.hits, st.ab), 'AVG'], [`${st.hits}/${st.ab}`, 'Hits'], [st.hr, 'HR'], [st.rbi, 'RBI'], [st.perfect, 'Perfect'], [st.longestHR ? st.longestHR + ' ft' : '--', 'Longest'], [st.maxEV ? Math.round(st.maxEV) + ' mph' : '--', 'Exit velo'], [`${st.strikeouts} / ${st.walks}`, 'K / BB']];
+      grid = [[avgText(st.hits, st.ab), 'AVG'], [`${st.hits}/${st.ab}`, 'Hits'], [st.hr, 'HR'], [st.rbi, 'RBI'], [st.perfect, 'Perfect'], [st.longestHR ? distText(st.longestHR) : '--', 'Longest'], [st.maxEV ? speedText(st.maxEV) : '--', 'Exit velo'], [`${st.strikeouts} / ${st.walks}`, 'K / BB']];
     } else if (p.mode === 'derby') {
       const d2 = p.derby;
       head = `<div class="label">Derby</div><div class="result win">${headline(`${d2.hr} HOME RUN${d2.hr === 1 ? '' : 'S'}`, 'gold')}</div>`;
-      grid = [[d2.hr, 'HR'], [d2.longest ? d2.longest + ' ft' : '--', 'Longest'], [d2.bestStreak, 'Streak'], [st.perfect, 'Perfect'], [st.maxEV ? Math.round(st.maxEV) + ' mph' : '--', 'Exit velo'], [`${Math.round(100 * d2.hr / Math.max(1, st.swings))}%`, 'HR rate'], [st.swings, 'Swings'], [st.whiffs, 'Misses']];
+      grid = [[d2.hr, 'HR'], [d2.longest ? distText(d2.longest) : '--', 'Longest'], [d2.bestStreak, 'Streak'], [st.perfect, 'Perfect'], [st.maxEV ? speedText(st.maxEV) : '--', 'Exit velo'], [`${Math.round(100 * d2.hr / Math.max(1, st.swings))}%`, 'HR rate'], [st.swings, 'Swings'], [st.whiffs, 'Misses']];
     }
     // (the buttons stay in view on any screen: the rest scrolls above them when a phone is too short for it all)
     // (your pitching, when you pitched: IP / H / R / ER / BB / K under the batting line, its badges first in the badge row)
@@ -688,8 +687,8 @@ export class UI {
     const pBadges = pt ? (pt.badges || []).map((b) => `<span class="badge">${icon('star')}${PB[b] || b}</span>`).join('') : '';
     const badges = pBadges + records.map((r) => `<span class="badge">${icon('star')}${r}</span>`).join('') + unlocked.map((u) => `<span class="badge unlock">${icon('unlock')}${u.name}</span>`).join('')
       + (seasonInfo ? seasonInfo.items.map(([l, c]) => `<span class="badge">${l} +${c}</span>`).join('') + `<span class="badge coinbadge">${icon('coin')}${seasonInfo.coins}</span>` : '');
-    d.innerHTML = `<div class="overbody">${head}${table}<div class="statgrid">${grid.map(([v, l]) => `<div class="stat"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('')}</div>
-      ${pt ? `<div class="statgrid pitchgrid">${pitchGrid.map(([v, l]) => `<div class="stat"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('')}</div>` : ''}
+    d.innerHTML = `<div class="overbody">${head}${table}${pt ? `<div class="label gl">At the plate</div>` : ""}<div class="statgrid">${grid.map(([v, l]) => `<div class="stat"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('')}</div>
+      ${pt ? `<div class="label gl">On the mound</div><div class="statgrid pitchgrid">${pitchGrid.map(([v, l]) => `<div class="stat"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('')}</div>` : ''}
       ${badges ? `<div class="badges">${badges}</div>` : ''}</div>
       <div class="row overacts">${seasonInfo
     ? `<button class="btn" data-a="seasonHub">${icon('play')}Continue</button>`
@@ -725,11 +724,11 @@ export class UI {
     const s = this.fresh('career');
     const c = prog.data.career;
     const d = h('div', 'locker panel rise');
-    const cells = [[avgText(c.hits, c.ab), 'AVG'], [c.hits, 'Hits'], [c.hr, 'HR'], [c.longestHR ? c.longestHR + ' ft' : '--', 'Longest HR'], [c.maxEV ? Math.round(c.maxEV) + ' mph' : '--', 'Exit velo'], [c.perfects, 'Perfect'], [`${c.wins}/${c.games}`, 'Wins'], [c.derbyBestHR, 'Derby best'], [c.derbyBestStreak, 'HR streak'], [c.rbi, 'RBI'], [c.strikeouts, 'Strikeouts'], [c.practiceSwings, 'Practice']];
+    const cells = [[avgText(c.hits, c.ab), 'AVG'], [c.hits, 'Hits'], [c.hr, 'HR'], [c.longestHR ? distText(c.longestHR) : '--', 'Longest HR'], [c.maxEV ? speedText(c.maxEV) : '--', 'Exit velo'], [c.perfects, 'Perfect'], [`${c.wins}/${c.games}`, 'Wins'], [c.derbyBestHR, 'Derby best'], [c.derbyBestStreak, 'HR streak'], [c.rbi, 'RBI'], [c.strikeouts, 'Strikeouts'], [c.practiceSwings, 'Practice']];
     const pc = c.pitching;
     const pcells = [[ipText(pc.outs), 'IP'], [eraText(pc.er, pc.outs), 'ERA'], [pc.k, 'K'], [pc.bb, 'BB'], [pc.h, 'H'], [pc.hr, 'HR'], [pc.k ? pc.bestK : '--', 'Best K'], [pc.shutouts, 'Shutouts']];
     const cell = ([v, l]) => `<div class="stat"><div class="v">${v}</div><div class="l">${l}</div></div>`;
-    d.innerHTML = `${this.backHead('Career', `<button class="btn small ghost warn" data-a="resetStats" data-confirm="Erase stats?">${icon('trash')}Reset</button>`)}<div class="statgrid">${cells.map(cell).join('')}</div>
+    d.innerHTML = `${this.backHead('Career', `<button class="btn small ghost warn" data-a="resetStats" data-confirm="Erase stats?">${icon('trash')}Reset</button>`)}<div class="label">Batting</div><div class="statgrid">${cells.map(cell).join('')}</div>
       <div class="label">Pitching</div><div class="statgrid">${pcells.map(cell).join('')}</div>`;
     s.appendChild(d);
     this.refocus(s);
@@ -1342,7 +1341,7 @@ export class UI {
     for (const b of pt.querySelectorAll('.role button')) b.classList.toggle('on', b.dataset.role === (p.role || 'bat'));
     for (const b of pt.querySelectorAll('.bh button')) b.classList.toggle('on', b.dataset.bh === (p.batterHand || 'R'));
     for (const b of pt.querySelectorAll('.pt button')) b.classList.toggle('on', b.dataset.type === p.type);
-    const r = pt.querySelector('input'); r.value = p.speed; pt.querySelector('.sv').textContent = Math.round(p.speed) + ' mph';
+    const r = pt.querySelector('input'); r.value = p.speed; pt.querySelector('.sv').textContent = speedText(p.speed);
     for (const b of pt.querySelectorAll('.loc button')) b.classList.toggle('on', b.dataset.loc === p.location);
   }
 }
