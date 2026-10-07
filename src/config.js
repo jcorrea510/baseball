@@ -942,6 +942,11 @@ export const CONFIG = {
   //  Animation (picture only - nothing here changes what happens in a play; poses.js / actors.js read it).
   // --------------------------------------------------------------------------
   anim: {
+    // Fielders' hands (picture only). Catching: the bare hand rides up toward the glove as the ball comes in (`bareFollow` of the way,
+    // 0 = stays at his belt, 1 = right beside the glove) and, once the ball is in, closes over it - two hands on the catch - over
+    // `twoHandsSeconds` s. Throwing: the ball moves from the glove to the throwing hand between these two moments (seconds before the
+    // release), as the hands break apart (`ballToHand`).
+    fielder: { bareFollow: 0.45, twoHandsSeconds: 0.22, ballToHand: [0.3, 0.1] },
     // The batter's load and stride, timed to the pitch like a real hitter's: his hands go back and his weight shifts onto the back leg
     // as the pitcher comes set and delivers (`loadStart` .. `loadEnd` s before the release), the front foot lifts `liftAt` s before the
     // ball reaches the plate, comes in toward the back knee and goes down again `landAt` s before it gets there, `stride` ft further

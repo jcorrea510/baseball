@@ -517,7 +517,7 @@ export class Actors {
         // throws from his knees as he gets up
         const uT = clamp((playT - (throwing.t0 - 0.32)) / 0.32, 0, 1) * THROW_RELEASE_U + clamp((playT - throwing.t0) / 0.3, 0, 1) * (1 - THROW_RELEASE_U);
         const tp = this.tmpPose2 || (this.tmpPose2 = makePose());
-        throwPose(tp, uT);
+        throwPose(tp, uT, { kind: pos === 'C' ? 'C' : 'IF' });
         mixPose(P, P, tp, smoothstep(0.1, 0.6, dive.u) * smoothstep(0, 0.5, uT + 0.2));
       }
       person.animState = 'dive';
@@ -525,7 +525,7 @@ export class Actors {
     }
     if (throwing) {
       const uT = clamp((playT - (throwing.t0 - 0.32)) / 0.32, 0, 1) * THROW_RELEASE_U + clamp((playT - throwing.t0) / 0.3, 0, 1) * (1 - THROW_RELEASE_U);
-      throwPose(P, uT);
+      throwPose(P, uT, { kind: pos === 'C' ? 'C' : kind });
       if (runW > 0.01) { runPose(scratch, st.phase, speed, 0); mixPose(P, P, scratch, runW); }
       person.animState = 'throw';
       return;
@@ -559,7 +559,7 @@ export class Actors {
           const k = Math.max(ready, hit) * (1 - smoothstep(tagOut.t + 0.4, tagOut.t + 0.8, playT));
           tx = lerp(tx, 0.35, k); ty = lerp(ty, lerp(1.15, 0.6, hit), k); tz = lerp(tz, lerp(1.7, 1.4, hit), k); crouch = lerp(crouch, 0.95, k);
         }
-        catchPose(P, [tx, ty, tz], crouch);
+        catchPose(P, [tx, ty, tz], crouch, smoothstep(0, E.cfg.anim.fielder.twoHandsSeconds, dtC));
         if (runW > 0.01) {
           // a running catch: keep striding with the glove out, settle into the catch pose as he slows
           runReachPose(scratch, st.phase, speed, [tx, ty, tz], look);
@@ -1158,6 +1158,12 @@ export class Actors {
       person.root.updateMatrixWorld(true);
       person.gloveWorld(out);
       out.y = Math.max(out.y, person.animState === 'dive' ? 0.3 : 1.2);
+      // as he winds up to throw, the hands break and the ball goes from the glove into the throwing hand (never a jump)
+      if (person.animState === 'throw') {
+        const bh = E.cfg.anim.fielder.ballToHand;
+        const g = smoothstep(seg.t1 - bh[0], seg.t1 - bh[1], t);
+        if (g > 0) { const h = person.handWorld('R', this.tmpV3); out.lerp(h, g); }
+      }
       return { kind: 'carry', trail: 0 };
     }
     if (seg.kind === 'loose') {
