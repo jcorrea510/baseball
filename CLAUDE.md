@@ -48,7 +48,7 @@ Vercel settings (also README, `vercel.json`): Framework Vite, Install `npm ci`, 
 ## Known issues / open ideas
 - Base running vs MLB (the computer's runners, `qa-output`-style planner check): double plays 47% of chances in realism.mjs (MLB ~45-50), runner on third scores on ~59% of infield grounders (MLB ~55-65), first-to-third still ~13% of outfield singles (RF ~20%, LF / CF ~6%; MLB ~25-30%: the computer only sends when the planner says safe - it never takes a real risk; outfield transfer 0.8 s). Your own runners still hold until you send them, so realism.mjs prints 0% for those two. Walks rare when you pitch (~1%). No pickoffs; you never run the computer's runners.
 - The Credits say "personal use only" for the real club and player names: publishing publicly needs the owner's decision.
-- Real-device performance never measured (this laptop renders in software).
+- Real-device performance never measured (this laptop renders in software). Draw calls cut ~3x on Oct 7 (players are skinned meshes, `render/mergeStatic.js`): batting view ~117. Left: a coarser head for the shadow pass, 16 separate cloud sprites.
 
 ## Machines
 - **Fedora laptop** (`~/baseball`): Node 24 in `~/.local`, `gh` logged in, no Chrome - `CHROME_PATH=/opt/helium/helium`. The owner's local copy: copy `dist/` over `~/.local/share/sandlot/game` after a build.
