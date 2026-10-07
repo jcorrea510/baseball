@@ -525,7 +525,7 @@ export class Actors {
         // throws from his knees as he gets up
         const uT = clamp((playT - (throwing.t0 - 0.32)) / 0.32, 0, 1) * THROW_RELEASE_U + clamp((playT - throwing.t0) / 0.3, 0, 1) * (1 - THROW_RELEASE_U);
         const tp = this.tmpPose2 || (this.tmpPose2 = makePose());
-        throwPose(tp, uT);
+        throwPose(tp, uT, { kind: pos === 'C' ? 'C' : 'IF' });
         mixPose(P, P, tp, smoothstep(0.1, 0.6, dive.u) * smoothstep(0, 0.5, uT + 0.2));
       }
       person.animState = 'dive';
@@ -533,7 +533,7 @@ export class Actors {
     }
     if (throwing) {
       const uT = clamp((playT - (throwing.t0 - 0.32)) / 0.32, 0, 1) * THROW_RELEASE_U + clamp((playT - throwing.t0) / 0.3, 0, 1) * (1 - THROW_RELEASE_U);
-      throwPose(P, uT);
+      throwPose(P, uT, { kind: pos === 'C' ? 'C' : kind });
       if (runW > 0.01) { runPose(scratch, st.phase, speed, 0); mixPose(P, P, scratch, runW); }
       person.animState = 'throw';
       return;
@@ -567,7 +567,7 @@ export class Actors {
           const k = Math.max(ready, hit) * (1 - smoothstep(tagOut.t + 0.4, tagOut.t + 0.8, playT));
           tx = lerp(tx, 0.35, k); ty = lerp(ty, lerp(1.15, 0.6, hit), k); tz = lerp(tz, lerp(1.7, 1.4, hit), k); crouch = lerp(crouch, 0.95, k);
         }
-        catchPose(P, [tx, ty, tz], crouch);
+        catchPose(P, [tx, ty, tz], crouch, smoothstep(0, E.cfg.anim.fielder.twoHandsSeconds, dtC));
         if (runW > 0.01) {
           // a running catch: keep striding with the glove out, settle into the catch pose as he slows
           runReachPose(scratch, st.phase, speed, [tx, ty, tz], look);
@@ -726,7 +726,18 @@ export class Actors {
       sw = { tStart: swing.tPress, tHit: swing.tHit, follow: swing.follow, contact: [local.x, local.y, local.z], early: clamp(-swing.errorMs / 60, -1, 1) };
       if (!swing.made) sw.early = clamp(-swing.errorMs / 100, -0.6, 0.6);
     }
-    batterPose(P, time, sw, E.batAim ? E.batAim.y : null); // (in his stance his hands follow where the bat is aimed, a little)
+    // (a swing is finished - follow-through, then back into his stance - even once the engine has moved on to the next pitch)
+    const stS = this.state.get(person);
+    if (sw) stS.lastSw = sw;
+    else if (stS.lastSw && phase !== 'windup' && phase !== 'delivery' && time < stS.lastSw.tHit + stS.lastSw.follow + 0.25 + E.cfg.anim.batter.recover && time >= stS.lastSw.tHit) sw = stS.lastSw;
+    else stS.lastSw = null;
+    // his load and stride are timed to this pitch (your delivery: the pitch is not thrown yet - its release time is known)
+    const wp = this.windupPitch(E, pitch);
+    const tm = wp && (phase === 'windup' || phase === 'delivery' || phase === 'pitch' || phase === 'play' || phase === 'result') && !E.buntStance
+      ? (this._tm || (this._tm = {})) : null;
+    if (tm) { tm.tRelease = wp.tRelease; tm.tCross = wp.tCross ?? wp.tRelease + E.cfg.anim.batter.flight; }
+    const oneHand = oneHanded(E.batter, E.cfg);
+    batterPose(P, time, sw, E.batAim ? E.batAim.y : null, tm, oneHand); // (in his stance his hands follow where the bat is aimed, a little)
     if (pitch && pitch.hitsBatter && !swing) {
       // a pitch coming in at him: he turns away from it, and it hits him in the back / the arm
       const k = smoothstep(pitch.tCross - 0.22, pitch.tCross + 0.02, time);
@@ -746,16 +757,7 @@ export class Actors {
       buntPose(bp, time, swing && swing.bunt && sw ? sw : null, aimLocal);
       mixPose(P, P, bp, st.buntK);
     }
-    // ease back to the stance for the next pitch after the swing is over
-    if (sw && (phase === 'result' || phase === 'ready')) {
-      const doneT = sw.tHit + sw.follow;
-      const k = smoothstep(doneT + 0.25, doneT + 0.7, time);
-      if (k > 0) {
-        const stance = makePose();
-        batterPose(stance, time, null);
-        mixPose(P, P, stance, k);
-      }
-    }
+    // (after the follow-through he comes back into his stance by himself - batterPose)
     // Derby / practice: after a home run the batter flips the bat and celebrates instead of running.
     const pl = E.play;
     if (E.mode === 'derby' && pl && pl.plan.homer && (phase === 'play' || phase === 'result')) {
@@ -881,7 +883,7 @@ export class Actors {
     const tt = clamp(sw.tHit - pitch.tRelease, 0, pitch.flight.tCatch);
     const bp = pitch.flight.at(tt);
     const local = person.root.worldToLocal(this.tmpV3.set(bp.x, bp.y, bp.z).clone());
-    batterPose(out, sw.tHit + sw.follow, { tStart: sw.tPress, tHit: sw.tHit, follow: sw.follow, contact: [local.x, local.y, local.z], early: 0 });
+    batterPose(out, sw.tHit + sw.follow, { tStart: sw.tPress, tHit: sw.tHit, follow: sw.follow, contact: [local.x, local.y, local.z], early: 0 }, null, null, oneHanded(E.batter, E.cfg));
     out.batVis = 0;
   }
 
@@ -1164,6 +1166,12 @@ export class Actors {
       person.root.updateMatrixWorld(true);
       person.gloveWorld(out);
       out.y = Math.max(out.y, person.animState === 'dive' ? 0.3 : 1.2);
+      // as he winds up to throw, the hands break and the ball goes from the glove into the throwing hand (never a jump)
+      if (person.animState === 'throw') {
+        const bh = E.cfg.anim.fielder.ballToHand;
+        const g = smoothstep(seg.t1 - bh[0], seg.t1 - bh[1], t);
+        if (g > 0) { const h = person.handWorld('R', this.tmpV3); out.lerp(h, g); }
+      }
       return { kind: 'carry', trail: 0 };
     }
     if (seg.kind === 'loose') {
@@ -1237,3 +1245,11 @@ function lerpAngle(a, b, t) {
   return a + d * t;
 }
 function rnd(a, b) { return a + Math.random() * (b - a); }
+// Does this hitter let go with his top hand in his finish? (always the same for the same player: from his name / number)
+function oneHanded(b, cfg) {
+  if (!b) return false;
+  const key = String(b.name || b.id || '') + (b.number || 0);
+  let h = 7;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  return (h % 1000) / 1000 < cfg.anim.batter.oneHand;
+}

@@ -2,6 +2,7 @@
 // All poses are expressed in person-local space: +y up, +z forward, +x = the person's left.
 import { DIM, makePose, mixPose, copyPose } from './rig.js';
 import { clamp, lerp, smoothstep } from '../util/math.js';
+import { CONFIG } from '../config.js';
 
 const ANK = DIM.ankle;
 const TAU = Math.PI * 2;
@@ -47,133 +48,229 @@ export function resetPose(P) {
   return P;
 }
 
+// ---------------------------------------------------------------- feet
+// The ball of the foot, from the ankle (foot space): where a foot pivots and pushes off.
+const FOOT_BALL = { y: -0.26, z: 0.4 };
+// Where the ankle has to be for the ball of the foot to rest on the ground at (bx, by, bz) with the foot turned `yaw` and tipped `tilt`
+// (+ = heel up, toes down; rig.js turns the foot about the ankle): a foot that pivots or rolls up onto its toes stays where it is
+// planted instead of sinking into the ground or sliding.
+export function footOnBall(out, bx, bz, yaw, tilt, by = 0) {
+  const ct = Math.cos(tilt), st = Math.sin(tilt);
+  const y = FOOT_BALL.y * ct - FOOT_BALL.z * st;
+  const zl = FOOT_BALL.y * st + FOOT_BALL.z * ct;
+  out[0] = bx - Math.sin(yaw) * zl; out[1] = by - y; out[2] = bz - Math.cos(yaw) * zl;
+  return out;
+}
+
 // ---------------------------------------------------------------- batter (right-handed pose space)
 // The stance: the bat handle ("knob") with the hands relaxed in front of the back shoulder, a little below it and back from the
 // face, and the bat laid back at about 45 deg (yaw / pitch, radians). His weight sits back on the rear leg (`WEIGHT_BACK` ft).
 const KNOB_STANCE = [-0.55, 3.82, 0.95];
 const BAT_STANCE = { yaw: -1.5, pitch: 0.76 };
 const WEIGHT_BACK = 0.12;
+const FOOT_L0 = [0.95, 0.1], FOOT_R0 = [-0.95, -0.05]; // his feet in the stance (ankle x, z)
+// The load at its fullest, on top of the stance: the hands go back and up a little, the bat tips a touch further back, the hips and
+// shoulders coil in (the front shoulder tucks), the weight goes back and he sinks into his back leg.
+const LOAD = { knob: [-0.26, 0.08, -0.1], batYaw: -0.1, batPitch: 0.1, pelvisYaw: -0.17, torsoYaw: -0.2, weight: -0.07, hip: -0.05 };
 // Reaching in the swing (ft of pose space): a ball further out over the plate than `awayFrom` (forward of him) or lower than `lowFrom`
 // - per foot beyond: hips shift toward it `shift`, the upper body leans `lean` (radians), the front foot strides `stride` further
 // out, and for a low ball he leans `lowLean` and sinks `sink`.
 const REACH = { awayFrom: 2.6, lowFrom: 2.6, shift: 0.42, lean: 0.38, stride: 0.35, lowLean: 0.14, sink: 0.24 };
+// At contact (the same for every swing - the hands can reach every pitch from here; measured): hips open, shoulders square to the
+// pitcher's side, the weight onto the front leg, standing up into a braced front leg, the back foot up on its toe and turned in.
+const AT_CONTACT = { pelvisYaw: 0.62, torsoYaw: 0.3, torsoPitch: 0.36, hip: 2.88, backYaw: 0.9, backTilt: 0.62 };
+// The swing from the press (u = 0) to contact (u = 1), as shares of the way from where he was to the contact position: the hips fire
+// first while the shoulders stay closed (the stretch between them), then the shoulders unwind; the hands drop into the slot and come
+// forward close to his body with the barrel lagging behind them; in the last third the barrel whips round to meet the ball.
+const SW_HIPS = [[0, 0], [0.3, 0.5], [0.62, 0.86], [1, 1]];
+const SW_SHOULDERS = [[0, 0], [0.3, 0.1], [0.62, 0.55], [1, 1]];
+const SW_HANDS = [[0, 0], [0.3, 0.14], [0.65, 0.56], [1, 1]];
+const SW_BARREL = [[0, 0], [0.45, 0.07], [0.75, 0.4], [1, 1]];
+const SW_SLOT = [0.04, -0.3, -0.14]; // the hands' detour into the slot (ft, at the middle of the swing): down and in close to the body
+const SW_FLAT = 0.38; // the bat's pitch in the slot: it flattens out behind him before the barrel comes round
+// The follow-through after contact (e: 0 = contact .. 1 = finish): [e, knob x, y, z, bat yaw, bat pitch]. The arms extend out through
+// the ball toward the pitcher, the bat climbs past the lead shoulder and wraps round behind his head - always round the body, never
+// through it (measured: the bat stays clear of the head and the chest the whole way).
+export const FOLLOW = [
+  [0.24, 1.2, 3.4, 1.05, 1.45, 0.08], // extension: both arms long out in front, the bat pointing at the pitcher
+  [0.52, 1.15, 4.5, 0.55, 2.4, 0.72], // the bat climbs past the lead shoulder
+  [1, 0.3, 4.7, -0.62, 3.75, -0.12], // finish: hands high by the lead shoulder, the bat across his back
+];
+const FREE_HAND = [0.95, 3.95, 0.45]; // where a top hand that has let go of the bat ends up (in front of his chest)
+// Coming back into his stance after the follow-through: the bat comes down over his shoulder in front of him first.
+const RECOVER_KNOB = [-0.15, 3.65, 0.75];
 
-export function batterPose(P, time, swing, aimY = null) {
-  resetPose(P);
+// The load for a pitch: { hands, stride, lift, relax } at `time`, from the pitch's release and arrival times (tm = { tRelease, tCross }).
+export function batterLoad(time, tm, swung = false, out = {}) {
+  out.hands = 0; out.stride = 0; out.lift = 0; out.relax = 0;
+  if (!tm) return out;
+  const A = CONFIG.anim.batter;
+  out.hands = smoothstep(tm.tRelease - A.loadStart, tm.tRelease - A.loadEnd, time);
+  const t0 = tm.tCross - A.liftAt, t1 = tm.tCross - A.landAt;
+  const s = clamp((time - t0) / (t1 - t0), 0, 1);
+  out.stride = smoothstep(0.25, 1, s); // (up first, then out and down)
+  out.lift = Math.sin(Math.PI * Math.pow(s, 0.8));
+  if (!swung) out.relax = smoothstep(tm.tCross + A.relax[0], tm.tCross + A.relax[1], time);
+  return out;
+}
+const _ld = {}, _ld0 = {};
+
+// The stance (with the load for this pitch) at `time`: writes P and returns P.
+function batterStance(P, time, aimY, ld) {
   const wag = Math.sin(time * 3.4);
   const breathe = Math.sin(time * 1.6);
-  // (an athletic stance: knees flexed, hips back a little, the chest fairly upright over the plate)
-  let hip = 2.72 + breathe * 0.02;
-  let pelvisYaw = -0.05, torsoYaw = -0.06, torsoPitch = 0.18, pelvisPitch = 0.12;
-  let headYawAbs = 1.5, headPitch = 0.16;
-  let footLx = 0.95, footLy = ANK, footLz = 0.1, footRx = -0.95, footRz = -0.05, footRTilt = 0;
+  const h = ld.hands * (1 - ld.relax);
   // (aimY: where the bat is aimed - the hands come down a little and he sinks a touch for a low pitch, rise for a high one)
   const aimK = aimY === null ? 0 : clamp(aimY - 2.5, -1.4, 1.6);
-  hip -= Math.max(0, -aimK) * 0.07;
-  // (not frozen: the hands drift in a slow small loop, the bat waggles, and his weight rocks a little on the back leg)
+  // (not frozen: the hands drift in a slow small loop, the bat waggles, and his weight rocks a little on the back leg - all of it
+  // settles as he loads)
+  const live = 1 - h;
   const loop = time * 1.7, rock = Math.sin(time * 0.9);
-  let knob = [KNOB_STANCE[0] + Math.cos(loop) * 0.04, KNOB_STANCE[1] + wag * 0.04 + Math.sin(loop) * 0.03 + aimK * 0.16, KNOB_STANCE[2]];
-  let batYaw = BAT_STANCE.yaw + wag * 0.06, batPitch = BAT_STANCE.pitch + wag * 0.09;
-  let pelvisX = -WEIGHT_BACK + rock * 0.03, pelvisZ = 0;
-  // (the lead elbow points down in front of the chest, the back elbow out behind him at about shoulder height)
-  let poleL = [0.3, -1, 0.45], poleR = [-0.5, -1, -0.35];
-  let footLTilt = 0;
-
-  const k0 = knob.slice(); // (the swing starts from his stance, wherever his hands were)
-  if (swing && time >= swing.tStart) {
-    const C = swing.contact; // ball position in pose space
-    const early = clamp(swing.early ?? 0, -1, 1);
-    const dirYaw = 0.12 + 0.5 * early;
-    const sinP = clamp((C[1] - 3.0) / 2.3, -0.6, 0.5);
-    const cP = Math.sqrt(1 - sinP * sinP);
-    const cKnob = [C[0] - 2.3 * Math.sin(dirYaw) * cP, C[1] - 2.3 * sinP, C[2] - 2.3 * Math.cos(dirYaw) * cP];
-    const cPitch = Math.asin(sinP);
-    const dur = Math.max(0.03, swing.tHit - swing.tStart);
-    // Reaching for a pitch away from him (out over the plate) or down low: he strides a little toward it, leans out over the plate
-    // and sinks, so his hands can still get the bat there - full at contact, easing off through the follow-through.
-    const away = clamp(C[2] - REACH.awayFrom, 0, 1.6), low = clamp(REACH.lowFrom - C[1], 0, 1.4);
-    const reach = (k) => {
-      pelvisZ = k * away * REACH.shift;
-      torsoPitch += k * (away * REACH.lean + low * REACH.lowLean);
-      hip -= k * (low * REACH.sink + away * 0.06);
-      footLz += k * away * REACH.stride;
-    };
-    if (time < swing.tHit) {
-      const u = clamp((time - swing.tStart) / dur, 0, 1);
-      const load = smoothstep(0, 0.3, u);
-      const ru = clamp((u - 0.2) / 0.8, 0, 1);
-      const rot = ru * ru * (1.6 - 0.6 * ru); // accelerating
-      pelvisYaw = lerp(-0.05 - 0.2 * load, 0.62, rot);
-      pelvisX = lerp(-WEIGHT_BACK - 0.04 * load, WEIGHT_BACK, rot); // (the weight goes from the back leg onto the front one)
-      torsoYaw = lerp(-0.06 - 0.22 * load, 0.3, rot);
-      torsoPitch = lerp(0.18, 0.36, rot); // (from his stance to the same position at contact as always)
-      hip = 2.72 - 0.1 * load + 0.16 * rot;
-      footLx = 0.95 + 0.6 * smoothstep(0, 0.32, u);
-      footLy = ANK + 0.5 * Math.sin(Math.PI * clamp(u / 0.34, 0, 1));
-      footRTilt = -0.9 * rot;
-      const hs = rot;
-      knob = [
-        lerp(k0[0] - 0.25 * load, cKnob[0], hs),
-        lerp(k0[1] - 0.05 * load, cKnob[1], hs),
-        lerp(k0[2] - 0.32 * load, cKnob[2], hs),
-      ];
-      batYaw = lerp(BAT_STANCE.yaw, dirYaw, Math.pow(rot, 1.15));
-      batPitch = lerp(BAT_STANCE.pitch + 0.05 + 0.15 * load, cPitch, hs);
-      headYawAbs = 1.5 - 0.15 * rot;
-      headPitch = 0.16 + 0.1 * rot;
-      poleL = [0.9, -0.5, -0.4]; poleR = [-0.8, -0.2, -0.6];
-      reach(rot);
-    } else {
-      const f = clamp((time - swing.tHit) / Math.max(0.05, swing.follow), 0, 1);
-      const e = 1 - Math.pow(1 - f, 2.2);
-      pelvisYaw = lerp(0.62, 1.12, e);
-      pelvisX = WEIGHT_BACK;
-      torsoYaw = lerp(0.3, 0.7, e);
-      torsoPitch = lerp(0.36, 0.2, e);
-      hip = lerp(2.88, 3.05, e);
-      footLx = 1.55; footLy = ANK;
-      footRTilt = lerp(-0.9, -1.1, e);
-      // The follow-through, in steps: the arms extend out toward the pitcher, the bat climbs past the lead shoulder and finishes
-      // high behind the head - always round the body, never through it (the bat is steered by its knob, its yaw and its pitch).
-      const k = followKey(e, [cKnob, dirYaw, cPitch]);
-      knob = k[0]; batYaw = k[1]; batPitch = k[2];
-      headYawAbs = 1.5; headPitch = 0.24;
-      poleL = [lerp(1.0, 0.6, e), lerp(-0.4, -1, e), lerp(-0.4, 0.3, e)]; poleR = [-0.6, lerp(0.2, -0.3, e), -0.8];
-      reach(1 - smoothstep(0, 0.45, e));
-    }
-  }
-  P.hipY = hip;
-  P.pelvis[0] = pelvisX; P.pelvis[2] = pelvisZ;
-  P.pelvisYaw = pelvisYaw; P.pelvisPitch = pelvisPitch; P.torsoYaw = torsoYaw; P.torsoPitch = torsoPitch;
-  P.headYaw = clamp(headYawAbs - (pelvisYaw + torsoYaw), -0.5, 1.5);
-  P.headPitch = headPitch;
-  set3(P.footL, footLx, footLy, footLz);
-  set3(P.footR, footRx, ANK, footRz);
-  P.footRTilt = footRTilt; P.footLTilt = footLTilt;
-  set3(P.kneeL, 0.3, 0.05, 1); set3(P.kneeR, -0.3, 0.05, 1);
-  set3(P.bat, knob[0], knob[1], knob[2]);
-  P.batYaw = batYaw; P.batPitch = batPitch; P.batVis = 1;
-  P.poleL = poleL.slice(); P.poleR = poleR.slice();
+  P.hipY = 2.72 + breathe * 0.02 * live - Math.max(0, -aimK) * 0.07 + LOAD.hip * h;
+  P.pelvisYaw = -0.05 + LOAD.pelvisYaw * h; P.torsoYaw = -0.06 + LOAD.torsoYaw * h;
+  P.torsoPitch = 0.18; P.pelvisPitch = 0.12;
+  P.pelvis[0] = -WEIGHT_BACK + rock * 0.03 * live + LOAD.weight * h; P.pelvis[2] = 0;
+  P.bat[0] = KNOB_STANCE[0] + Math.cos(loop) * 0.04 * live + LOAD.knob[0] * h;
+  P.bat[1] = KNOB_STANCE[1] + (wag * 0.04 + Math.sin(loop) * 0.03) * live + aimK * 0.16 + LOAD.knob[1] * h;
+  P.bat[2] = KNOB_STANCE[2] + LOAD.knob[2] * h;
+  P.batYaw = BAT_STANCE.yaw + wag * 0.06 * live + LOAD.batYaw * h;
+  P.batPitch = BAT_STANCE.pitch + wag * 0.09 * live + LOAD.batPitch * h;
+  // the front foot: up (the knee coming in toward the back knee, toes down), out toward the pitcher and down again; after a pitch he
+  // let go by he steps back into his stance
+  const A = CONFIG.anim.batter;
+  const st = ld.stride * (1 - ld.relax);
+  const stepBack = Math.sin(Math.PI * ld.relax) * (ld.stride > 0.5 ? 1 : 0);
+  const lift = Math.max(ld.lift * A.liftHeight * (1 - ld.relax), stepBack * 0.18);
+  set3(P.footL, FOOT_L0[0] + A.stride * st - 0.14 * ld.lift * (1 - st), ANK + lift, FOOT_L0[1]);
+  P.footLTilt = lift * 1.4; P.footLYaw = 0.2 * st;
+  set3(P.kneeL, 0.3 - 0.75 * ld.lift * (1 - ld.relax), 0.05, 1);
+  set3(P.footR, FOOT_R0[0], ANK, FOOT_R0[1]); P.footRTilt = 0; P.footRYaw = 0;
+  set3(P.kneeR, -0.3, 0.05, 1);
+  P.headYaw = 1.5; P.headPitch = 0.16;
+  // (the lead elbow points down in front of the chest, the back elbow down under the hands)
+  set3(P.poleL, 0.3, -1, 0.45); set3(P.poleR, -0.5, -1, -0.35);
+  P.batVis = 1; P.topHandOff = 0;
   return P;
 }
 
-// Follow-through keys after contact (e: 0 = contact .. 1 = finish): [knob position, bat yaw, bat pitch]
-export const FOLLOW = [
-  [0.3, [1.15, 3.5, 0.53], 1.67, 0.29], // arms extended toward the pitcher
-  [0.59, [1.04, 4.8, -0.25], 2.5, 0.84], // the bat climbs past the lead shoulder
-  [1, [0.15, 4.25, -0.85], 4.02, 0.9], // finish: hands high by the lead shoulder, bat up behind the head
-];
-function followKey(e, start) {
-  let prev = [0, start[0], start[1], start[2]];
-  for (const key of FOLLOW) {
-    if (e <= key[0]) {
-      const u = smoothstep(prev[0], key[0], e);
-      return [[lerp(prev[1][0], key[1][0], u), lerp(prev[1][1], key[1][1], u), lerp(prev[1][2], key[1][2], u)], lerp(prev[2], key[2], u), lerp(prev[3], key[3], u)];
-    }
-    prev = key;
+// `tm` = { tRelease, tCross } of the pitch he is facing (his load is timed to it), or null; `oneHand` = he finishes with one hand.
+export function batterPose(P, time, swing, aimY = null, tm = null, oneHand = false) {
+  resetPose(P);
+  if (!swing || time < swing.tStart) {
+    batterStance(P, time, aimY, batterLoad(time, tm, false, _ld));
+    return finishBatter(P);
   }
-  const last = FOLLOW[FOLLOW.length - 1];
-  return [last[1].slice(), last[2], last[3]];
+  // the swing starts from wherever his load had him at the press
+  const s0 = batterStance(_bs0, swing.tStart, aimY, batterLoad(swing.tStart, tm, true, _ld0));
+  const k0 = s0.bat;
+  const C = swing.contact; // ball position in pose space
+  const early = clamp(swing.early ?? 0, -1, 1);
+  const dirYaw = 0.12 + 0.5 * early;
+  const sinP = clamp((C[1] - 3.0) / 2.3, -0.6, 0.5);
+  const cP = Math.sqrt(1 - sinP * sinP);
+  const cKnob = [C[0] - 2.3 * Math.sin(dirYaw) * cP, C[1] - 2.3 * sinP, C[2] - 2.3 * Math.cos(dirYaw) * cP];
+  const cPitch = Math.asin(sinP);
+  const dur = Math.max(0.03, swing.tHit - swing.tStart);
+  // Reaching for a pitch away from him (out over the plate) or down low: he strides a little toward it, leans out over the plate
+  // and sinks, so his hands can still get the bat there - full at contact, easing off through the follow-through.
+  const away = clamp(C[2] - REACH.awayFrom, 0, 1.6), low = clamp(REACH.lowFrom - C[1], 0, 1.4);
+  const reach = (k) => {
+    P.pelvis[2] = k * away * REACH.shift;
+    P.torsoPitch += k * (away * REACH.lean + low * REACH.lowLean);
+    P.hipY -= k * (low * REACH.sink + away * 0.06);
+    P.footL[2] += k * away * REACH.stride;
+  };
+  const ballR = [FOOT_R0[0], FOOT_R0[1] + FOOT_BALL.z]; // the back foot pivots on the ball of his foot
+  P.pelvisPitch = 0.12;
+  if (time < swing.tHit) {
+    const u = clamp((time - swing.tStart) / dur, 0, 1);
+    const hp = sampleKeys(SW_HIPS, u, _k)[0];
+    const sp = sampleKeys(SW_SHOULDERS, u, _k)[0];
+    const kp = sampleKeys(SW_HANDS, u, _k)[0];
+    const bp = sampleKeys(SW_BARREL, u, _k)[0];
+    P.pelvisYaw = lerp(s0.pelvisYaw, AT_CONTACT.pelvisYaw, hp);
+    const sh = lerp(s0.pelvisYaw + s0.torsoYaw, AT_CONTACT.pelvisYaw + AT_CONTACT.torsoYaw, sp);
+    P.torsoYaw = sh - P.pelvisYaw;
+    P.pelvis[0] = lerp(s0.pelvis[0], WEIGHT_BACK, smoothstep(0, 0.55, u)); // (the weight goes from the back leg onto the front one)
+    P.torsoPitch = lerp(s0.torsoPitch, AT_CONTACT.torsoPitch, smoothstep(0, 1, u));
+    P.hipY = lerp(s0.hipY, AT_CONTACT.hip, smoothstep(0.15, 1, u));
+    // the front foot: if it was still on its way down at the press it lands at once (it is always down before the hips fire)
+    const land = smoothstep(0, 0.28, u);
+    set3(P.footL, lerp(s0.footL[0], FOOT_L0[0] + CONFIG.anim.batter.stride, land), lerp(s0.footL[1], ANK, land), FOOT_L0[1]);
+    P.footLTilt = s0.footLTilt * (1 - land); P.footLYaw = lerp(s0.footLYaw, 0.2, land);
+    set3(P.kneeL, lerp(s0.kneeL[0], 0.3, land), 0.05, 1);
+    // the back foot turns on its toe as the back knee drives in toward the front one
+    const pv = smoothstep(0.1, 1, u);
+    P.footRYaw = AT_CONTACT.backYaw * pv; P.footRTilt = AT_CONTACT.backTilt * pv;
+    footOnBall(P.footR, ballR[0], ballR[1], P.footRYaw, P.footRTilt);
+    set3(P.kneeR, lerp(-0.3, 0.45, pv), 0.05 - 0.1 * pv, 1);
+    // hands: from the load into the slot, close to the body, and on to the contact position; the barrel lags, then whips round
+    const slot = Math.sin(Math.PI * Math.min(1, u / 0.92));
+    for (let c = 0; c < 3; c++) P.bat[c] = lerp(k0[c], cKnob[c], kp) + SW_SLOT[c] * slot;
+    P.batYaw = lerp(s0.batYaw, dirYaw, bp);
+    P.batPitch = u < 0.45 ? lerp(s0.batPitch, SW_FLAT, smoothstep(0, 0.45, u)) : lerp(SW_FLAT, cPitch, smoothstep(0.45, 1, u));
+    P.headYaw = 1.5 - 0.15 * smoothstep(0, 1, u); P.headPitch = 0.16 + 0.1 * u;
+    set3(P.poleL, 0.9, -0.5, -0.4); set3(P.poleR, -0.8, -0.2, -0.6);
+    P.batVis = 1;
+    reach(smoothstep(0, 1, u));
+    return finishBatter(P);
+  }
+  const A = CONFIG.anim.batter;
+  const fol = Math.max(0.05, swing.follow);
+  const f = clamp((time - swing.tHit) / fol, 0, 1);
+  const e = 1 - Math.pow(1 - f, 2.2);
+  P.pelvisYaw = lerp(AT_CONTACT.pelvisYaw, 1.2, e);
+  P.pelvis[0] = lerp(WEIGHT_BACK, WEIGHT_BACK + 0.1, e);
+  P.torsoYaw = lerp(AT_CONTACT.torsoYaw, 0.62, e);
+  P.torsoPitch = lerp(AT_CONTACT.torsoPitch, 0.16, e);
+  P.hipY = lerp(AT_CONTACT.hip, 3.02, e);
+  set3(P.footL, FOOT_L0[0] + A.stride, ANK, FOOT_L0[1]); P.footLYaw = lerp(0.2, 0.55, e);
+  set3(P.kneeL, 0.3, 0.05, 1);
+  // the back foot finishes up on its toe, laces turned down toward the pitcher, the back knee in beside the front one
+  P.footRYaw = lerp(AT_CONTACT.backYaw, 1.3, e); P.footRTilt = lerp(AT_CONTACT.backTilt, 1.0, e);
+  footOnBall(P.footR, ballR[0], ballR[1], P.footRYaw, P.footRTilt);
+  set3(P.kneeR, lerp(0.45, 0.8, e), -0.05, 1);
+  // the follow-through keys, smoothly through each one (no stop at a key)
+  const keys = _fk;
+  keys[0] = [0, cKnob[0], cKnob[1], cKnob[2], dirYaw, cPitch];
+  for (let i = 0; i < FOLLOW.length; i++) keys[i + 1] = FOLLOW[i];
+  const k = sampleKeys(keys, e, _k);
+  set3(P.bat, k[0], k[1], k[2]); P.batYaw = k[3]; P.batPitch = k[4];
+  P.headYaw = 1.5 - 0.35 * smoothstep(0.3, 1, e); P.headPitch = lerp(0.26, 0.1, smoothstep(0.3, 1, e));
+  set3(P.poleL, lerp(1.0, 0.6, e), lerp(-0.4, -1, e), lerp(-0.4, 0.3, e)); set3(P.poleR, -0.6, lerp(0.2, -0.3, e), -0.8);
+  // a one-handed finish: the top hand lets go once the arms are through and drops in front of his chest
+  if (oneHand) { P.topHandOff = smoothstep(A.oneHandAt[0], A.oneHandAt[1], e); set3(P.handR, FREE_HAND[0], FREE_HAND[1], FREE_HAND[2]); set3(P.poleR, -0.4, -1, -0.3); }
+  P.batVis = 1;
+  reach(1 - smoothstep(0, 0.45, e));
+  // a moment in the finish, then back into his stance: the bat comes down over his shoulder in front of him and goes back up into the
+  // stance, the hips and shoulders turn back, the front foot steps back in and the back heel comes down
+  const r = clamp((time - swing.tHit - fol - 0.2) / A.recover, 0, 1);
+  if (r > 0) {
+    const st = batterStance(_bs0, time, aimY, batterLoad(time, null, false, _ld));
+    const q = smoothstep(0, 1, r);
+    const sc = ['hipY', 'pelvisYaw', 'torsoYaw', 'torsoPitch', 'pelvisPitch', 'headYaw', 'headPitch', 'footLYaw', 'footLTilt'];
+    for (const s of sc) P[s] = lerp(P[s], st[s], q);
+    for (const v of ['pelvis', 'kneeL', 'kneeR', 'poleL', 'poleR']) for (let c = 0; c < 3; c++) P[v][c] = lerp(P[v][c], st[v][c], q);
+    P.footL[0] = lerp(P.footL[0], st.footL[0], q); P.footL[1] = ANK + 0.18 * Math.sin(Math.PI * q); P.footL[2] = lerp(P.footL[2], st.footL[2], q);
+    P.footRYaw *= 1 - q; P.footRTilt *= 1 - q;
+    footOnBall(P.footR, ballR[0], ballR[1], P.footRYaw, P.footRTilt);
+    P.topHandOff *= 1 - smoothstep(0, 0.5, r);
+    // the bat: down in front of him (the short way round to the stance), then up into the stance
+    // (the stance's yaw a whole turn on, so the bat keeps turning the way it was going - back over his shoulder)
+    let ey = st.batYaw; while (ey < P.batYaw) ey += TAU;
+    const end = [st.bat[0], st.bat[1], st.bat[2], ey, st.batPitch];
+    const rk = [[0, P.bat[0], P.bat[1], P.bat[2], P.batYaw, P.batPitch], [0.45, RECOVER_KNOB[0], RECOVER_KNOB[1], RECOVER_KNOB[2], lerp(P.batYaw, ey, 0.55), 0.9], [1, ...end]];
+    const b = sampleKeys(rk, r, _k);
+    set3(P.bat, b[0], b[1], b[2]); P.batYaw = b[3]; P.batPitch = b[4];
+  }
+  return finishBatter(P);
+}
+const _bs0 = makePose(), _fk = [];
+function finishBatter(P) {
+  // the head: eyes on the ball, the head turned back against the hips and shoulders
+  P.headYaw = clamp(P.headYaw - (P.pelvisYaw + P.torsoYaw), -0.5, 1.5);
+  P.batYaw = Math.atan2(Math.sin(P.batYaw), Math.cos(P.batYaw)); // (one turn of the bat: blending poses never spins it the long way)
+  return P;
 }
 
 // ---------------------------------------------------------------- bunt
@@ -589,41 +686,127 @@ export function slideGetUp(P, u, time = 0) {
   return mixPose(P, _slEnd, _slStand, k);
 }
 
-// ---------------------------------------------------------------- throwing (right-handed pose space)
+// ---------------------------------------------------------------- throwing (right-handed pose space, +z = toward the target)
+// One keyframed throw, u = 0 (the ball in the glove at his chest) .. THROW_RELEASE_U (it leaves his hand) .. 1 (the end of the
+// follow-through). Like a real thrower he turns side on (glove shoulder at the target): the back foot steps behind the front one
+// and turns across the line (an infielder's quick replace; an outfielder's crow hop, a skip forward on the back foot), the glove
+// arm points at the target as the throwing arm swings down, back and up into the "L" with the elbow at shoulder height, the front
+// foot strides at the target, the hips open, then the shoulders, the forearm lays back and whips through to a release out in front
+// of his head, the arm finishes across his body outside the front knee and the back leg comes through. The catcher comes up out of
+// his crouch into the same throw, quickly. Hands are given from his hips (they move with the body); feet are where they are planted.
 export const THROW_RELEASE_U = 0.55;
-export function throwPose(P, u) {
+// [u, hipY, pelvisYaw, torsoYaw, torsoPitch, pelvisPitch, torsoRoll, pelvisX, pelvisZ]
+const T_BODY = {
+  IF: [
+    [0, 2.86, -0.25, -0.15, 0.3, 0.12, 0, 0, -0.45],
+    [0.2, 2.98, -1.15, -0.22, 0.12, 0.04, 0.04, 0, -0.38],
+    [0.4, 2.84, -1.1, -0.35, 0.1, 0.03, 0.1, 0, 0.02],
+    [0.48, 2.76, -0.45, -0.45, 0.25, 0.05, 0.02, 0, 0.3],
+    [0.55, 2.7, 0.08, 0.28, 0.55, 0.08, -0.18, 0, 0.45],
+    [0.72, 2.64, 0.45, 0.32, 0.82, 0.1, -0.1, 0, 0.6],
+    [1, 2.95, 0.22, 0.08, 0.3, 0.05, 0, 0, 0.62],
+  ],
+  OF: [
+    [0, 2.95, -0.2, -0.1, 0.25, 0.1, 0, 0, -1.0],
+    [0.16, 3.0, -0.9, -0.2, 0.12, 0.04, 0.02, 0, -0.7],
+    [0.26, 2.96, -1.3, -0.2, 0.08, 0.02, 0.05, 0, -0.35],
+    [0.31, 3.22, -1.32, -0.2, 0.06, 0.02, 0.06, 0, -0.05], // (the crow hop: up off the back foot...)
+    [0.37, 2.95, -1.3, -0.3, 0.06, 0.02, 0.1, 0, 0.22], // (...and down on it again, further on)
+    [0.46, 2.72, -1.0, -0.4, 0.12, 0.04, 0.12, 0, 0.75],
+    [0.5, 2.66, -0.4, -0.5, 0.3, 0.06, 0.02, 0, 0.95],
+    [0.55, 2.6, 0.12, 0.3, 0.6, 0.08, -0.2, 0, 1.15],
+    [0.72, 2.55, 0.5, 0.35, 0.9, 0.1, -0.1, 0, 1.35],
+    [1, 2.95, 0.25, 0.08, 0.32, 0.05, 0, 0, 1.2],
+  ],
+  C: [
+    [0, 1.6, -0.1, -0.05, 0.55, -0.15, 0, 0, -0.3],
+    [0.2, 2.6, -1.0, -0.25, 0.18, 0.02, 0.04, 0, -0.32],
+    [0.4, 2.8, -1.1, -0.35, 0.1, 0.03, 0.1, 0, 0.0],
+    [0.48, 2.74, -0.45, -0.45, 0.25, 0.05, 0.02, 0, 0.25],
+    [0.55, 2.68, 0.08, 0.28, 0.55, 0.08, -0.18, 0, 0.4],
+    [0.72, 2.62, 0.45, 0.32, 0.82, 0.1, -0.1, 0, 0.55],
+    [1, 2.95, 0.22, 0.08, 0.3, 0.05, 0, 0, 0.58],
+  ],
+};
+// feet: [u, x, y, z, yaw, tilt (+ = heel up)]
+const T_FOOT_L = {
+  IF: [[0, 0.5, ANK, -0.3, 0, 0], [0.2, 0.45, ANK, -0.3, -0.25, 0], [0.29, 0.28, ANK + 0.32, 0.25, -0.55, 0.25], [0.4, 0.15, ANK, 0.95, -0.35, 0], [1, 0.15, ANK, 0.95, -0.15, 0]],
+  OF: [[0, 0.5, ANK, -0.9, 0, 0], [0.12, 0.45, ANK, -0.9, -0.2, 0], [0.22, 0.32, ANK + 0.45, -0.4, -0.5, 0.3], [0.36, 0.22, ANK + 0.5, 0.6, -0.6, 0.3], [0.46, 0.15, ANK, 1.9, -0.35, 0], [1, 0.15, ANK, 1.9, -0.15, 0]],
+  C: [[0, 0.78, ANK, -0.1, 0, 0.1], [0.14, 0.6, ANK + 0.25, 0.2, -0.3, 0.2], [0.24, 0.3, ANK + 0.2, 0.55, -0.5, 0.1], [0.36, 0.15, ANK, 0.9, -0.35, 0], [1, 0.15, ANK, 0.9, -0.15, 0]],
+};
+const T_FOOT_R = {
+  IF: [[0, -0.5, ANK, -0.55, 0, 0], [0.07, -0.38, ANK + 0.28, -0.6, -0.8, 0.15], [0.17, -0.05, ANK, -0.68, -1.45, 0], [0.47, -0.05, ANK, -0.68, -1.45, 0], [0.6, -0.08, 0.45, -0.55, -1.1, 0.8], [0.76, -0.35, ANK + 0.55, 0.25, -0.4, 0.7], [0.9, -0.55, ANK, 0.9, -0.1, 0], [1, -0.55, ANK, 0.9, -0.1, 0]],
+  OF: [[0, -0.5, ANK, -1.2, 0, 0], [0.1, -0.3, ANK + 0.35, -0.95, -0.8, 0.15], [0.2, -0.05, ANK, -0.6, -1.45, 0], [0.27, -0.05, ANK, -0.6, -1.45, 0], [0.31, -0.05, ANK + 0.3, -0.3, -1.45, 0.1], [0.37, -0.05, ANK, -0.05, -1.45, 0], [0.52, -0.05, ANK, -0.05, -1.45, 0], [0.64, -0.1, 0.45, 0.1, -1.1, 0.8], [0.8, -0.4, ANK + 0.6, 1.0, -0.4, 0.7], [0.94, -0.55, ANK, 1.65, -0.1, 0], [1, -0.55, ANK, 1.65, -0.1, 0]],
+  C: [[0, -0.78, ANK, -0.1, 0, 0.1], [0.12, -0.45, ANK + 0.2, -0.45, -0.9, 0.1], [0.22, -0.08, ANK, -0.6, -1.45, 0], [0.47, -0.08, ANK, -0.6, -1.45, 0], [0.6, -0.1, 0.45, -0.5, -1.1, 0.8], [0.76, -0.35, ANK + 0.55, 0.25, -0.4, 0.7], [0.9, -0.55, ANK, 0.85, -0.1, 0], [1, -0.55, ANK, 0.85, -0.1, 0]],
+};
+// hands, from the hips' spot (x, y, z offset from pelvisX / pelvisZ): [u, x, y, z]
+const T_HAND_R = {
+  IF: [[0, -0.2, 3.95, 1.4], [0.12, -0.3, 3.85, 1.05], [0.26, -0.7, 3.5, 0.05], [0.38, -0.3, 5.25, -1.0], [0.46, -0.8, 5.25, -0.5], [0.55, -1.45, 5.05, 1.5], [0.65, -0.45, 4.35, 2.0], [0.8, 0.5, 3.3, 1.2], [1, 0.35, 3.6, 0.6]],
+  OF: [[0, -0.2, 4.0, 1.3], [0.14, -0.3, 3.9, 1.0], [0.3, -0.75, 3.4, -0.2], [0.42, -0.3, 5.35, -1.1], [0.5, -0.85, 5.35, -0.55], [0.55, -1.4, 5.25, 1.55], [0.66, -0.45, 4.3, 2.1], [0.82, 0.55, 3.2, 1.25], [1, 0.35, 3.6, 0.6]],
+  C: [[0, -0.35, 2.15, 0.6], [0.14, -0.3, 3.7, 0.9], [0.26, -0.7, 3.6, 0.0], [0.38, -0.3, 5.2, -1.0], [0.46, -0.8, 5.2, -0.5], [0.55, -1.45, 5.0, 1.45], [0.65, -0.45, 4.35, 1.95], [0.8, 0.5, 3.3, 1.2], [1, 0.35, 3.6, 0.6]],
+};
+const T_HAND_L = {
+  IF: [[0, 0.15, 3.95, 1.45], [0.12, 0.2, 4.0, 1.35], [0.26, 0.3, 4.8, 1.75], [0.44, 0.38, 4.7, 1.55], [0.55, 0.85, 4.0, 0.75], [0.8, 0.9, 3.7, 0.3], [1, 0.65, 3.7, 0.6]],
+  OF: [[0, 0.15, 4.0, 1.35], [0.14, 0.2, 4.05, 1.3], [0.3, 0.3, 4.9, 1.8], [0.47, 0.38, 4.8, 1.6], [0.55, 0.85, 4.0, 0.75], [0.82, 0.9, 3.65, 0.3], [1, 0.65, 3.7, 0.6]],
+  C: [[0, 0.2, 2.3, 1.3], [0.14, 0.15, 3.8, 1.1], [0.26, 0.3, 4.7, 1.7], [0.44, 0.38, 4.7, 1.55], [0.55, 0.85, 4.0, 0.75], [0.8, 0.9, 3.7, 0.3], [1, 0.65, 3.7, 0.6]],
+};
+// elbow pole directions (torso space) and knee directions (hip space)
+const T_POLE_R = [[0, -0.5, -1, -0.4], [0.2, -0.5, -0.7, -1], [0.36, -1, -0.25, -0.3], [0.5, -1, -0.3, 0.1], [0.62, -0.8, -0.5, 0.4], [0.85, -0.5, -1, 0.2], [1, -0.5, -1, -0.4]];
+const T_POLE_L = [[0, 0.5, -1, -0.2], [0.22, 0.9, -0.5, 0.2], [0.55, 0.8, -0.6, 0.1], [1, 0.5, -1, -0.4]];
+const T_KNEE_L = [[0, 0.15, 0, 1], [0.3, 0.1, 0.4, 1], [0.45, 0.12, 0, 1], [1, 0.12, 0, 1]];
+const T_KNEE_R = [[0, -0.15, 0, 1], [0.5, -0.1, 0, 1], [0.65, 0.3, -0.3, 1], [0.9, -0.1, 0, 1], [1, -0.1, 0, 1]];
+const _tb = [], _tf = [];
+// o = { kind: 'IF' | 'OF' | 'C', side: 0..1 } (side = a sidearm flip: the arm comes round lower and the trunk tilts the other way)
+export function throwPose(P, u, o = null) {
   resetPose(P);
-  const g = (keys) => sampleKeys(keys, u, []);
-  const t = g([[0, 0, 0, 0], [0.3, -0.7, 0.15, 0.1], [0.55, 0.45, 0.3, 0.35], [1, 0.75, 0.15, 0.6]]);
-  P.torsoYaw = t[0]; P.pelvisYaw = t[1] * 0.5; P.torsoPitch = 0.18 + t[2]; P.pelvisPitch = 0.05;
-  P.hipY = 2.95 - 0.1 * smoothstep(0.35, 0.6, u);
-  P.headYaw = -(P.pelvisYaw + P.torsoYaw) * 0.9;
-  const h = g([[0, -0.35, 3.7, 0.55], [0.3, -1.25, 5.3, -0.9], [0.55, -0.75, 5.85, 1.75], [1, 0.35, 3.3, 1.2]]);
-  set3(P.handR, h[0], h[1], h[2]);
-  const gl = g([[0, 0.45, 3.6, 0.7], [0.4, 0.75, 4.7, 1.6], [1, 0.4, 3.6, 0.9]]);
-  set3(P.handL, gl[0], gl[1], gl[2]);
-  const fl = g([[0, 0.4, ANK, 0.1], [0.3, 0.4, ANK + 0.55, 0.9], [0.5, 0.4, ANK, 1.7], [1, 0.4, ANK, 1.7]]);
-  set3(P.footL, fl[0], fl[1], fl[2]);
-  set3(P.footR, -0.42, ANK, -0.45);
-  P.footRTilt = -0.5 * smoothstep(0.5, 1, u);
-  P.poleR = [-1.0, 0.5, -0.4]; P.poleL = [0.9, -0.4, 0.1];
-  set3(P.kneeL, 0.2, 0.05, 1); set3(P.kneeR, -0.2, 0.05, 1);
+  const kind = o && T_BODY[o.kind] ? o.kind : 'IF';
+  const side = o && o.side ? o.side : 0;
+  const b = sampleKeys(T_BODY[kind], u, _tb);
+  P.hipY = b[0]; P.pelvisYaw = b[1]; P.torsoYaw = b[2]; P.torsoPitch = b[3]; P.pelvisPitch = b[4]; P.torsoRoll = b[5];
+  set3(P.pelvis, b[6], 0, b[7]);
+  const fl = sampleKeys(T_FOOT_L[kind], u, _tf);
+  set3(P.footL, fl[0], fl[1], fl[2]); P.footLYaw = fl[3]; P.footLTilt = fl[4];
+  const fr = sampleKeys(T_FOOT_R[kind], u, _tf);
+  set3(P.footR, fr[0], fr[1], fr[2]); P.footRYaw = fr[3]; P.footRTilt = fr[4];
+  const hr = sampleKeys(T_HAND_R[kind], u, _tf);
+  // a sidearm throw: around the release the hand comes through about shoulder height, out to the side
+  const sk = side * Math.sin(Math.PI * clamp((u - 0.3) / 0.45, 0, 1));
+  set3(P.handR, P.pelvis[0] + hr[0] - 0.75 * sk, hr[1] - 1.15 * sk, P.pelvis[2] + hr[2]);
+  P.torsoRoll += 0.3 * sk; P.torsoPitch += 0.15 * sk;
+  const hl = sampleKeys(T_HAND_L[kind], u, _tf);
+  set3(P.handL, P.pelvis[0] + hl[0], hl[1], P.pelvis[2] + hl[2]);
+  setVec(P, 'poleR', T_POLE_R, u); setVec(P, 'poleL', T_POLE_L, u);
+  setVec(P, 'kneeL', T_KNEE_L, u); setVec(P, 'kneeR', T_KNEE_R, u);
+  // eyes on the target the whole time
+  P.headYaw = clamp(-(P.pelvisYaw + P.torsoYaw), -1.5, 1.5);
+  P.headPitch = 0.05 - P.torsoPitch * 0.7;
+  P.gloveOpen = 0.35;
   return P;
 }
 
 // ---------------------------------------------------------------- catching / fielding reach
 // target: glove target in pose space. lowness 0..1 how low the ball is.
-export function catchPose(P, target, crouch = 0.4) {
+// `settle` 0..1: how far the ball is into the glove. Before it the bare hand rides up toward the glove (so the arm is ready to
+// cover it), after it the bare hand closes over the glove and the elbows come in: two hands on the catch.
+export function catchPose(P, target, crouch = 0.4, settle = 0) {
   resetPose(P);
+  const F = CONFIG.anim.fielder;
   const low = clamp(crouch, 0, 1);
+  const near = clamp(settle, 0, 1);
   P.hipY = lerp(3.0, 2.2, low);
   P.torsoPitch = lerp(0.15, 0.7, low);
   P.pelvisPitch = lerp(0.05, 0.25, low);
   set3(P.footL, 0.7, ANK, 0.35); set3(P.footR, -0.7, ANK, -0.25);
   set3(P.handL, target[0], target[1], target[2]);
-  set3(P.handR, -0.3, target[1] > 4 ? 4.2 : 3.1, 0.6);
+  // the bare hand: at his belt, riding up beside the glove, then over the ball
+  const rx = -0.3, ry = target[1] > 4 ? 4.2 : 3.1, rz = 0.6;
+  const fx = target[0] - 0.4, fy = target[1] - 0.1, fz = target[2] - 0.15;
+  const k = lerp(F.bareFollow, 1, near);
+  set3(P.handR, lerp(rx, fx, k), lerp(ry, fy, k), lerp(rz, fz, k));
   P.poleL = [0.8, -0.3, -0.3];
+  P.poleR = [lerp(-0.9, -0.5, near), -0.4, -0.3]; // (the elbow comes in as the hands meet)
   P.headPitch = 0.05;
+  P.gloveOpen = lerp(0.9, 0.3, near);
   set3(P.kneeL, 0.35, 0.05, 1); set3(P.kneeR, -0.35, 0.05, 1);
   return P;
 }
