@@ -4,7 +4,7 @@
 // +x = the person's LEFT hand side.
 import * as THREE from 'three';
 import { jerseyTexture, makeCanvas, toTexture, surfaceNormalTexture } from './textures.js';
-import { torsoGeometry, upperArmParts, foreArmParts, thighParts, shinParts, handParts as handParts_, gloveParts, maskParts } from './anatomy.js';
+import { torsoGeometry, upperArmParts, foreArmParts, thighParts, shinParts, handParts as handParts_, gloveParts, maskParts, cleatParts } from './anatomy.js';
 import { headParts as faceParts, capParts, helmetParts } from './face.js';
 import { CONFIG } from '../config.js';
 
@@ -76,10 +76,10 @@ export function getMat(hex, rough = 0.88, metal = 0) {
 // disposed (a new game builds new teams), its texture is freed from the graphics card too.
 const jerseyCache = new Map();
 function getJerseyMat(u, mirror) {
-  const key = [u.primary, u.secondary, u.trim, u.text, u.number, u.stripe, mirror].join('|');
+  const key = [u.primary, u.secondary, u.trim, u.text, u.number, u.stripe, u.back || '', mirror].join('|');
   let e = jerseyCache.get(key);
   if (!e) {
-    const m = new THREE.MeshStandardMaterial({ map: jerseyTexture({ primary: u.primary, secondary: u.secondary, trim: u.trim, text: u.text || '', number: u.number || 0, stripe: !!u.stripe, mirror }), roughness: 0.9, normalMap: surfaceNormalTexture('fabric'), normalScale: new THREE.Vector2(0.32, 0.32) });
+    const m = new THREE.MeshStandardMaterial({ map: jerseyTexture({ primary: u.primary, secondary: u.secondary, trim: u.trim, text: u.text || '', number: u.number || 0, stripe: !!u.stripe, mirror, back: u.back || '' }), roughness: 0.9, normalMap: surfaceNormalTexture('fabric'), normalScale: new THREE.Vector2(0.32, 0.32) });
     e = { m, key, users: 0 };
     jerseyCache.set(key, e);
   }
@@ -406,7 +406,10 @@ export class Person {
 
     // --- arms (left = +x, right = -x): short jersey sleeve over (undershirt | bare) arm, forearm, hand / glove
     this.arms = [];
-    const gloveLeather = ['#6b4226', '#7a4a2a', '#4a3020', '#8a5a2e'][(u.number || 0) % 4];
+    // the glove's leather: tan, caramel, brown, dark brown or black (the catcher's mitt: black, brown or tan), laces to go with it
+    const gl = Math.round((look.face ?? 0.5) * 991) + (u.number || 0);
+    const gloveLeather = isCatcher ? ['#1c1b1a', '#4c2a17', '#7a431f', '#262a33'][gl % 4] : ['#b47a40', '#9c5c2a', '#6e3e1f', '#4a2a17', '#1c1b1a'][gl % 5];
+    const gloveLace = ['#1c1b1a', '#262a33', '#4a2a17'].includes(gloveLeather) ? '#c9a06a' : gloveLeather === '#b47a40' ? '#7a4a24' : '#d0a670';
     for (const side of [1, -1]) {
       const sh = new THREE.Group();
       sh.position.set(side * DIM.shoulderW * B, DIM.shoulderY, 0);
@@ -421,8 +424,8 @@ export class Person {
       const handParts = [];
       if (isGloveHand) {
         // (a stitched fielder's glove, or the catcher's round padded mitt - anatomy.js)
-        const leather = isCatcher ? '#3a2416' : gloveLeather;
-        foreParts.push(...gloveParts(isCatcher ? 'mitt' : 'glove', { dl, gy: -DIM.foreArm, leather, lace: isCatcher ? '#8a6a44' : '#d8b878', web: isCatcher ? '#2c1a10' : '#5a3a20', patch: trimHex }));
+        const webHex = new THREE.Color(gloveLeather).multiplyScalar(0.8).getHexString();
+        foreParts.push(...gloveParts(isCatcher ? 'mitt' : 'glove', { dl, gy: -DIM.foreArm, leather: gloveLeather, lace: gloveLace, web: '#' + webHex, patch: trimHex }));
       } else if (this.role === 'batter') {
         // a batter's hand is a closed fist (in batting gloves) round the handle: the back of the hand and the knuckles, then four
         // fingers that wrap right round the bat (rings round the grip line, open only on the palm side) and the thumb across the
@@ -453,15 +456,7 @@ export class Person {
       this._merged(knee, shin);
       const ankle = new THREE.Group(); ankle.position.set(0, -DIM.shin, 0); knee.add(ankle);
       const accent = u.secondary && u.secondary !== shoeHex ? u.secondary : '#d8dbe0';
-      this._merged(ankle, [
-        { geo: box(0.29, 0.07, 0.86), color: '#0b0c0f', y: -0.225, z: 0.2 }, // sole
-        { geo: capsule(0.13, 0.4, 4, 10), color: shoeHex, y: -0.1, z: 0.16, rx: Math.PI / 2, sx: 1.05, sy: 0.9 }, // upper
-        { geo: sphere(0.135, 10, 8), color: shoeHex, y: -0.13, z: 0.5, sy: 0.75 }, // toe cap
-        { geo: sphere(0.12, 10, 8), color: shoeHex, y: -0.13, z: -0.12 }, // heel
-        { geo: cyl(0.115, 0.13, 0.12, 10), color: '#0e1013', y: 0.0 }, // shoe collar
-        { geo: box(0.018, 0.07, 0.34), color: accent, x: 0.138, y: -0.1, z: 0.2 }, // side accent
-        { geo: box(0.018, 0.07, 0.34), color: accent, x: -0.138, y: -0.1, z: 0.2 },
-      ], 'leather');
+      this._merged(ankle, cleatParts({ dl, shoe: shoeHex, sole: shoeHex === '#15171b' ? '#0d0e10' : '#f1f1ee', accent }), 'leather');
       this.legs.push({ side, hip, thigh, knee, ankle });
     }
 

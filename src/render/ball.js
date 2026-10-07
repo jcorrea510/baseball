@@ -30,7 +30,7 @@ export function createBall(scene) {
   const group = new THREE.Group();
   const r = CONFIG.physics.ballRadius;
   const mat = new THREE.MeshStandardMaterial({ map: ballTexture(), roughness: 0.55, metalness: 0, emissive: 0x222222 });
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(r, 20, 14), mat);
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(r, 28, 20), mat);
   mesh.castShadow = true;
   group.add(mesh);
   // A thin dark rim round the ball (an inverted shell a touch bigger than the ball): the white ball never melts into a white cloud,

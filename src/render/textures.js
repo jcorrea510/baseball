@@ -381,77 +381,115 @@ export function crowdMaskTexture() {
   return tex;
 }
 
-// Baseball: white leather with red stitching (equirectangular).
+// Baseball: off-white leather with the real seam - the figure-eight curve of two dumbbell-shaped covers - and its red double
+// stitching (V-shaped stitches either side of the seam), drawn onto the sphere's equirectangular map (three's SphereGeometry uv).
 export function ballTexture() {
-  const { canvas, ctx } = makeCanvas(512, 256);
-  const g = ctx.createLinearGradient(0, 0, 0, 256);
-  g.addColorStop(0, '#f6f3ea'); g.addColorStop(1, '#e6e0d0');
-  ctx.fillStyle = g; ctx.fillRect(0, 0, 512, 256);
-  // Two seam curves (approximation of the baseball seam) and stitches.
-  ctx.strokeStyle = '#d02424'; ctx.lineWidth = 4; // (bold seams and stitches: the spin is easy to read - a curveball tumbles, a fastball's seams stream)
-  const seam = (phase) => {
-    const pts = [];
-    for (let i = 0; i <= 200; i++) {
-      const u = i / 200;
-      const x = u * 512;
-      const y = 128 + Math.sin((u * 2 + phase) * Math.PI * 2) * 70;
-      pts.push([x, y]);
+  const W = 1024, H = 512;
+  const { canvas, ctx } = makeCanvas(W, H);
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#f4f1e8'); g.addColorStop(1, '#e9e3d4');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  // a faint grain in the leather
+  const rng = createRng(19);
+  for (let i = 0; i < 2600; i++) { ctx.fillStyle = `rgba(120,100,70,${0.025 + rng.next() * 0.03})`; ctx.fillRect(rng.next() * W, rng.next() * H, 2, 2); }
+  // the seam on the unit sphere: x = a cos t + b cos 3t, y = a sin t - b sin 3t, z = 2 sqrt(ab) sin 2t (a + b = 1)
+  const A = 0.7, Bc = 0.3, C = 2 * Math.sqrt(A * Bc);
+  const seam = (t) => [A * Math.cos(t) + Bc * Math.cos(3 * t), A * Math.sin(t) - Bc * Math.sin(3 * t), C * Math.sin(2 * t)];
+  // sphere point -> canvas (SphereGeometry: x = -cos(phi) sin(theta), y = cos(theta), z = sin(phi) sin(theta); u = phi / 2pi, v = 1 - theta / pi)
+  const toUV = (p) => { const L = Math.hypot(p[0], p[1], p[2]); const th = Math.acos(p[1] / L); let ph = Math.atan2(p[2], -p[0]); if (ph < 0) ph += Math.PI * 2; return [(ph / (Math.PI * 2)) * W, (th / Math.PI) * H]; };
+  const line = (p, q, color, w) => {
+    const a = toUV(p), b = toUV(q);
+    ctx.strokeStyle = color; ctx.lineWidth = w; ctx.lineCap = 'round';
+    for (const off of [-W, 0, W]) {
+      if (Math.abs(a[0] - b[0]) > W / 2) continue; // (crosses the map's seam: drawn by its neighbours)
+      ctx.beginPath(); ctx.moveTo(a[0] + off, a[1]); ctx.lineTo(b[0] + off, b[1]); ctx.stroke();
     }
-    return pts;
   };
-  for (const ph of [0, 0.5]) {
-    const pts = seam(ph);
-    ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
-    for (const p of pts) ctx.lineTo(p[0], p[1]);
-    ctx.stroke();
-    for (let i = 0; i < pts.length - 1; i += 2) {
-      const a = pts[i], b = pts[i + 1];
-      const nx = -(b[1] - a[1]), ny = b[0] - a[0];
-      const l = Math.hypot(nx, ny) || 1;
-      ctx.beginPath();
-      ctx.moveTo(a[0] - (nx / l) * 8, a[1] - (ny / l) * 8);
-      ctx.lineTo(a[0] + (nx / l) * 8, a[1] + (ny / l) * 8);
-      ctx.stroke();
+  const N = 1400, cross = (u, v) => [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+  const norm = (v) => { const L = Math.hypot(...v) || 1; return [v[0] / L, v[1] / L, v[2] / L]; };
+  const add = (p, d, k) => [p[0] + d[0] * k, p[1] + d[1] * k, p[2] + d[2] * k];
+  // the seam groove: a soft grey line
+  for (let i = 0; i < N; i++) line(seam((i / N) * Math.PI * 2), seam(((i + 1) / N) * Math.PI * 2), 'rgba(110,100,85,0.55)', 3);
+  // 108 double stitches: each a V pointing along the seam, either side of the groove
+  const n = 108;
+  for (let i = 0; i < n; i++) {
+    const t = (i / n) * Math.PI * 2;
+    const p = seam(t), tan = norm(add(seam(t + 0.001), p, -1));
+    const side = norm(cross(norm(p), tan));
+    for (const s of [-1, 1]) {
+      const a = add(add(p, side, s * 0.035), tan, -0.022), b = add(p, side, s * 0.11), c = add(add(p, side, s * 0.035), tan, 0.022);
+      void c;
+      line(a, b, '#b3141c', 5);
+      line(add(a, side, s * 0.004), add(b, side, s * 0.004), 'rgba(255,120,120,0.45)', 1.5);
     }
   }
   return toTexture(canvas, { anisotropy: 4 });
 }
 
-// Jersey (torso) texture: team colour, piping, chest lettering, back number.
-// u wraps around the torso; front is at u=0.75 and back at u=0.25 for our torso mesh.
-export function jerseyTexture({ primary, secondary, trim, text = '', number = 0, stripe = false, mirror = false }) {
-  const { canvas, ctx } = makeCanvas(256, 256);
-  ctx.fillStyle = primary; ctx.fillRect(0, 0, 256, 256);
+// Jersey (torso) texture: the team colour, the button front with its piping, the team name across the chest (arched, outlined),
+// a small number on the chest, and on the back the player's name arched over a big outlined number. u wraps round the torso: the
+// front is at u = 0.25 (x = S / 4), the back at u = 0.75; v runs up from the waist (the canvas top is the collar).
+const JERSEY = 512;
+// draw `text` along an arc (centre cx, baseline y, bending down at the ends by `bend` px), filled and outlined (twice with `outline2`)
+function arcText(ctx, text, cx, y, font, fill, outline, lw, maxW, bend = 0, outline2 = null) {
+  ctx.save();
+  ctx.font = font;
+  let w = ctx.measureText(text).width;
+  const sx = w > maxW ? maxW / w : 1;
+  w *= sx;
+  let x = cx - w / 2;
+  const items = [...text].map((c) => { const cw = ctx.measureText(c).width * sx; const it = { c, x: x + cw / 2 }; x += cw; return it; });
+  ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.lineJoin = 'round';
+  for (const pass of [0, 1, 2]) {
+    for (const it of items) {
+      const d = w > 0 ? (it.x - cx) / (w / 2) : 0;
+      ctx.save();
+      ctx.translate(it.x, y + bend * d * d);
+      ctx.rotate(bend ? (2 * bend * d) / Math.max(1, w / 2) : 0);
+      ctx.scale(sx, 1);
+      if (pass === 0 && outline2) { ctx.strokeStyle = outline2; ctx.lineWidth = lw * 2.2; ctx.strokeText(it.c, 0, 0); }
+      if (pass === 1 && outline) { ctx.strokeStyle = outline; ctx.lineWidth = lw; ctx.strokeText(it.c, 0, 0); }
+      if (pass === 2) { ctx.fillStyle = fill; ctx.fillText(it.c, 0, 0); }
+      ctx.restore();
+    }
+  }
+  ctx.restore();
+}
+export function jerseyTexture({ primary, secondary, trim, text = '', number = 0, stripe = false, mirror = false, back = '' }) {
+  const S = JERSEY, k = S / 256;
+  const { canvas, ctx } = makeCanvas(S, S);
+  ctx.fillStyle = primary; ctx.fillRect(0, 0, S, S);
   if (stripe) {
     ctx.fillStyle = 'rgba(255,255,255,0.22)';
-    for (let x = 0; x < 256; x += 12) ctx.fillRect(x, 0, 2, 256);
+    for (let x = 0; x < S; x += 12 * k) ctx.fillRect(x, 0, 2 * k, S);
   }
-  // front placket / piping
-  ctx.fillStyle = secondary; ctx.fillRect(63, 0, 2, 256);
-  ctx.fillStyle = trim; ctx.fillRect(61, 0, 2, 256); ctx.fillRect(65, 0, 2, 256);
-  // chest text (the capsule's front (+z) is at u=0.25 -> x=64)
-  ctx.save();
-  ctx.fillStyle = secondary; ctx.strokeStyle = trim; ctx.lineWidth = 3;
-  ctx.font = '900 30px "Arial Black", Impact, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.strokeText(text, 64, 96); ctx.fillText(text, 64, 96);
-  ctx.restore();
-  // back number (u=0.75 -> x=192)
-  ctx.save();
-  ctx.fillStyle = secondary; ctx.strokeStyle = trim; ctx.lineWidth = 5;
-  ctx.font = '900 84px "Arial Black", Impact, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.strokeText(String(number), 192, 150); ctx.fillText(String(number), 192, 150);
-  ctx.restore();
+  const F = S / 4, B = (3 * S) / 4;
+  // the button front: piping down both edges of the placket, the seam, the buttons
+  ctx.fillStyle = trim; ctx.fillRect(F - 5 * k, 0, 1.6 * k, S); ctx.fillRect(F + 3.4 * k, 0, 1.6 * k, S);
+  ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(F - 0.4 * k, 0, 0.8 * k, S);
+  for (let i = 0; i < 6; i++) {
+    const by = (34 + i * 37) * k;
+    ctx.beginPath(); ctx.arc(F, by, 2.6 * k, 0, Math.PI * 2);
+    ctx.fillStyle = secondary; ctx.fill();
+    ctx.lineWidth = 0.6 * k; ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.stroke();
+  }
+  // the team name across the chest (arched, in the second colour with the trim colour round it)
+  const chest = text.length > 7 ? `900 ${30 * k}px "Arial Black", Impact, sans-serif` : `italic 900 ${38 * k}px Georgia, "Times New Roman", serif`;
+  if (text) arcText(ctx, text, F, 96 * k, chest, secondary, trim, 3.2 * k, 112 * k, 6 * k);
+  // a small number on the chest, under the name on the player's left side
+  if (number || number === 0) arcText(ctx, String(number), F + 30 * k, 132 * k, `900 ${24 * k}px "Arial Black", Impact, sans-serif`, secondary, trim, 2.2 * k, 40 * k);
+  // the back: his name arched over the number
+  if (back) arcText(ctx, back.toUpperCase(), B, 112 * k, `800 ${17 * k}px "Arial Black", Impact, sans-serif`, secondary, trim, 1.6 * k, 92 * k, 7 * k);
+  arcText(ctx, String(number), B, 182 * k, `900 ${72 * k}px "Arial Black", Impact, sans-serif`, secondary, trim, 4.5 * k, 104 * k, 0, secondary === trim ? null : primary);
   // collar / hem shading
-  const g = ctx.createLinearGradient(0, 0, 0, 256);
-  g.addColorStop(0, 'rgba(0,0,0,0.25)'); g.addColorStop(0.15, 'rgba(0,0,0,0)'); g.addColorStop(0.85, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,0.3)');
-  ctx.fillStyle = g; ctx.fillRect(0, 0, 256, 256);
+  const g = ctx.createLinearGradient(0, 0, 0, S);
+  g.addColorStop(0, 'rgba(0,0,0,0.25)'); g.addColorStop(0.12, 'rgba(0,0,0,0)'); g.addColorStop(0.86, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,0.3)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, S, S);
   if (mirror) {
     // left-handed batter: the whole figure is mirrored (left-right), so pre-flip the artwork to read correctly. The flip is about
     // the FRONT of the shirt (u = 0.25), so the name stays on the chest and the number on the back: u -> 0.5 - u (wrapping round).
-    const m = makeCanvas(256, 256);
-    for (const off of [128, 384]) { m.ctx.setTransform(-1, 0, 0, 1, off, 0); m.ctx.drawImage(canvas, 0, 0); }
+    const m = makeCanvas(S, S);
+    for (const off of [S / 2, (3 * S) / 2]) { m.ctx.setTransform(-1, 0, 0, 1, off, 0); m.ctx.drawImage(canvas, 0, 0); }
     m.ctx.setTransform(1, 0, 0, 1, 0, 0);
     return toTexture(m.canvas, { anisotropy: 4 });
   }
