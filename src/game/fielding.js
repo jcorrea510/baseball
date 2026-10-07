@@ -1076,6 +1076,7 @@ function liveTarget(plan, recs, st, defense, cfg, first) {
       const [bx0, bz0] = BASE_XZ[base];
       const off = last ? Math.hypot(last.xStop - bx0, last.zStop - bz0) : 0;
       if (off > R.live.offBag) tBall = Math.max(st.t, last.tStop) + F.reaction.IF + timeToCover(recv.speed, off, F.accel);
+      else if (last && last.tReach > tBall) tBall = last.tReach; // (his last walk is still taking him back to the bag: the tag cannot go on before he is there)
       if (!(tBall + (forced ? 0 : R.sendTag) + F.outMargin <= arrive)) continue;
     }
     // the tag: on the bag as he slides in - or, when he is still a good way off, the man with the ball walks up the line to meet him

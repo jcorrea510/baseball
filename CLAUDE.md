@@ -46,7 +46,7 @@ Vercel settings (also README, `vercel.json`): Framework Vite, Install `npm ci`, 
 - Text the owner sees is labels only - no explanatory sentences on screen. Check HUD changes with `hudqa.mjs`.
 
 ## Known issues / open ideas
-- Double plays a little common (~52-62%, MLB ~45-50), runner on third scores on fewer grounders (27%, MLB ~55-65), first-to-third rare (10%). Walks rare when you pitch (~1%). No pickoffs; you never run the computer's runners.
+- Base running vs MLB (the computer's runners, `qa-output`-style planner check): double plays 47% of chances in realism.mjs (MLB ~45-50), runner on third scores on ~59% of infield grounders (MLB ~55-65), first-to-third ~21% of outfield singles (RF ~38%, LF / CF ~7%; MLB ~25-30%). Your own runners still hold until you send them, so realism.mjs prints 0% for those two. Walks rare when you pitch (~1%). No pickoffs; you never run the computer's runners.
 - The Credits say "personal use only" for the real club and player names: publishing publicly needs the owner's decision.
 - Real-device performance never measured (this laptop renders in software).
 

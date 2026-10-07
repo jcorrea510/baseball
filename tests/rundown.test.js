@@ -16,7 +16,10 @@ const setup = (c, bases, outs = 0) => {
   return { sim, contact: c, bases, outs, defense, orders: [] };
 };
 // give one more order and plan again, the way the engine does (everything before the tap stays as it was)
-const order = (i, cur, o) => { i.orders = [...i.orders, o]; return planPlay({ ...i, prev: { paths: cur.paths, t: o.t } }, CONFIG); };
+const order = (i, cur, o, cfg = CONFIG) => { i.orders = [...i.orders, o]; return planPlay({ ...i, prev: { paths: cur.paths, t: o.t } }, cfg); };
+// (outfielders now take a second to throw, so a runner sent to third on a single is hardly ever caught; the call-back / rundown test below
+// needs those plays, so it uses the quicker outfield transfer of the earlier rounds - the rundown itself does not depend on it)
+const QUICK = { ...CONFIG, fielding: { ...CONFIG.fielding, transfer: { ...CONFIG.fielding.transfer, OF: 0.65 } } };
 const moveOf = (p, from) => p.moves.find((m) => m.from === from && !m.back);
 
 // Fielders never jump when a plan changes, runners never move faster than a sprint, and every out is a real one.
@@ -59,11 +62,11 @@ describe('the live play', () => {
     let cases = 0, saved = 0, rundownOuts = 0, upTheLine = 0, throwsAfter = 0;
     for (let k = 0; k < 3000 && cases < 60; k++) {
       const i = setup(C(rng.range(82, 100), rng.range(4, 18), rng.range(-30, 30)), [null, 2, null], Math.floor(rng.next() * 2));
-      let cur = planPlay(i, CONFIG);
+      let cur = planPlay(i, QUICK);
       if (cur.result !== 'single' || !cur.send) continue;
       // send the runner on second to third as soon as the ball is down: find the plays where that gets him tagged at third
       const t1 = (cur.send.res ?? cur.send.from) + 0.05;
-      const sent = order(i, cur, { base: 3, t: t1, from: 2 });
+      const sent = order(i, cur, { base: 3, t: t1, from: 2 }, QUICK);
       const m = moveOf(sent, 2);
       if (!m || !m.out || m.outBase !== 3) { i.orders = []; continue; }
       cases++;
@@ -73,7 +76,7 @@ describe('the live play', () => {
       const t2 = m.outAt - 0.45;
       const back = runnerOptions(cur, t2).find((o) => o.from === 2);
       if (!back || back.back !== 2) { problems.push(`no call-back offered (${back && back.back})`); continue; }
-      const b = order(i, cur, { base: 3, t: t2, from: 2, back: true });
+      const b = order(i, cur, { base: 3, t: t2, from: 2, back: true }, QUICK);
       checkStep(cur, b, t2, i.defense, problems);
       const mb = moveOf(b, 2);
       if (mb.out && mb.outBase === 3 && mb.outAt > t2 + CONFIG.runner.sendReact) problems.push('still tagged at third after turning back');
@@ -84,7 +87,7 @@ describe('the live play', () => {
         // ...and send him again (he is safe on second, or on his way back)
         const t3 = t2 + 0.8;
         if (tapOptions(cur, t3).some((o) => o.base === 3 && o.from === 2)) {
-          const again = order(i, cur, { base: 3, t: t3, from: 2 });
+          const again = order(i, cur, { base: 3, t: t3, from: 2 }, QUICK);
           checkStep(cur, again, t3, i.defense, problems);
           cur = again;
         }

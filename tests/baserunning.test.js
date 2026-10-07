@@ -363,8 +363,8 @@ describe('changing your mind', () => {
   it('after the catch you can send a runner to tag up; the throw gets him when it beats him', () => {
     const rng = createRng(33);
     let n = 0, scored = 0, out = 0;
-    for (let k = 0; k < 3000 && n < 60; k++) {
-      const c = C(rng.range(75, 95), rng.range(22, 40), rng.range(-35, 35));
+    for (let k = 0; k < 3000 && n < 150; k++) {
+      const c = C(rng.range(60, 95), rng.range(22, 55), rng.range(-35, 35));
       const a = plan(c, { bases: [null, null, 3] }).plan;
       if (!a.caught || !a.fair || a.result === 'sacFly') continue;
       const t = a.catchT + 0.1;
@@ -377,7 +377,7 @@ describe('changing your mind', () => {
       expect(auditPlan(q.plan, q.defense)).toEqual([]);
     }
     expect(n).toBeGreaterThan(30);
-    expect(out).toBeGreaterThan(3); // (the deep ones he scores on by himself: what is left to send him on is mostly too shallow)
+    expect(out).toBeGreaterThan(3); // (outfielders now take a second to throw, so only the high short flies still beat him; the deep ones he scores on by himself: what is left to send him on is mostly too shallow)
     void scored;
   });
 });
