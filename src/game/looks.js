@@ -200,4 +200,17 @@ export function umpireLook(cfg = CONFIG) {
   return { tone: U.tone, skin: skinHex(U.tone, cfg), beard: U.beard, hair: cfg.looks.hair[U.hair], long: false, face: U.face, number: null };
 }
 
+/**
+ * Who stands where when a team takes the field (picture only): its batters at their own positions (`posOf(player)` -> 'SS', 'C',
+ * ...), the others (a DH, players without a position) filling the open places in order. The pitcher is not one of them.
+ * @returns {object} position -> player (or nothing for a place nobody fills)
+ */
+export function fieldersFrom(lineup, posOf = (p) => p.pos) {
+  const places = ['C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF'];
+  const out = {}, left = [];
+  for (const p of lineup || []) { const q = posOf(p); if (q && places.includes(q) && !out[q]) out[q] = p; else left.push(p); }
+  for (const q of places) if (!out[q] && left.length) out[q] = left.shift();
+  return out;
+}
+
 export { HAIR_CODE };
