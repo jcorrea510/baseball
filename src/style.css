@@ -1154,3 +1154,18 @@ body.intro .hud, body.intro .hint, body.intro .toast { display: none !important;
   font: 700 13px/1 var(--cond); letter-spacing: .18em; text-transform: uppercase; color: rgba(255, 255, 255, .7);
   border: 1.5px solid rgba(255, 255, 255, .45); border-radius: 999px; padding: 8px 14px 7px;
 }
+
+/* ---------------------------------------------------------------- small screens: the pitching HUD pieces never cover each other */
+/* the hit readout takes the batter card's place once the ball is hit */
+.hud:has(.callout.show) .atbat { opacity: 0; transition: opacity .2s; }
+/* portrait phones: the pitch meter below the batter card; the throw pad above the score bug */
+@media (orientation: portrait) {
+  .pmeter { top: calc(var(--safe-t) + 150px); }
+  .throwpad { bottom: calc(var(--safe-b) + 140px); }
+}
+@media (orientation: portrait) and (max-width: 420px) { .atbat { max-width: 230px; } }
+/* short landscape phones: the pitch meter right above the pitch list (the middle is the batter's); a narrower practice box */
+@media (max-height: 520px) and (orientation: landscape) {
+  .pmeter { left: auto; right: calc(var(--safe-r) + 10px); bottom: calc(var(--safe-b) + 172px); width: 190px; transform: none; transform-origin: 100% 100%; }
+  .practbox .cell { padding: 8px 8px 7px; min-width: 50px; }
+}
