@@ -48,7 +48,6 @@ Vercel settings (also README, `vercel.json`): Framework Vite, Install `npm ci`, 
 ## Known issues / open ideas
 - Double plays a little common (~52-62%, MLB ~45-50), runner on third scores on fewer grounders (27%, MLB ~55-65), first-to-third rare (10%). Walks rare when you pitch (~1%). No pickoffs; you never run the computer's runners.
 - The Credits say "personal use only" for the real club and player names: publishing publicly needs the owner's decision.
-- Engine `pitchAim` (your aim spot) and app `pitchAim` (the renderer) share a name.
 - Real-device performance never measured (this laptop renders in software).
 
 ## Machines

@@ -182,7 +182,7 @@ export class App {
     this.landRing = new LandingRing(this.S.scene); // ...and the ring on the grass that shows it
     this.fielderRing = new FielderRing(this.S.scene); // the ring at the feet of the fielder whose throw you are choosing
     this.batAim = new BatAim(this.S.scene); // the see-through bat you aim with
-    this.pitchAim = new PitchAim(this.S.scene); // the dot, timing ring, grade word and the at-bat's pitch marks while you pitch
+    this.aimMarks = new PitchAim(this.S.scene); // the dot, timing ring, grade word and the at-bat's pitch marks while you pitch
     this.pitchMarks = [];
   }
 
@@ -505,7 +505,7 @@ export class App {
     const toSeason = this.returnTo === 'season';
     this.gameToken++;
     this.engine = null; this.bot = null; this.paused = false; this.fast = false; this.slowMo = null; this.hitStop = 0; this.throwSlow = 1; this.throwOpen = false;
-    this.simSummary = null; this.pitchSig = null; this.ui.setPitching(null); this.pitchAim.hide();
+    this.simSummary = null; this.pitchSig = null; this.ui.setPitching(null); this.aimMarks.hide();
     if (this.padShown) { this.padShown = false; this.ui.setBasePad(null); }
     this.ui.hideHud(); this.hideOverlays();
     this.cam.title = true;
@@ -613,7 +613,7 @@ export class App {
       this.refreshLineup();
       if (waiting) ui.showBatterUp(batter, e.lineOf(batter), (pitcher ? ['vs ' + pitcher.name] : []).concat(this.batterChips(batter))); else ui.hideBatterUp();
       this.pitchMarker.visible = false;
-      this.pitchMarks = []; this.pitchAim.setMarks(this.pitchMarks); // (a new batter: a clean zone)
+      this.pitchMarks = []; this.aimMarks.setMarks(this.pitchMarks); // (a new batter: a clean zone)
       this.actors.loose.spent = false;
       this.actors.loose.active = false;
       this.actors.looseBat.visible = false;
@@ -1409,7 +1409,7 @@ export class App {
 
   // The aim dot, break arc, timing ring and grade word (render/pitchAim.js) while you pitch.
   updatePitchDot(e, dt) {
-    this.pitchAim.update(e || {}, dt, false, false); // (the small 3D dot / ring / marks stay away: the big aiming panel shows it all)
+    this.aimMarks.update(e || {}, dt, false, false); // (the small 3D dot / ring / marks stay away: the big aiming panel shows it all)
     this.updateAimPad(e, dt);
   }
 
@@ -1456,7 +1456,7 @@ export class App {
     const e = this.engine;
     if (!e || !e.pitching || e.simming || !pitch || !pitch.target) return;
     this.pitchMarks.push({ x: pitch.target.x, y: pitch.target.y, strike });
-    this.pitchAim.setMarks(this.pitchMarks);
+    this.aimMarks.setMarks(this.pitchMarks);
   }
 
   // You held the button (or Space) down to start the delivery: letting go taps the ring - unless you let go at once (a plain click:
@@ -1474,7 +1474,7 @@ export class App {
   pressSim() {
     const e = this.engine;
     if (!e || this.paused || this.bot || !e.pitching || e.simming || e.phase === 'delivery') return;
-    if (e.simHalf()) { this.audio.uiClick(); this.audio.crowdSwell(0.15, 1.5); this.pitchAim.hide(); } // (one soft murmur as the Sim starts)
+    if (e.simHalf()) { this.audio.uiClick(); this.audio.crowdSwell(0.15, 1.5); this.aimMarks.hide(); } // (one soft murmur as the Sim starts)
   }
 
   // Bullpen: the panel of relievers you can still bring in (labels only), or one tap on a row: he is on the mound at once.
