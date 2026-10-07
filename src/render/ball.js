@@ -74,6 +74,7 @@ export function createBall(scene) {
   const api = {
     group, mesh,
     trailScale: 1, // (x the pitch's streak size: thinner in the zoomed-in pitching view)
+    trailEnabled: true, // (Settings -> Ball trail off: no streak at all)
     setVisible(v) { visible = v; group.visible = v; shadow.visible = v; if (!v) { trailStrength = 0; tg.getAttribute('aAlpha').array.fill(0); tg.getAttribute('aAlpha').needsUpdate = true; } },
     get visible() { return visible; },
     setScale(s, minScreenPx = 0) { baseScale = s; minPx = minScreenPx; mesh.scale.setScalar(s); },
@@ -112,7 +113,7 @@ export function createBall(scene) {
         if (!h || i >= history.length) { a.array[i] = 0; continue; }
         p.array[i * 3] = h.x; p.array[i * 3 + 1] = h.y; p.array[i * 3 + 2] = h.z;
         const f = 1 - i / TRAIL_N;
-        a.array[i] = trailStrength * f * f * 0.9;
+        a.array[i] = api.trailEnabled ? trailStrength * f * f * 0.9 : 0;
         s.array[i] = (trailIsPitch ? CONFIG.pitch.trailSize * api.trailScale : 0.55) * (0.4 + f * 0.9);
       }
       a.needsUpdate = true; s.needsUpdate = true; p.needsUpdate = true;

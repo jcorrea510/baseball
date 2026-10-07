@@ -45,6 +45,8 @@ for (const sz of sizes) {
         ui.setPitching({ open: state !== 'fieldplay', selected: 'slider', canSim: true, canBullpen: true, pitches: all.slice(0, state === 'field5' ? 5 : 4).map(([type, label, mph]) => ({ type, label, mph })) });
         ui.setPitcherTag({ name: 'R. Castellanos-Ortiz', pitches: 47, stamina: state === 'field5' ? 0.1 : 0.32 });
         ui.setPitchCount('2-1');
+        ui.setAtBat({ number: 12, name: 'J. Delgado-Whitfield', pos: 'SS', hand: 'L', today: '1-2, HR, 2 RBI' });
+        if (state === 'field') ui.setPitchMeter({ p: 0.6, hit: 0.75, ok: 0.18, good: 0.1, perfect: 0.045, grade: null });
         if (state === 'fieldbull') ui.setFast(false, false), ui.q.callout.classList.remove('show'), ui.showBullpen([{ id: 'a', name: 'A. Hollis-Castellanos', hand: 'L', rating: 61, pitches: ['Fastball', 'Curveball', 'Slider'], stamina: 1 }, { id: 'b', name: 'T. Okafor', hand: 'R', rating: 55, pitches: ['Fastball', 'Changeup'], stamina: 1 }, { id: 'c', name: 'D. Reyes', hand: 'R', rating: 48, pitches: ['Fastball', 'Slider'], stamina: 1 }]); // (the Bullpen panel open)
         ui.setBasePad(null); // (you never send the computer's runners)
         if (state === 'fieldplay') ui.setFast(true, false);
@@ -57,7 +59,7 @@ for (const sz of sizes) {
         }
       }
       // overlap check between visible HUD boxes
-      const sel = ['.lineup', '.pitchinfo', '.callout', '.meter', '.batterup', '.bugwrap', '.derbybox', '.practbox', '.practice', '.hudbtns', '.acts', '.swingbtn', '.basepad', '.ffbtn', '.pitchbar', '.pitchside', '.bullpanel', '.throwpad'];
+      const sel = ['.lineup', '.pitchinfo', '.callout', '.meter', '.batterup', '.bugwrap', '.derbybox', '.practbox', '.practice', '.hudbtns', '.acts', '.swingbtn', '.basepad', '.ffbtn', '.pitchdock', '.atbat', '.pmeter', '.bullpanel', '.throwpad'];
       const boxes = [];
       for (const s of sel) { const e = document.querySelector('.hud ' + s); if (!e) continue; const cs = getComputedStyle(e); if (cs.display === 'none' || +cs.opacity === 0) continue; const b = e.getBoundingClientRect(); if (b.width && b.height) boxes.push({ s, b }); }
       const hits = [];

@@ -13,6 +13,17 @@ export const DEFAULT_SAVE = () => ({
     volume: 0.8, sfxVolume: 1, umpireVolume: 1, crowdVolume: 1,
     flashes: true, // white screen flashes on big hits (off = calmer screen)
     inputDelayMs: 0, // swing timing adjustment for screens / controllers that lag (ms subtracted from every press)
+    // Settings -> Display / Controls (round twenty-one; picture and feel only)
+    hudScale: 'normal', // small | normal | large: how big the score box, buttons and read-outs are drawn
+    units: 'imperial', // imperial (mph, ft) | metric (km/h, m)
+    showSpeed: true, // the pitch's speed in the read-out at the top
+    lineupPanel: true, // the batting order down the left side
+    trail: true, // the streak behind the ball
+    colorBlind: false, // colour-blind friendly colours for the count, the zone and the timing meter
+    batView: 'catcher', // catcher | high: where the camera sits while you are up
+    swingSide: 'right', // right | left: which corner the Swing button sits in (touch)
+    aimSpeed: 100, // % of the normal speed a finger drags the bat / the pitch target
+    haptics: true, // the phone buzzes on contact, home runs, your strikeouts and throws (phones that can)
   },
   career: {
     games: 0, wins: 0, pa: 0, ab: 0, hits: 0, hr: 0, longestHR: 0, maxEV: 0, perfects: 0, swings: 0, contacts: 0,

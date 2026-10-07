@@ -31,6 +31,7 @@ import { introShot } from './render/intro.js';
 import { MLB_TEAMS } from './game/mlb.js';
 import { pitchTopMph, isPainted, staminaMax } from './game/pitching.js';
 import { onCall } from './game/scouting.js';
+import { setUnits, speedText, speedValue, speedUnit, distText, distValue, distUnit } from './util/units.js';
 const parkName = () => currentPark().name.toUpperCase();
 
 // scorekeeping numbers for the error banner (E6 = an error by the shortstop)
@@ -76,6 +77,7 @@ export class App {
 
     this.ui = new UI(this.uiRoot, (a, d) => this.onAction(a, d));
     this.ui.noFlashes = !this.prog.settings.flashes;
+    this.applyLook(); // (HUD size, units, colour-blind colours... from Settings)
     this.nav = []; // menu screens to go back to (Back / Esc)
     this.gameToken = 0; // bumps with every new game / quit, so delayed effects from an old game never fire into a new one
     this.engine = null;
@@ -314,7 +316,7 @@ export class App {
   }
 
   showMenuScreen(name) {
-    if (name === 'pause') { this.ui.buildPause(this.settings, !!this.seasonGame, !!this.seasonGame || !!this.quickSave); this.ui.show('pause'); return; }
+    if (name === 'pause') { this.ui.buildPause(this.settings, !!this.seasonGame, !!this.seasonGame || !!this.quickSave, this.pauseInfo()); this.ui.show('pause'); return; }
     if (!(this.engine && !this.engine.over && this.paused)) this.screen = name; // (settings opened from the pause menu: still in the game)
     if (name === 'title') { this.nav = []; this.ui.buildTitle(this.prog); }
     if (name === 'modes') this.ui.buildModes(this.prog);
@@ -391,7 +393,32 @@ export class App {
     if (key === 'crowdVolume') this.audio.setLevel('crowd', value);
     if (key === 'flashes') this.ui.noFlashes = !value;
     if (key === 'inputDelayMs' && this.engine) this.engine.inputDelay = value / 1000;
+    if (['hudScale', 'units', 'showSpeed', 'lineupPanel', 'trail', 'colorBlind', 'batView', 'swingSide'].includes(key)) this.applyLook();
+    if (key === 'haptics' && value) this.buzz('tap');
     if (this.ui.current === 'modes') this.ui.buildModes(this.prog);
+  }
+
+  // The Display / Controls settings that change how things look: HUD size, units, colour-blind colours, the Swing button's corner, the
+  // batting order panel, the ball's streak, the pitch speed read-out and the batting camera. Picture only.
+  applyLook() {
+    const st = this.settings;
+    const root = document.documentElement;
+    root.style.setProperty('--hud-scale', String(CONFIG.ui.hudScale[st.hudScale] || 1));
+    document.body.classList.toggle('cb', !!st.colorBlind);
+    document.body.classList.toggle('swingleft', st.swingSide === 'left');
+    setUnits(st.units);
+    this.ui.showSpeed = st.showSpeed !== false;
+    this.ui.hud.classList.toggle('nolineup', st.lineupPanel === false);
+    this.ball.trailEnabled = st.trail !== false;
+    const v = CONFIG.ui.batViews[st.batView] || CONFIG.ui.batViews.catcher;
+    Object.assign(CONFIG.camera.catcher, { pos: [...v.pos], look: [...v.look], fov: v.fov }); // (the catcher's view is the batting camera everywhere it is read)
+    this.ui.pitchKey = null; this.pitchSig = null; // (the pitch list redraws its speeds in the new units)
+  }
+
+  // Settings -> Vibration: a short buzz for a moment (phones that can; nothing anywhere else).
+  buzz(kind) {
+    if (!this.settings.haptics || this.bot || !navigator.vibrate) return;
+    try { navigator.vibrate(CONFIG.ui.haptics[kind] || 10); } catch (err) { /* not allowed: nothing */ }
   }
 
   // Letting go of a volume slider plays a sample of that channel, so you hear what you set.
@@ -457,8 +484,20 @@ export class App {
     this.paused = p;
     this.nav = [];
     if (p) this.releaseKeys(); // (a key held as the game pauses never keeps the bat moving after it)
-    if (p) { this.ui.buildPause(this.settings, !!this.seasonGame, !!this.seasonGame || !!this.quickSave); this.ui.show('pause'); }
+    if (p) { this.ui.buildPause(this.settings, !!this.seasonGame, !!this.seasonGame || !!this.quickSave, this.pauseInfo()); this.ui.show('pause'); }
     else { this.ui.hideAll(); this.lastFrameStamp = performance.now(); blurFocus(); }
+  }
+
+  // The line under "Paused": the score and the inning (Quick / League), the Derby's home runs, or the mode.
+  pauseInfo() {
+    const e = this.engine;
+    if (!e) return '';
+    if (e.mode === 'quick' && e.game) {
+      const g = e.game, sd = this.sides(e);
+      return `${sd.away.abbr} ${g.score.top} · ${sd.home.abbr} ${g.score.bottom} · ${g.half === 'top' ? 'Top' : 'Bot'} ${g.inning}`;
+    }
+    if (e.mode === 'derby') return `Home Run Derby · ${e.derby.hr} HR`;
+    return 'Practice';
   }
 
   releaseKeys() {
@@ -471,6 +510,7 @@ export class App {
     const e = this.engine;
     if (!e || this.paused || this.bot) return false;
     if (!e.chooseThrow(base)) return false;
+    this.buzz("throw");
     this.audio.uiClick();
     return true;
   }
@@ -565,7 +605,7 @@ export class App {
     this.engine.setAim(0);
     this.pitchesThisGame = 0;
     this.paused = false; this.fast = false; this.slowMo = null; this.hitStop = 0; this.throwSlow = 1; this.throwOpen = false;
-    this.simSummary = null; this.pitchSig = null;
+    this.simSummary = null; this.pitchSig = null; this.formPitcher = null; this.pitchForm = [];
     this.screen = 'game';
     this.cam.title = false;
     this.cam.snapToBatter();
@@ -664,7 +704,8 @@ export class App {
       ui.showPitchInfo(LABEL[pitch.type], pitch.speedMph, false, 1500);
       // mark where it crossed the plate
       const inZone = pitch.isStrike;
-      this.pitchMarker.material.color.set(inZone ? 0x3ddc7c : 0xff5a4d);
+      const MC = CONFIG.ui.pitchMarker[this.settings.colorBlind ? 'colorBlind' : 'normal'];
+      this.pitchMarker.material.color.set(inZone ? MC.strike : MC.ball);
       this.pitchMarker.position.set(pitch.target.x, pitch.target.y, CONFIG.pitch.contactZ + 0.04);
       this.pitchMarker.visible = this.settings.zone && !e.pitching; // (you pitch: the at-bat's numbered marks show it)
       if (this.settings.shake) cam.shake(0.05);
@@ -682,8 +723,8 @@ export class App {
     on('result', (r) => { this.onResult(r); this.groaned = false; });
     on('derby', (d) => { ui.setDerby(d); this.updateScoreboard(); });
     const padWord = (grade) => { const a = (e.ring && e.ring.aim) || e.pitchAim; this.padWord = { grade, t: 0, x: a.x, y: a.y }; };
-    on('ringTap', ({ grade }) => padWord(grade)); // (how well the ring was tapped: the word on the aiming panel)
-    on('pitchGrade', ({ grade }) => { if (!e.ring || !e.ring.tapped) padWord(grade); }); // (no tap at all: WILD)
+    on('ringTap', ({ grade }) => { padWord(grade); this.notePitchGrade(grade); }); // (how well the ring was tapped: the word on the zone, and his card's form strip)
+    on('pitchGrade', ({ grade }) => { if (!e.ring || !e.ring.tapped) { padWord(grade); this.notePitchGrade(grade); } }); // (no tap at all: WILD)
     on('simDone', (s) => {
       // the half you simmed: its highlights, with Skip (the engine is already on to your turn at bat, held at Ready)
       ui.hideBanner(); ui.hideCallout();
@@ -716,6 +757,7 @@ export class App {
     }
     const q = grade === 'perfect' ? 1 : grade === 'good' ? 0.62 : 0.25;
     audio.batCrack(q, c.exitVelocity);
+    if (!e.pitching) this.buzz(grade === "perfect" ? "perfect" : "contact");
     if (c.plan.result !== 'foul') { if (grade === 'perfect') this.hitStop = F.hitStopPerfect; else if (grade === 'good') this.hitStop = F.hitStopGood; } // (no freeze-frame on a foul)
     if (this.settings.shake) this.cam.shake(grade === 'perfect' ? F.shakePerfect : grade === 'good' ? F.shakeGood : 0.2);
     const s = c.sim;
@@ -727,10 +769,10 @@ export class App {
     if (grade === 'perfect' && !foul && !e.pitching) ui.flash(0.22, 90);
     if (foul) audio.tick(); // (a foul ball gets no contact banner: the FOUL call says it)
     else if (e.pitching) { /* (their contact: no cheering banner - the result says what it is) */ }
-    else if (grade === 'perfect') ui.banner('PERFECT!', `${Math.round(c.exitVelocity)} mph`, 'great');
-    else if (grade === 'good') ui.banner('SOLID CONTACT', `${Math.round(c.exitVelocity)} mph`, 'good'); // (the timing was good - what becomes of the ball is the play's to say)
+    else if (grade === 'perfect') ui.banner('PERFECT!', `${speedText(c.exitVelocity)}`, 'great');
+    else if (grade === 'good') ui.banner('SOLID CONTACT', `${speedText(c.exitVelocity)}`, 'good'); // (the timing was good - what becomes of the ball is the play's to say)
     if (c.homer) { this.slowMo = { t: 0, dur: F.slowMoDuration, delay: this.hitStop + 0.02 }; }
-    if (e.mode === 'practice') ui.callout([{ v: Math.round(c.exitVelocity), u: 'mph', l: 'Exit velo' }, { v: Math.round(c.launchAngle), u: '°', l: 'Launch' }], 2400);
+    if (e.mode === 'practice') ui.callout([{ v: speedValue(c.exitVelocity), u: speedUnit(), l: 'Exit velo' }, { v: Math.round(c.launchAngle), u: '°', l: 'Launch' }], 2400);
     // The crowd is always on your side: every fair ball gets a cheer a beat after the crack (once they see it fly), and the
     // deeper it is going the louder and longer it builds (a catch or an out turns it into a groan)
     if (!foul && !e.pitching) { // (their ball: no cheer for it - they groan when it falls in)
@@ -808,11 +850,11 @@ export class App {
         else { audio.homeRun(dist); this.S.stadium.crowd.cheer(1); }
         // (the home team's home run: Citi Field's apple - yours when you bat at home, theirs when they bat at home)
         if (theirs ? e.playerSide === 'top' : (e.playerSide === 'bottom' || e.mode !== 'quick')) this.S.stadium.celebrate();
-        if (!theirs) this.celebrateHomer(ev, dist);
+        if (!theirs) { this.celebrateHomer(ev, dist); this.buzz("homer"); }
         this.showDistanceCallout(c, true);
         // say what it is worth right away (a grand slam, a 3-run homer): everybody on base scores on a ball over the fence
         const on = e.mode === 'derby' || !e.diamond ? 0 : e.diamond.bases.filter(Boolean).length;
-        ui.banner(on === 3 ? 'GRAND SLAM' : on > 0 ? `${on + 1}-RUN HOMER` : 'HOME RUN!', `${dist} ft`, theirs ? 'bad' : 'hr', true);
+        ui.banner(on === 3 ? 'GRAND SLAM' : on > 0 ? `${on + 1}-RUN HOMER` : 'HOME RUN!', distText(dist), theirs ? 'bad' : 'hr', true);
         this.hrShown = true; // (the result banner at the end of the play only updates this one - the celebration never plays twice)
         if (this.settings.shake) this.cam.shake(F_HR());
         break;
@@ -953,7 +995,7 @@ export class App {
 
   showDistanceCallout(c, isHr) {
     if (!c) return;
-    const items = [{ v: Math.round(c.exitVelocity), u: 'mph', l: 'Exit velo' }, { v: Math.round(isHr ? c.projected.distance : c.distance), u: 'ft', l: 'Distance' }];
+    const items = [{ v: speedValue(c.exitVelocity), u: speedUnit(), l: 'Exit velo' }, { v: distValue(isHr ? c.projected.distance : c.distance), u: distUnit(), l: 'Distance' }];
     if (isHr || c.big) items.push({ v: Math.round(c.launchAngle), u: '°', l: 'Launch' });
     this.ui.callout(items, isHr ? 4200 : 3000);
   }
@@ -975,7 +1017,7 @@ export class App {
       // out of the zone is a chase
       const p = r.pitch;
       if (mine && p && r.call !== 'hitByPitch') {
-        const what = [`${LABEL[p.type] || p.type} ${Math.round(p.speedMph)}`, p.onCall ? 'On the mitt' : ''].filter(Boolean).join(' · ');
+        const what = [`${LABEL[p.type] || p.type} ${speedValue(p.speedMph)}`, p.onCall ? 'On the mitt' : ''].filter(Boolean).join(' · ');
         if (r.call === 'swingingStrike') m[0] = p.isStrike ? 'SWING & MISS' : 'CHASED';
         m[1] = what;
       }
@@ -1005,9 +1047,9 @@ export class App {
     const mine = e.pitching; // (you pitch: their hits are bad news, your outs and strikeouts good)
     const GH = CONFIG.pitching.moments.groanHit;
     let big = r.text, sub = '', cls = 'neutral';
-    if (res === 'homer' || res === 'insideParkHomer') { cls = mine ? 'bad' : 'hr'; sub = `${Math.round(r.distanceFt || r.distance || 0)} ft${runsText}`; if (r.walkOff) sub = 'WALK-OFF!'; }
+    if (res === 'homer' || res === 'insideParkHomer') { cls = mine ? 'bad' : 'hr'; sub = `${distText(r.distanceFt || r.distance || 0)}${runsText}`; if (r.walkOff) sub = 'WALK-OFF!'; }
     else if (['single', 'double', 'triple'].includes(res)) {
-      sub = `${Math.round(r.exitVelocity)} mph${runsText}`;
+      sub = `${speedText(r.exitVelocity)}${runsText}`;
       if (mine) { cls = 'bad'; audio.crowdGroan(GH * (res === 'single' ? 0.8 : 1.1)); } else { cls = 'good'; audio.crowdSwell(res === 'single' ? 0.4 : 0.65, 2.2); audio.applause(1.2, 0.5); }
     }
     else if (res === 'error') { cls = mine ? 'bad' : 'good'; sub = `E${POSITION_NUMBER[r.plan && r.plan.error ? r.plan.error.pos : ''] || ''}${runsText}`.replace(/^E · /, ''); if (mine) audio.crowdGroan(GH); else audio.applause(1, 0.4); }
@@ -1022,7 +1064,7 @@ export class App {
     else if (res === 'out') { cls = mine ? 'good' : 'bad'; sub = r.detail ? r.detail : ''; if (!this.groaned) { if (mine) this.cheerOut(); else audio.crowdGroan(0.4); } }
     else if (['groundout', 'flyout', 'lineout', 'popout', 'foulOut', 'doublePlay', 'fieldersChoice', 'sacFly', 'sacBunt'].includes(res)) {
       const sac = res === 'sacFly' || res === 'sacBunt';
-      cls = sac !== mine ? 'good' : 'bad'; sub = res === 'sacFly' ? `1 run` : res === 'sacBunt' ? (r.runs > 0 ? '' : 'Runner up') : (r.text && res === 'doublePlay' ? '2 outs' : `${Math.round(r.exitVelocity || 0)} mph`);
+      cls = sac !== mine ? 'good' : 'bad'; sub = res === 'sacFly' ? `1 run` : res === 'sacBunt' ? (r.runs > 0 ? '' : 'Runner up') : (r.text && res === 'doublePlay' ? '2 outs' : `${speedText(r.exitVelocity || 0)}`);
       if (r.plan && r.plan.infieldFly) sub = 'Batter is out';
       if (!sac && !this.groaned) { if (mine) this.cheerOut(); else audio.crowdGroan(0.35); } // (already reacted at the out itself)
       if (sac && mine) audio.crowdGroan(GH * 0.6);
@@ -1044,12 +1086,12 @@ export class App {
       sub = `${noteText.charAt(0).toUpperCase()}${noteText.slice(1)}${runsText}`;
     }
     if (e.mode === 'practice' && r.kind === 'play') {
-      big = r.text; sub = `${Math.round(r.exitVelocity)} mph · ${Math.round(r.distance)} ft${runsText}`;
+      big = r.text; sub = `${speedText(r.exitVelocity)} · ${distText(r.distance)}${runsText}`;
       if (note) { if (note.from === 0 && isHitResult(res)) big = `OUT AT ${['', '1st', '2nd', '3rd', 'home'][note.base].toUpperCase()}`; sub = `${noteText} · ${sub}`; }
       cls = res === 'homer' || res === 'insideParkHomer' ? 'hr' : isHitResult(res) || r.runs > 0 ? 'good' : 'neutral';
     }
     if (e.mode === 'derby' && r.kind === 'play') {
-      if (res === 'homer') { cls = 'hr'; big = 'HOME RUN'; sub = `${r.distanceFt} ft${r.streak > 1 ? ` · streak ${r.streak}` : ''}`; }
+      if (res === 'homer') { cls = 'hr'; big = 'HOME RUN'; sub = `${distText(r.distanceFt)}${r.streak > 1 ? ` · streak ${r.streak}` : ''}`; }
       else { cls = 'bad'; big = r.text.includes('FREE') ? r.text : 'OUT'; sub = r.detail || ''; }
     }
     if (res === 'homer' || res === 'insideParkHomer') {
@@ -1062,7 +1104,7 @@ export class App {
       // a play that drove in runs says the RUNS in big letters and the hit in smaller ones
       if (r.runs > 0 && e.mode !== 'derby') {
         const hit = note && note.from === 0 && isHitResult(res) ? r.text : big; // (SINGLE, DOUBLE, SAC FLY, WALK, ERROR ...)
-        const mph = r.exitVelocity ? `${Math.round(r.exitVelocity)} mph` : '';
+        const mph = r.exitVelocity ? `${speedText(r.exitVelocity)}` : '';
         big = r.walkOff ? 'WALK-OFF!' : `${r.runs} RUN${r.runs > 1 ? 'S' : ''}`;
         sub = r.walkOff ? [hit, `${r.runs} run${r.runs > 1 ? 's' : ''}`].filter(Boolean).join(' · ') : [hit, noteText || mph].filter(Boolean).join(' · ');
         cls = mine ? 'bad' : r.walkOff ? 'hr' : 'good';
@@ -1087,6 +1129,7 @@ export class App {
   strikeoutMoment(r) {
     const M = CONFIG.pitching.moments;
     this.groaned = true;
+    this.buzz("strikeout");
     this.audio.crowdSwell(M.roar.level, M.roar.seconds);
     this.audio.applause(1.6, 0.7);
     if (r.halfOver) this.S.stadium.crowd.cheer(1); // (the apple is for home-team homers only)
@@ -1233,7 +1276,7 @@ export class App {
         const dx = e.clientX - t.lx, dy = e.clientY - t.ly;
         t.lx = e.clientX; t.ly = e.clientY;
         if (Math.hypot(e.clientX - t.x0, e.clientY - t.y0) > CONFIG.batAim.tapPx) t.moved = true;
-        const k = this.ftPerPx() * CONFIG.batAim.touchGain;
+        const k = this.ftPerPx() * CONFIG.batAim.touchGain * (this.settings.aimSpeed || 100) / 100; // (Settings -> Drag speed)
         // (the pitching view looks in from center field: the screen's right is the field's -x - a drag to the right moves the dot right)
         const mirror = t.pitch ? -1 : 1;
         this.aimTarget.x += mirror * dx * k; this.aimTarget.y -= dy * k;
@@ -1389,22 +1432,32 @@ export class App {
     const cnt = inField && g ? `${g.balls}-${g.strikes}` : '';
     const canBull = open && e.phase === 'aim' && e.bullpenOptions().length > 0;
     const call = e.call && open && e.phase === 'aim' ? e.call.type : null; // (the catcher's sign: a CALL tag on that pitch's button)
-    const sig = `${canBull}|${inField}|${open}|${open && e.phase !== 'delivery'}|${e.pitchType}|${m ? m.pitcher.id : ''}|${cnt}|${open && e.phase === 'aim'}|${m ? m.pitches + ':' + (m.max > 0 ? Math.round(100 * m.left / m.max) : 100) : ''}|${call}`;
+    const bat = inField ? e.batter : null;
+    const sig = `${canBull}|${inField}|${open}|${open && e.phase !== 'delivery'}|${e.pitchType}|${m ? m.pitcher.id : ''}|${cnt}|${open && e.phase === 'aim'}|${m ? m.pitches + ':' + (m.max > 0 ? Math.round(100 * m.left / m.max) : 100) : ''}|${call}|${(this.pitchForm || []).join('')}|${bat ? bat.id + ':' + (e.lineOf(bat).pa || 0) : ''}`;
     if (sig !== this.pitchSig) {
       this.pitchSig = sig;
-      if (!inField) { this.ui.pinPitchInfo(null); this.ui.setPitching(null); this.ui.setPitcherTag(null); this.ui.setPitchCount(''); }
+      if (!inField) { this.ui.pinPitchInfo(null); this.ui.setPitching(null); this.ui.setPitcherTag(null); this.ui.setPitchCount(''); this.ui.setAtBat(null); }
       else {
         const p = e.mound.pitcher;
-        this.ui.setPitcherTag({ name: p.short || p.name, pitches: m.pitches, stamina: m.max > 0 ? m.left / m.max : 1 });
+        if (this.formPitcher !== p.id) { this.formPitcher = p.id; this.pitchForm = []; } // (a new man on the mound: a clean card)
+        this.ui.setPitcherTag({ name: p.short || p.name, hand: p.hand, pitches: m.pitches, stamina: m.max > 0 ? m.left / m.max : 1, form: this.pitchForm });
         this.ui.setPitchCount(cnt);
         const sel = p.pitches.includes(e.pitchType) ? e.pitchType : p.pitches[0];
-        if (open && e.phase === 'aim') this.ui.pinPitchInfo({ type: LABEL[sel] || sel, mph: pitchTopMph(p, sel, CONFIG) }); else this.ui.pinPitchInfo(null);
+        this.ui.pinPitchInfo(null);
         this.ui.setPitching({
-          open, selected: sel, canSim: open && e.phase !== 'delivery', canBullpen: canBull, call,
+          open, selected: sel, canSim: open && e.phase !== 'delivery', canBullpen: canBull, call, hand: p.hand,
           pitches: p.pitches.map((t) => ({ type: t, label: LABEL[t] || t, mph: pitchTopMph(p, t, CONFIG) })),
         });
+        this.ui.setAtBat(bat ? { number: bat.number, name: bat.short || bat.name, pos: bat.pos, hand: bat.hand, today: todayLine(e.lineOf(bat)) } : null);
       }
     }
+  }
+
+  // A ring tap (or none: WILD) by your pitcher: it goes on his card's form strip.
+  notePitchGrade(grade) {
+    const f = this.pitchForm || (this.pitchForm = []);
+    f.push(grade);
+    while (f.length > CONFIG.ui.formPitches) f.shift();
   }
 
   // The aim dot, break arc, timing ring and grade word (render/pitchAim.js) while you pitch.
@@ -1420,7 +1473,7 @@ export class App {
     const on = !!(e && !this.paused && !this.ui.current && !e.simming && this.screen === 'game' && this.isPitchView(e) && e.mound);
     if (this.padWord) { this.padWord.t += dt; if (this.padWord.t > CONFIG.pitchAim.flashTime) this.padWord = null; }
     this.zone.visible = !!(this.settings.zone && this.engine && !on); // (while you pitch the marks draw the zone themselves)
-    if (!on) { if (this.aimPadGeo) { this.aimPadGeo = null; this.ui.setAimPad(null); } return; }
+    if (!on) { if (this.aimPadGeo) { this.aimPadGeo = null; this.ui.setAimPad(null); this.ui.setPitchMeter(null); } return; }
     const AP = CONFIG.aimPad, PA = CONFIG.pitchAim, P = CONFIG.pitch, R = CONFIG.swing.reach;
     const mid = (P.zoneTop + P.zoneBottom) / 2;
     const W = this.S.size.w, H = this.S.size.h, cam = this.S.camera;
@@ -1438,7 +1491,10 @@ export class App {
       const t = clamp(e.time - ring.tStart, 0, ring.time);
       const tr = ring.tapped ? clamp(ring.hitAt + ring.errMs / 1000, 0, ring.time) : t; // (a tap freezes it where it was)
       ringO = { r: AP.dot * (ring.time - tr) / (ring.time - ring.hitAt), gold: Math.abs(tr - ring.hitAt) * 1000 <= CONFIG.pitching.ring.perfect };
-    }
+      // the same clock as a flat meter by the pitch list: the needle runs toward the PERFECT window and stops where you tapped
+      const W = CONFIG.pitching.ring, T = ring.time;
+      this.ui.setPitchMeter({ p: tr / T, hit: ring.hitAt / T, ok: W.ok / 1000 / T, good: W.good / 1000 / T, perfect: W.perfect / 1000 / T, grade: ring.tapped ? (this.padWord && this.padWord.grade) || 'ok' : null });
+    } else this.ui.setPitchMeter(null);
     const type = ring ? ring.type : e.pitchType;
     const word = this.padWord ? (() => {
       const u = this.padWord.t / PA.flashTime;
@@ -1770,3 +1826,8 @@ function pickPark(id, fixed) {
 }
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 function blurFocus() { try { const a = document.activeElement; if (a && a !== document.body && a.blur) a.blur(); } catch (e) { /* ignore */ } }
+// A batter's day so far, the way a broadcast writes it: "1-2, HR, 2 RBI" ('' before his first time up).
+function todayLine(L) {
+  if (!L || !L.pa) return '';
+  return [`${L.h}-${L.ab}`, L.hr ? (L.hr > 1 ? `${L.hr} HR` : 'HR') : '', L.rbi ? `${L.rbi} RBI` : '', L.bb ? (L.bb > 1 ? `${L.bb} BB` : 'BB') : ''].filter(Boolean).join(', ');
+}
