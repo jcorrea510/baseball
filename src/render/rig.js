@@ -126,6 +126,7 @@ const SURF = {
   skin: () => new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: CONFIG.looks.skinRoughness, metalness: 0, sheen: CONFIG.looks.skinSheen, sheenRoughness: 0.7, sheenColor: new THREE.Color('#ffd9c4'), normalMap: surfaceNormalTexture('skin'), normalScale: new THREE.Vector2(0.07, 0.07) }),
   leather: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0, normalMap: surfaceNormalTexture('leather'), normalScale: new THREE.Vector2(0.6, 0.6) }),
   hair: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0, normalMap: surfaceNormalTexture('hair'), normalScale: new THREE.Vector2(0.7, 0.7) }),
+  eye: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.12, metalness: 0 }), // (wet: the eyes catch the light)
   helmet: () => new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.28, metalness: 0.05, clearcoat: 0.6, clearcoatRoughness: 0.2 }),
 };
 const surfMats = {};
@@ -395,7 +396,7 @@ export class Person {
     // eyes: mostly brown; blue, green or hazel now and then on fair skin
     const eyeHex = (look.tone ?? 5) <= 3 && fh % 3 === 0 ? ['#4a6f8f', '#56704a', '#6b5a3a'][fh % 7 % 3] : ['#3a2416', '#2b1a10', '#4a3220'][fh % 3];
     _mc.set(skinHex);
-    const lipHex = '#' + _mc.clone().lerp(new THREE.Color('#8f4f4a'), 0.22).multiplyScalar(0.9).getHexString();
+    const lipHex = '#' + _mc.clone().lerp(new THREE.Color('#8f4f4a'), 0.16).multiplyScalar(0.92).getHexString();
     const head = faceParts({ dl, skin: skinHex, lip: lipHex, eye: eyeHex, hair: hairHex, beard: look.beard || 'none', long: !!look.long && !o.helmet, face: look.face ?? 0.5, stubble: CONFIG.looks.stubble });
     const headParts = head.parts;
     if (o.helmet) headParts.push(...helmetParts(head.surf, { color: helmHex, badge: trimHex, dl, q: head.q }));

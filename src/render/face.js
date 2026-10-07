@@ -20,9 +20,9 @@ export function skullRings(face = 0.5) {
   const f2 = (face * 7.31) % 1, f3 = (face * 13.7) % 1;
   const jaw = 1 + (face - 0.5) * 0.16, chin = 1 + (f2 - 0.5) * 0.3, brow = 1 + (f3 - 0.5) * 0.6;
   return [
-    { y: -0.205, rx: 0.07 * jaw, rz: 0.06, z: 0.18 + 0.012 * chin },
-    { y: -0.175, rx: 0.13 * jaw, rz: 0.14, z: 0.12 + 0.01 * chin, n: 2.3, bumps: [{ a: 0, w: 0.5, h: 0.1 * chin }] }, // chin
-    { y: -0.115, rx: 0.188 * jaw, rz: 0.235, z: 0.055, n: 2.5, bumps: [{ a: 0, w: 0.45, h: 0.06 * chin }, { a: 1.7, w: 0.5, h: 0.05 * jaw }, { a: -1.7, w: 0.5, h: 0.05 * jaw }] }, // jaw line, its corners
+    { y: -0.188, rx: 0.07 * jaw, rz: 0.06, z: 0.18 + 0.012 * chin },
+    { y: -0.16, rx: 0.13 * jaw, rz: 0.14, z: 0.12 + 0.01 * chin, n: 2.3, bumps: [{ a: 0, w: 0.5, h: 0.1 * chin }] }, // chin
+    { y: -0.105, rx: 0.188 * jaw, rz: 0.235, z: 0.055, n: 2.5, bumps: [{ a: 0, w: 0.45, h: 0.06 * chin }, { a: 1.7, w: 0.5, h: 0.05 * jaw }, { a: -1.7, w: 0.5, h: 0.05 * jaw }] }, // jaw line, its corners
     { y: -0.04, rx: 0.215 * jaw, rz: 0.285, z: 0.03, n: 2.6 },
     { y: 0.04, rx: 0.232, rz: 0.31, z: 0.02, n: 2.7, bumps: [{ a: 0.85, w: 0.45, h: 0.025 }, { a: -0.85, w: 0.45, h: 0.025 }] },
     { y: 0.115, rx: 0.247, rz: 0.325, z: 0.012, n: 2.7, bumps: [{ a: 0.75, w: 0.42, h: 0.05 }, { a: -0.75, w: 0.42, h: 0.05 }] }, // cheekbones
@@ -322,11 +322,11 @@ function billParts(key, root, tip, thick, U, V, color, under, mat) {
  */
 export function capParts(surf, { color, bill, badge, dl, q, backward = false }) {
   const fine = dl > 0.7;
-  const T = 0.034;
+  const T = 0.027;
   const rot = backward ? PI : 0;
   const crown = shell(surf, {
     key: `cap|${q}|${fine ? 1 : 0}`, a0: -PI, a1: PI, cols: fine ? 48 : 22, rows: fine ? 8 : 4, top: true, rim: 0.004,
-    lo: (th) => capEdge(th - rot), off: (f) => T + 0.008 * Math.sin(PI * f) - 0.004 * f * f,
+    lo: (th) => capEdge(th - rot), off: (f) => T + 0.005 * Math.sin(PI * f) - 0.003 * f * f,
   });
   const shade = (hex, k) => '#' + new THREE.Color(hex).multiplyScalar(k).getHexString();
   const parts = [{ geo: crown, color, mat: 'fabric', paint: (x, y, z) => { const a = Math.atan2(x, z), seam = Math.abs(Math.sin(a * 3)) < 0.06 && y > 0.4 ? 0.82 : 1; return [seam, seam, seam]; } }];
@@ -334,8 +334,8 @@ export function capParts(surf, { color, bill, badge, dl, q, backward = false }) 
   // the team badge on the front panel, lying on the cap
   const bth = backward ? PI : 0;
   const b = surf.at(0.43, bth);
-  const bp = [b.p[0] + b.n[0] * (T + 0.008), b.p[1] + b.n[1] * (T + 0.008), b.p[2] + b.n[2] * (T + 0.008)];
-  if (!backward) parts.push({ geo: sphG(0.062, fine ? 14 : 8, fine ? 8 : 5), color: badge, x: bp[0], y: bp[1], z: bp[2], rx: -Math.asin(b.n[1]), sx: 1.0, sy: 0.92, sz: 0.06, mat: 'fabric' });
+  const bp = [b.p[0] + b.n[0] * (T + 0.005), b.p[1] + b.n[1] * (T + 0.005), b.p[2] + b.n[2] * (T + 0.005)];
+  if (!backward) parts.push({ geo: sphG(0.05, fine ? 14 : 8, fine ? 8 : 5), color: badge, x: bp[0], y: bp[1], z: bp[2], rx: -Math.asin(b.n[1]), sx: 1.0, sy: 0.92, sz: 0.06, mat: 'fabric' });
   // the bill: from the cap's front edge, out and a little down, curved down at the sides (seen from above: half an ellipse)
   const W = 1.0; // (how far round the head it reaches, radians each side)
   const dir = backward ? -1 : 1;
@@ -481,9 +481,9 @@ export function headParts({ dl, skin, lip, eye, hair, beard = 'none', long = fal
   }
   // lips: a soft upper and a fuller lower lip only a little in front of the face, the line of the mouth between them
   parts.push(
-    { geo: sphG(0.05, fine ? 16 : 8, fine ? 8 : 5), color: lip, y: 0.014, z: zf(0.014) - 0.008, sx: 1.55, sy: 0.28, sz: 0.3, mat: 'skin' },
-    { geo: sphG(0.05, fine ? 16 : 8, fine ? 8 : 5), color: shade(lip, 1.06), y: -0.017, z: zf(-0.017) - 0.007, sx: 1.4, sy: 0.36, sz: 0.32, mat: 'skin' },
-    { geo: sphG(0.05, fine ? 12 : 8, 4), color: shade(lip, 0.4), y: -0.0015, z: zf(-0.002) - 0.004, sx: 1.5, sy: 0.04, sz: 0.3, mat: 'skin' },
+    { geo: sphG(0.05, fine ? 16 : 8, fine ? 8 : 5), color: lip, y: 0.014, z: zf(0.014) - 0.0105, sx: 1.3, sy: 0.3, sz: 0.3, mat: 'skin' },
+    { geo: sphG(0.05, fine ? 16 : 8, fine ? 8 : 5), color: shade(lip, 1.05), y: -0.017, z: zf(-0.017) - 0.0105, sx: 1.2, sy: 0.38, sz: 0.34, mat: 'skin' },
+    { geo: sphG(0.05, fine ? 12 : 8, 4), color: shade(lip, 0.4), y: -0.0015, z: zf(-0.002) - 0.004, sx: 1.3, sy: 0.04, sz: 0.3, mat: 'skin' },
   );
   for (const sd of [-1, 1]) {
     // the eye: set back in its socket, the upper lid over its top, the lower lid under it, so only an almond of white shows
@@ -492,9 +492,9 @@ export function headParts({ dl, skin, lip, eye, hair, beard = 'none', long = fal
     const ec = [s.p[0] - s.n[0] * (R - 0.012), 0.198, s.p[2] - s.n[2] * (R - 0.012)];
     const look = { x: ec[0], y: ec[1], z: ec[2] };
     parts.push(
-      { geo: sphG(R, fine ? 14 : 8, fine ? 10 : 6), color: '#cbc2b4', ...look, mat: 'skin' }, // eye white
-      { geo: sphG(R * 1.012, fine ? 14 : 8, 3, 0, PI * 2, 0, 0.56), color: eye, ...look, rx: PI / 2, mat: 'skin' }, // iris
-      { geo: sphG(R * 1.018, 10, 2, 0, PI * 2, 0, 0.22), color: '#070605', ...look, rx: PI / 2, mat: 'skin' }, // pupil
+      { geo: sphG(R, fine ? 14 : 8, fine ? 10 : 6), color: '#cbc2b4', ...look, mat: fine ? 'eye' : 'skin' }, // eye white
+      { geo: sphG(R * 1.012, fine ? 14 : 8, 3, 0, PI * 2, 0, 0.56), color: eye, ...look, rx: PI / 2, mat: fine ? 'eye' : 'skin' }, // iris
+      { geo: sphG(R * 1.018, 10, 2, 0, PI * 2, 0, 0.22), color: '#070605', ...look, rx: PI / 2, mat: fine ? 'eye' : 'skin' }, // pupil
       { geo: sphG(R * 1.13, fine ? 16 : 8, fine ? 8 : 4, 0, PI * 2, 0, PI * 0.5), color: shade(skin, 0.96), ...look, rx: -0.22, sx: 1.08, mat: 'skin' }, // upper lid
       { geo: sphG(R * 1.1, fine ? 16 : 8, fine ? 6 : 3, 0, PI * 2, PI * 0.64, PI * 0.36), color: shade(skin, 0.97), ...look, rx: -0.06, sx: 1.06, mat: 'skin' }, // lower lid
     );
