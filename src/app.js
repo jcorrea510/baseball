@@ -314,7 +314,7 @@ export class App {
   }
 
   showMenuScreen(name) {
-    if (name === 'pause') { this.ui.buildPause(this.settings, !!this.seasonGame, !!this.seasonGame || !!this.quickSave); this.ui.show('pause'); return; }
+    if (name === 'pause') { this.ui.buildPause(this.settings, !!this.seasonGame, !!this.seasonGame || !!this.quickSave, this.pauseInfo()); this.ui.show('pause'); return; }
     if (!(this.engine && !this.engine.over && this.paused)) this.screen = name; // (settings opened from the pause menu: still in the game)
     if (name === 'title') { this.nav = []; this.ui.buildTitle(this.prog); }
     if (name === 'modes') this.ui.buildModes(this.prog);
@@ -439,8 +439,20 @@ export class App {
     this.paused = p;
     this.nav = [];
     if (p) this.releaseKeys(); // (a key held as the game pauses never keeps the bat moving after it)
-    if (p) { this.ui.buildPause(this.settings, !!this.seasonGame, !!this.seasonGame || !!this.quickSave); this.ui.show('pause'); }
+    if (p) { this.ui.buildPause(this.settings, !!this.seasonGame, !!this.seasonGame || !!this.quickSave, this.pauseInfo()); this.ui.show('pause'); }
     else { this.ui.hideAll(); this.lastFrameStamp = performance.now(); blurFocus(); }
+  }
+
+  // The line under "Paused": the score and the inning (Quick / League), the Derby's home runs, or the mode.
+  pauseInfo() {
+    const e = this.engine;
+    if (!e) return '';
+    if (e.mode === 'quick' && e.game) {
+      const g = e.game, sd = this.sides(e);
+      return `${sd.away.abbr} ${g.score.top} · ${sd.home.abbr} ${g.score.bottom} · ${g.half === 'top' ? 'Top' : 'Bot'} ${g.inning}`;
+    }
+    if (e.mode === 'derby') return `Home Run Derby · ${e.derby.hr} HR`;
+    return 'Practice';
   }
 
   releaseKeys() {

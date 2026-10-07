@@ -395,17 +395,22 @@ export class UI {
   }
 
   // ---------------- title
-  buildTitle() {
+  buildTitle(prog) {
     const s = this.fresh('title', false);
+    s.classList.add('titlewash');
     const stack = h('div', 'title-stack rise');
     stack.innerHTML = `<h1 class="logo">${logoSVG({ id: 'title' })}</h1>
       <div class="col actions">
         <button class="btn wide" data-a="play">${icon('play')}Play ball</button>
-        <div class="row"><button class="btn small ghost" data-a="howto">${icon('help')}How to play</button><button class="btn small ghost" data-a="locker">${icon('shirt')}Locker</button><button class="btn small ghost" data-a="career">${icon('chart')}Career</button><button class="btn small ghost" data-a="settings">${icon('gear')}Settings</button></div>
+        <nav class="title-menu"><button data-a="howto">${icon('help')}How to play</button><button data-a="locker">${icon('shirt')}Locker</button><button data-a="career">${icon('chart')}Career</button><button data-a="settings">${icon('gear')}Settings</button></nav>
       </div>`;
     s.appendChild(stack);
     const top = h('div', 'title-top', `<button class="iconbtn" data-a="fullscreen" data-fs aria-label="Full screen" title="Full screen (F)">${icon('full')}</button>`);
     s.appendChild(top);
+    // your League club, bottom left (the club you play as in every mode)
+    const sea = prog && prog.data && prog.data.season;
+    const me = sea && sea.teams && sea.teams[0];
+    if (me) s.appendChild(h('div', 'title-club', `${crest(me, 'sm')}<span><b>${me.name}</b>Year ${sea.year} · ${me.w}–${me.l}</span>`));
     s.onclick = (e) => { const b = e.target.closest('[data-a]'); if (b) this.act(b.dataset.a); };
     this.syncFullscreen();
   }
@@ -456,29 +461,50 @@ export class UI {
   buildHowTo(onDone) {
     const s = this.fresh('howto');
     const touch = document.body.classList.contains('touch');
+    const tab = this.howTab || 'bat';
     const d = h('div', 'howto panel rise');
-    const key = (keys, label) => `<span class="key">${keys.map((k) => `<kbd>${k}</kbd>`).join('')}${label}</span>`;
+    const key = (keys, label) => `<span class="key"><span>${label}</span><span class="kk">${keys.map((k) => `<kbd>${k}</kbd>`).join('')}</span></span>`;
+    const G = '#ffb21e', W = '#f5f8fd', D = 'rgba(255,255,255,.35)';
+    const step = (n, pic, title, text) => `<div class="step"><span class="n">${n}</span><svg class="pic" viewBox="0 0 120 70" aria-hidden="true">${pic}</svg><h4>${title}</h4><p>${text}</p></div>`;
+    const zone = (x, y, w, hh) => `<rect x="${x}" y="${y}" width="${w}" height="${hh}" fill="rgba(255,255,255,.05)" stroke="${W}" stroke-opacity=".8" stroke-width="1.2"/>`;
+    const bat = [
+      step(1, `${zone(44, 10, 32, 44)}<path d="M14 50 L70 34" stroke="${W}" stroke-opacity=".5" stroke-width="7" stroke-linecap="round"/><circle cx="64" cy="35.5" r="5" fill="none" stroke="${G}" stroke-width="2"/>`, 'Aim', touch ? 'Drag the bat to the ball' : 'Move the mouse to the ball'),
+      step(2, `<circle cx="22" cy="35" r="9" fill="${W}"/><path d="M34 31 Q60 6 96 10" stroke="${G}" stroke-width="2.2" fill="none"/><path d="M34 35 H98" stroke="${W}" stroke-width="2.2"/><path d="M34 39 Q60 56 92 62" stroke="#4aa3ff" stroke-width="2.2" fill="none"/>`, 'Contact', 'Under it: fly · middle: liner · top: grounder'),
+      step(3, `<rect x="14" y="30" width="92" height="8" rx="1" fill="rgba(255,255,255,.12)"/><rect x="48" y="30" width="24" height="8" fill="#2f9c62"/><rect x="56" y="30" width="8" height="8" fill="#3ee08a"/><rect x="58.5" y="23" width="3" height="22" fill="${W}"/>`, 'Swing', touch ? 'Tap as it arrives' : 'Click or Space as it arrives'),
+      step(4, `<path d="M60 64 L90 36 L60 8 L30 36 Z" fill="rgba(255,255,255,.05)" stroke="${D}" stroke-width="1.5"/><rect x="53" y="1" width="14" height="14" transform="rotate(45 60 8)" fill="${G}"/><rect x="83" y="29" width="14" height="14" transform="rotate(45 90 36)" fill="rgba(255,255,255,.3)" stroke="${W}"/><circle cx="80" cy="26" r="4.5" fill="#45d4ff" stroke="#08111f" stroke-width="1.5"/>`, 'Run', 'Tap a gold base to send a runner'),
+    ];
+    const pitch = [
+      step(1, `<rect x="30" y="10" width="60" height="50" rx="2" fill="rgba(6,12,24,.8)" stroke="${D}"/><rect x="30" y="22" width="60" height="13" fill="${W}"/><path d="M36 28 h22" stroke="#08111f" stroke-width="3"/><path d="M36 44 h22 M36 53 h18" stroke="${W}" stroke-opacity=".6" stroke-width="3"/>`, 'Pick', touch ? 'Tap a pitch' : 'Click a pitch or press 1-8'),
+      step(2, `${zone(42, 8, 36, 50)}<rect x="42" y="8" width="12" height="16.7" fill="rgba(255,74,61,.4)"/><rect x="66" y="41.3" width="12" height="16.7" fill="rgba(74,163,255,.4)"/><circle cx="70" cy="48" r="5" fill="none" stroke="${G}" stroke-width="1.6" stroke-dasharray="2.5 2"/><circle cx="68" cy="47" r="3" fill="none" stroke="${W}" stroke-width="1.6"/>`, 'Aim', 'Away from red, onto the gold call'),
+      step(3, `<circle cx="60" cy="28" r="18" fill="none" stroke="${W}" stroke-width="2"/><circle cx="60" cy="28" r="6" fill="none" stroke="${G}" stroke-width="2"/><rect x="20" y="56" width="80" height="7" rx="1" fill="rgba(255,255,255,.12)"/><rect x="74" y="56" width="10" height="7" fill="${G}"/><rect x="62" y="52" width="2.5" height="15" fill="${W}"/>`, 'Release', touch ? 'Lift, then tap when the ring meets the dot' : 'Hold, let go when the ring meets the dot'),
+      step(4, `<path d="M60 64 L90 36 L60 8 L30 36 Z" fill="rgba(255,255,255,.05)" stroke="${D}" stroke-width="1.5"/><rect x="53" y="1" width="14" height="14" transform="rotate(45 60 8)" fill="rgba(255,255,255,.3)" stroke="${W}"/><rect x="83" y="29" width="14" height="14" transform="rotate(45 90 36)" fill="${G}"/><circle cx="60" cy="36" r="7" fill="#7a4422" stroke="${W}" stroke-width="1.2"/>`, 'Field', 'Tap a base to throw · the mound ends the play'),
+    ];
+    const keys = tab === 'bat'
+      ? (touch ? key(['Drag'], 'Aim') + key(['Swing'], 'Swing') + key(['Bunt'], 'Bunt') + key(['Steal'], 'Steal') + key(['Base'], 'Send runner') + key(['Runner'], 'Call back')
+        : key(['Mouse'], 'Aim') + key(['Arrows'], 'Aim') + key(['Click', 'Space'], 'Swing') + key(['B'], 'Bunt') + key(['S'], 'Steal') + key(['1', '2', '3', 'H'], 'Send runner') + key(['Shift', '1-H'], 'Call back') + key(['Space'], 'Fast play'))
+      : (touch ? key(['Tap'], 'Pitch') + key(['Drag'], 'Aim') + key(['Lift'], 'Start') + key(['Tap'], 'Release') + key(['Base'], 'Throw') + key(['Mound'], 'End play')
+        : key(['1-8'], 'Pitch') + key(['Mouse'], 'Aim') + key(['Hold'], 'Start') + key(['Let go'], 'Release') + key(['1', '2', '3', 'H'], 'Throw') + key(['0'], 'End play'));
+    const always = touch ? '' : key(['Z'], 'Strike zone') + key(['M'], 'Mute') + key(['F'], 'Full screen') + key(['Esc'], 'Pause');
     d.innerHTML = `
-      <div class="head"><h1 class="ttl">How to play</h1></div>
-      <div class="steps">
-        <div class="step"><span class="n">1</span><svg class="pic" viewBox="0 0 120 70"><rect x="40" y="8" width="40" height="50" fill="rgba(255,255,255,.06)" stroke="#fff" stroke-opacity=".5"/><path d="M18 46 L74 34" stroke="#fff" stroke-opacity=".55" stroke-width="7" stroke-linecap="round"/><circle cx="66" cy="36" r="4.5" fill="none" stroke="#ffe08a" stroke-width="2"/><circle cx="67" cy="30" r="5" fill="#fff" stroke="#c62828" stroke-width="1.2"/></svg><h4>Aim</h4><p>${touch ? 'Drag the bat' : 'Move the mouse'}</p></div>
-        <div class="step"><span class="n">2</span><svg class="pic" viewBox="0 0 120 70"><circle cx="26" cy="35" r="11" fill="#fff" stroke="#c62828" stroke-width="1.5"/><path d="M40 30 Q60 8 78 12" stroke="#ffb52e" stroke-width="2.5" fill="none"/><path d="M40 35 L78 35" stroke="#fff" stroke-width="2.5" opacity=".8"/><path d="M40 40 Q58 52 72 60" stroke="#8fb3ff" stroke-width="2.5" fill="none"/><text x="82" y="15" font-size="7.5" font-weight="800" fill="#ffb52e">FLY</text><text x="82" y="38" font-size="7.5" font-weight="800" fill="#fff">LINER</text><text x="76" y="64" font-size="7.5" font-weight="800" fill="#8fb3ff">GROUNDER</text></svg><h4>Contact</h4><p>Under · middle · top</p></div>
-        <div class="step"><span class="n">3</span><svg class="pic" viewBox="0 0 120 70"><rect x="14" y="24" width="92" height="10" rx="2" fill="url(#hg)"/><defs><linearGradient id="hg"><stop offset="0" stop-color="#7a2a2a"/><stop offset=".5" stop-color="#3ddc7c"/><stop offset="1" stop-color="#7a2a2a"/></linearGradient></defs><rect x="58" y="18" width="4" height="22" rx="1" fill="#fff"/><rect x="32" y="48" width="56" height="14" rx="7" fill="#ffb52e"/><text x="60" y="58" text-anchor="middle" font-size="9" font-weight="800" fill="#1b1204">${touch ? 'TAP' : 'CLICK'}</text></svg><h4>Swing</h4><p>On time</p></div>
-        <div class="step"><span class="n">4</span><svg class="pic" viewBox="0 0 120 70"><path d="M60 64 L88 36 L60 8 L32 36 Z" fill="rgba(255,255,255,.08)" stroke="#fff" stroke-opacity=".55" stroke-width="2"/><rect x="53" y="1" width="14" height="14" transform="rotate(45 60 8)" fill="rgba(255,255,255,.3)" stroke="#fff"/><rect x="81" y="29" width="14" height="14" transform="rotate(45 88 36)" fill="rgba(255,255,255,.3)" stroke="#fff"/><circle cx="76" cy="22" r="4.5" fill="#ffe08a" stroke="#0a1020" stroke-width="1.5"/><path d="M80 18 L70 10" stroke="#ffb52e" stroke-width="2" stroke-dasharray="3 3"/></svg><h4>Run</h4><p>Base: go · Runner: back</p></div>
-      </div>
-      <div class="keys">${touch ? key(['Drag'], 'Aim') + key(['Swing'], 'Swing') + key(['Base'], 'Send runner') + key(['Runner'], 'Back') + key(['Teammate'], 'Throw') : key(['Mouse'], 'Aim') + key(['Click', 'Space'], 'Swing') + key(['Arrows'], 'Aim') + key(['1', '2', '3', 'H'], 'Send runner') + key(['Shift', '1-H'], 'Back') + key(['Hold', 'Let go'], 'Pitch') + key(['Teammate', '1-H'], 'Throw') + key(['B'], 'Bunt') + key(['S'], 'Steal') + key(['Z'], 'Zone') + key(['M'], 'Mute') + key(['Esc'], 'Pause')}</div>
+      <div class="head"><h1 class="ttl">How to play</h1><span class="spacer"></span><div class="seg" data-ht="1"><button data-v="bat" class="${tab === 'bat' ? 'on' : ''}">Batting</button><button data-v="pitch" class="${tab === 'pitch' ? 'on' : ''}">Pitching</button></div></div>
+      <div class="steps">${(tab === 'bat' ? bat : pitch).join('')}</div>
+      <div class="keys">${keys}${always}</div>
       <div class="row"><button class="btn" data-a="howtoDone">${icon('check')}Got it</button></div>`;
     s.appendChild(d);
-    s.onclick = (e) => { const b = e.target.closest('[data-a]'); if (b) { this.act('howtoDone'); if (onDone) onDone(); } };
+    s.onclick = (e) => {
+      const t = e.target.closest('[data-ht] button');
+      if (t) { if (t.dataset.v !== tab) { this.howTab = t.dataset.v; this.act('uiTick'); this.buildHowTo(onDone); } return; }
+      const b = e.target.closest('[data-a]'); if (b) { this.act('howtoDone'); if (onDone) onDone(); }
+    };
   }
 
   // ---------------- pause
-  buildPause(st, season = false, saves = season) { // season: a League game (no restart); saves: quitting keeps the game to resume later
+  buildPause(st, season = false, saves = season, info = '') { // season: a League game (no restart); saves: quitting keeps the game to resume later; info: the game so far (labels)
     const s = this.fresh('pause');
     const d = h('div', 'dialog panel pause rise');
     // (the four switches are big icon tiles that light up green; they keep the .switch class the rest of the game and the tests use)
     const tg = (key, ic, label, on) => `<button class="switch tgl ${on ? 'on' : ''}" data-set="${key}" data-bool="1" role="switch" aria-checked="${on ? 'true' : 'false'}" aria-label="${label}">${icon(ic)}<span>${label}</span><i class="lamp"></i></button>`;
-    d.innerHTML = `<div class="ribbon"><h2>Paused</h2></div>
+    d.innerHTML = `<div class="ribbon"><h2>Paused</h2>${info ? `<span class="rsub">${info}</span>` : ''}</div>
       <button class="btn big" data-a="resume">${icon('play')}Resume</button>
       <div class="tgls">
         ${tg('zone', 'zone', 'Strike zone', st.zone)}
@@ -518,37 +544,57 @@ export class UI {
   buildSettings(st) {
     const s = this.fresh('settings');
     const d = h('div', 'settings panel rise');
+    const touch = document.body.classList.contains('touch');
+    const canBuzz = typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function';
     const sw = (key, ic, label, on) => `<div class="setrow"><span class="nm">${icon(ic)}${label}</span><button class="switch ${on ? 'on' : ''}" data-set="${key}" data-bool="1" role="switch" aria-checked="${on ? 'true' : 'false'}" aria-label="${label}"></button></div>`;
-    const seg = (key, ic, label, items, cur) => `<div class="setrow stack"><span class="nm">${icon(ic)}${label}</span><div class="seg" data-set="${key}" role="radiogroup" aria-label="${label}">${items.map(([v, l]) => `<button data-v="${v}" class="${cur === v ? 'on' : ''}" role="radio" aria-checked="${cur === v ? 'true' : 'false'}">${l}</button>`).join('')}</div></div>`;
-    const pct = (v) => `${Math.round(v * 100)}%`;
-    const slider = (key, ic, label, v) => `<div class="setrow slide"><span class="nm">${icon(ic)}${label}</span><input type="range" min="0" max="100" step="5" value="${Math.round(v * 100)}" data-slide="${key}" aria-label="${label}"><span class="val">${pct(v)}</span></div>`;
-    const lag = st.inputDelayMs || 0;
-    d.innerHTML = `${this.backHead('Settings', `<button class="iconbtn" data-a="credits" aria-label="Credits" title="Credits">${icon('info')}</button>`)}
-      <div class="label">Sound</div>
-      <div class="setgrid">
+    const seg = (key, ic, label, items, cur) => `<div class="setrow"><span class="nm">${icon(ic)}${label}</span><div class="seg" data-set="${key}" role="radiogroup" aria-label="${label}">${items.map(([v, l]) => `<button data-v="${v}" class="${cur === v ? 'on' : ''}" role="radio" aria-checked="${cur === v ? 'true' : 'false'}">${l}</button>`).join('')}</div></div>`;
+    const slider = (key, ic, label, v, o = {}) => {
+      const min = o.min ?? 0, max = o.max ?? 100, step = o.step ?? 5, unit = o.unit || '%', val = o.raw ? v : Math.round(v * 100);
+      return `<div class="setrow slide"><span class="nm">${icon(ic)}${label}</span><input type="range" min="${min}" max="${max}" step="${step}" value="${val}" data-slide="${key}" ${o.raw ? `data-unit="${unit}"` : ''} aria-label="${label}" style="--fill:${(100 * (val - min) / (max - min)).toFixed(1)}%"><span class="val">${val}${unit === '%' ? '%' : ' ' + unit}</span></div>`;
+    };
+    const tab = this.setTab || 'sound';
+    const TABS = [['sound', 'sound', 'Sound'], ['game', 'star', 'Gameplay'], ['screen', 'eye', 'Display'], ['controls', 'hand', 'Controls']];
+    const AS = CONFIG.ui.aimSpeed;
+    const pages = {
+      sound: `<div class="label">Volume</div><div class="setgrid">
         ${slider('volume', 'soundOn', 'Master', st.volume)}
         ${slider('sfxVolume', 'bat', 'Effects', st.sfxVolume)}
         ${slider('umpireVolume', 'mic', 'Umpire', st.umpireVolume)}
-        ${slider('crowdVolume', 'crowd', 'Crowd', st.crowdVolume)}
-        ${seg('umpire', 'mic', 'Umpire voice', [['on', 'On'], ['off', 'Off']], st.umpire === 'off' ? 'off' : 'on').replace('setrow stack', 'setrow wide')}
-      </div>
-      <div class="label">Game</div>
-      <div class="setgrid">
-        ${seg('difficulty', 'star', 'Level · Quick, Derby, Practice', DIFFICULTIES.map((k) => [k, CONFIG.difficulty[k].label]), st.difficulty)}
+        ${slider('crowdVolume', 'crowd', 'Crowd', st.crowdVolume)}</div>
+        <div class="label">Voice</div><div class="setgrid">${seg('umpire', 'mic', 'Umpire calls', [['on', 'On'], ['off', 'Off']], st.umpire === 'off' ? 'off' : 'on')}</div>`,
+      game: `<div class="label">Game</div><div class="setgrid">
+        ${seg('difficulty', 'star', 'Level', DIFFICULTIES.map((k) => [k, CONFIG.difficulty[k].label]), st.difficulty)}
         ${seg('hand', 'bat', 'Bats', [['auto', 'Mixed'], ['R', 'Right'], ['L', 'Left']], st.hand)}
         ${seg('fielding', 'glove', 'Fielding', [['play', 'Play'], ['auto', 'Auto']], st.fielding === 'auto' ? 'auto' : 'play')}
-        ${seg('tod', 'sun', 'Time', [['day', 'Day'], ['dusk', 'Dusk'], ['night', 'Night']], st.tod)}
+        ${seg('tod', 'sun', 'Time of day', [['day', 'Day'], ['dusk', 'Dusk'], ['night', 'Night']], st.tod)}</div>
+        <div class="label">Help</div><div class="setgrid">
         ${sw('zone', 'zone', 'Strike zone', st.zone)}
         ${sw('pitchGuide', 'guide', 'Pitch guide', st.pitchGuide)}
-        ${sw('landingRing', 'landing', 'Landing ring', st.landingRing)}
-      </div>
-      <div class="label">Controls &amp; screen</div>
-      <div class="setgrid">
-        <div class="setrow slide"><span class="nm">${icon('timing')}Swing delay</span><input type="range" min="0" max="${CONFIG.timing.inputDelayMaxMs}" step="${CONFIG.timing.inputDelayStepMs}" value="${lag}" data-slide="inputDelayMs" data-unit="ms" aria-label="Swing delay"><span class="val">${lag} ms</span></div>
-        ${sw('shake', 'shake', 'Shake', st.shake)}
-        ${sw('flashes', 'flash', 'Flashes', st.flashes)}
-      </div>
-      <div class="row foot"><button class="btn small ghost warn" data-a="resetStats" data-confirm="Erase stats?">${icon('trash')}Reset stats</button></div>`;
+        ${sw('landingRing', 'landing', 'Landing ring', st.landingRing)}</div>
+        <div class="row foot"><button class="btn small ghost warn" data-a="resetStats" data-confirm="Erase stats?">${icon('trash')}Reset stats</button></div>`,
+      screen: `<div class="label">HUD</div><div class="setgrid">
+        ${seg('hudScale', 'layout', 'HUD size', [['small', 'Small'], ['normal', 'Normal'], ['large', 'Large']], st.hudScale || 'normal')}
+        ${sw('showSpeed', 'speed', 'Pitch speed', st.showSpeed !== false)}
+        ${sw('lineupPanel', 'list', 'Batting order', st.lineupPanel !== false)}
+        ${seg('units', 'ruler', 'Units', [['imperial', 'mph · ft'], ['metric', 'km/h · m']], st.units === 'metric' ? 'metric' : 'imperial')}
+        ${sw('colorBlind', 'palette', 'Colour-blind colours', !!st.colorBlind)}</div>
+        <div class="label">Camera</div><div class="setgrid">
+        ${seg('batView', 'camera', 'Batting view', [['catcher', 'Catcher'], ['high', 'High']], st.batView === 'high' ? 'high' : 'catcher')}
+        ${sw('shake', 'shake', 'Camera shake', st.shake)}
+        ${sw('flashes', 'flash', 'Screen flashes', st.flashes)}
+        ${sw('trail', 'trail', 'Ball trail', st.trail !== false)}</div>`,
+      controls: `<div class="label">Timing</div><div class="setgrid">
+        ${slider('inputDelayMs', 'timing', 'Swing delay', st.inputDelayMs || 0, { raw: true, min: 0, max: CONFIG.timing.inputDelayMaxMs, step: CONFIG.timing.inputDelayStepMs, unit: 'ms' })}</div>
+        ${touch ? `<div class="label">Touch</div><div class="setgrid">
+        ${slider('aimSpeed', 'hand', 'Drag speed', st.aimSpeed || 100, { raw: true, min: AS.min, max: AS.max, step: AS.step, unit: '%' })}
+        ${seg('swingSide', 'bat', 'Swing button', [['left', 'Left'], ['right', 'Right']], st.swingSide === 'left' ? 'left' : 'right')}
+        ${canBuzz ? sw('haptics', 'vibrate', 'Vibration', st.haptics !== false) : ''}</div>` : ''}`,
+    };
+    d.innerHTML = `${this.backHead('Settings', `<button class="iconbtn" data-a="credits" aria-label="Credits" title="Credits">${icon('info')}</button>`)}
+      <div class="setbody">
+        <div class="settabs" role="tablist">${TABS.map(([k, ic, l]) => `<button role="tab" data-stab="${k}" class="${k === tab ? 'on' : ''}" aria-selected="${k === tab}">${icon(ic)}${l}</button>`).join('')}</div>
+        <div class="setpage" role="tabpanel">${pages[tab]}</div>
+      </div>`;
     s.appendChild(d);
     this.refocus(s);
     for (const r of d.querySelectorAll('input[data-slide]')) {
@@ -556,18 +602,22 @@ export class UI {
       const unit = r.dataset.unit;
       const value = () => (unit ? +r.value : +r.value / 100);
       r.addEventListener('input', () => {
-        out.textContent = unit ? `${r.value} ${unit}` : `${r.value}%`;
+        out.textContent = unit && unit !== '%' ? `${r.value} ${unit}` : `${r.value}%`;
+        r.style.setProperty('--fill', `${(100 * (r.value - r.min) / (r.max - r.min)).toFixed(1)}%`);
         this.act('setting', { key: r.dataset.slide, value: value(), live: true });
       });
       r.addEventListener('change', () => this.act('settingDone', { key: r.dataset.slide, value: value() }));
     }
     s.onclick = (e) => {
+      const t = e.target.closest('[data-stab]');
+      if (t) { if (t.dataset.stab !== (this.setTab || 'sound')) { this.setTab = t.dataset.stab; this.act('uiTick'); this.buildSettings(st); this.refocusTab(t.dataset.stab); } return; }
       if (this.settingClick(e, true)) return;
       const b = e.target.closest('[data-a]'); if (!b) return;
       if (b.dataset.confirm && !this.confirmed(b)) return;
       this.act(b.dataset.a);
     };
   }
+  refocusTab(k) { if (this.keyboard) { const b = this.screens.settings.querySelector(`[data-stab="${k}"]`); if (b) b.focus({ preventScroll: true }); } }
 
   // ---------------- credits
   buildCredits(recordings) {
