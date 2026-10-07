@@ -8,7 +8,7 @@ import { careerPitchingFrom } from './pitchingHalf.js';
 export const DEFAULT_SAVE = () => ({
   v: 1,
   settings: {
-    difficulty: 'pro', tod: 'dusk', park: 'random', zone: true, pitchGuide: true, landingRing: true, umpire: 'on', fielding: 'play', hand: 'auto', sound: true, shake: true, howtoSeen: false, aimAssistHint: true,
+    difficulty: 'pro', tod: 'dusk', park: 'random', zone: true, pitchGuide: true, landingRing: true, umpire: 'on', fielding: 'play', intro: true, hand: 'auto', sound: true, shake: true, howtoSeen: false, aimAssistHint: true,
     // sound: master volume and the three channels under it (0..1)
     volume: 0.8, sfxVolume: 1, umpireVolume: 1, crowdVolume: 1,
     flashes: true, // white screen flashes on big hits (off = calmer screen)

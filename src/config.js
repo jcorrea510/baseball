@@ -988,6 +988,23 @@ export const CONFIG = {
     },
   },
 
+  // The opening shot of a new game (render/intro.js, app.js; Settings -> Intro): `dur` s, the camera circles in round the point
+  // `centre` from `angle` [start, end] deg (0 = behind home plate, 160 = beyond right-center), `radius` ft [start, end] and
+  // `height` ft [start, end] (under a closed roof: `domeRadius` / `domeHeight` to start), looking from `lookFrom` to `lookTo`, the
+  // view `fov` deg; the park's name card shows from `cardIn` to `cardOut` s. Any tap or key skips it.
+  intro: {
+    dur: 6.0,
+    centre: [0, 0, -170],
+    angle: [176, 4],
+    radius: [270, 250],
+    height: [245, 32],
+    descendFrom: 0.5, // (share of the shot it stays up at `height[0]`, over the stands, before coming down)
+    domeRadius: 300, domeHeight: 95,
+    lookFrom: [0, 20, -160], lookTo: [0, 6, -70],
+    fov: [46, 40],
+    cardIn: 0.6, cardOut: 5.2,
+  },
+
   // The crowd (render/crowd.js, picture only): fans sit in the seats - one every `seatWidth` ft along the stands, every row -
   // fuller behind the plate and down the lines than in the bleachers (`fill`), the top rows `highRows` emptier, and each
   // `sectionFeet` stretch a section of its own between `sectionFill` full; what they wear (`wear`: shares in the home club's

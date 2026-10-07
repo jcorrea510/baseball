@@ -27,6 +27,8 @@ import { landingSpot, landingRing } from './game/landing.js';
 import * as SEA from './game/season.js';
 import { runnerState, runnerProfile } from './game/runnerMotion.js';
 import { currentPark } from './physics/field.js';
+import { introShot } from './render/intro.js';
+import { MLB_TEAMS } from './game/mlb.js';
 import { pitchTopMph, isPainted, staminaMax } from './game/pitching.js';
 import { onCall } from './game/scouting.js';
 const parkName = () => currentPark().name.toUpperCase();
@@ -407,7 +409,50 @@ export class App {
     this.ui.setMuteIcon(muted);
   }
 
+  // The opening shot of a new game: the camera swings in over the ballpark with its name on a card (render/intro.js). Off in
+  // Settings, on a resumed game, in Practice and in automated runs (?intro=1 forces it). Any tap or key skips it.
+  startIntro(mode, eng) {
+    this.endIntro(true);
+    const forced = this.params.get('intro') === '1';
+    if (!forced && (this.settings.intro === false || mode === 'practice' || navigator.webdriver || this.params.get('bot') || this.params.get('seed') || this.params.get('mode'))) return;
+    const park = currentPark();
+    const look = (CONFIG.parks.looks || {})[park.id] || {};
+    const club = MLB_TEAMS.find((t) => t.id === park.id);
+    this.intro = { t: 0, dome: look.roof === 'dome', side: Math.random() < 0.5 ? 1 : -1, mode };
+    let card = this.introCard;
+    if (!card) {
+      card = this.introCard = document.createElement('div');
+      card.className = 'introcard';
+      document.body.appendChild(card);
+    }
+    const sd = this.sides(eng);
+    const sub = mode === 'derby' ? 'Home Run Derby' : `${sd.away.abbr} at ${sd.home.abbr}`;
+    card.innerHTML = `<div class="ic-eye">Welcome to</div><div class="ic-name">${park.name}</div><div class="ic-sub">${club ? club.city + ' · ' : ''}${sub}</div><div class="ic-skip">Skip</div>`;
+    card.classList.remove('show');
+    document.body.classList.add('intro');
+    this.audio.crowdSwell(0.45, 3.5, 0.3);
+  }
+  endIntro(quiet = false) {
+    if (!this.intro) return;
+    const mode = this.intro.mode;
+    this.intro = null;
+    this.cam.override = null;
+    document.body.classList.remove('intro');
+    if (this.introCard) this.introCard.classList.remove('show');
+    if (quiet) return;
+    this.ui.cutFade(0.35);
+    if (mode === 'quick' && this.engine && !this.engine.over) this.audio.callUmpire('playball', { delay: 0.5 });
+  }
+  updateIntro(dt) {
+    const I = CONFIG.intro, it = this.intro;
+    it.t += dt;
+    this.cam.override = introShot(it.t / I.dur, it);
+    if (this.introCard) this.introCard.classList.toggle('show', it.t >= I.cardIn && it.t < I.cardOut);
+    if (it.t >= I.dur) this.endIntro();
+  }
+
   setPaused(p) {
+    if (p && this.intro) this.endIntro(true);
     if (!this.engine || this.engine.over) return;
     this.paused = p;
     this.nav = [];
@@ -546,7 +591,8 @@ export class App {
     else if (quickResume) { eng.resume(quickResume); this.ui.toast('Game resumed', 1800, 'play'); }
     else {
       eng.start();
-      if (mode === 'quick') this.audio.callUmpire('playball', { delay: 0.6 }); // the plate umpire opens the game
+      this.startIntro(mode, eng);
+      if (mode === 'quick' && !this.intro) this.audio.callUmpire('playball', { delay: 0.6 }); // the plate umpire opens the game (after the opening shot if there is one)
     }
     if (!this.prog.data.tipShown) {
       this.ui.hint(this.touch ? 'Drag to aim · tap to swing' : 'Mouse to aim · click to swing', 4600);
@@ -1110,7 +1156,10 @@ export class App {
   // ---------------------------------------------------------------- input
   bindInput() {
     const swing = (ev) => this.swingInput(ev);
+    // a tap, click or key during the opening shot skips it (and does nothing else)
+    window.addEventListener('pointerdown', (e) => { if (this.intro) { e.preventDefault(); e.stopPropagation(); this.endIntro(); } }, true);
     window.addEventListener('keydown', (e) => {
+      if (this.intro && !e.repeat) { e.preventDefault(); this.endIntro(); return; }
       const inGame = this.screen === 'game' && !this.paused && !this.ui.current;
       const t = document.activeElement;
       // a focused menu control (button, switch, slider) gets the keyboard the normal way: Enter / Space press it, arrows move a slider
@@ -1611,7 +1660,8 @@ export class App {
       const ff = e.phase === 'play' && !this.throwOpen && !this.paused && !this.ui.current && !e.over; // (not while you choose a throw)
       if (ff !== this.ffShown || this.fast !== this.ffOn) { this.ffShown = ff; this.ffOn = this.fast; this.ui.setFast(ff, this.fast); }
     }
-    if (e && !this.paused && !e.over || (e && e.phase === 'gameOver')) {
+    if (this.intro) this.updateIntro(realDt);
+    if (!this.intro && (e && !this.paused && !e.over || (e && e.phase === 'gameOver'))) {
       if (e.simming) e.simStep(CONFIG.pitching.sim.chunk); // (Sim: the half is played without drawing, a few batters a frame)
       else if (this.hitStop > 0) { this.hitStop -= realDt; simDt = 0; }
       else {
