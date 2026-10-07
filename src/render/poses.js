@@ -663,11 +663,11 @@ export function runCadence(speed) {
 const _slEnd = makePose(), _slStand = makePose();
 function slideLayout(P, breathe = 0) {
   resetPose(P);
-  P.hipY = 0.7 + breathe; P.pelvisPitch = -1.3; P.torsoPitch = -0.45; P.headPitch = 0.3;
+  P.hipY = 0.7 + breathe; P.pelvisPitch = -1.1; P.torsoPitch = -0.25; P.headPitch = 0.4; // (sat back on the hip, leaning back about 60 degrees - not lying flat)
   set3(P.footL, 0.28, 0.55, 3.0); P.footLTilt = -0.5;
   set3(P.footR, -0.4, 0.85, 1.55); P.footRTilt = -0.15;
   set3(P.kneeL, 0.15, 0.3, 1); set3(P.kneeR, -0.35, 1, 0.5);
-  set3(P.handL, 0.85, 2.3, -0.9); set3(P.handR, -0.85, 2.3, -0.9);
+  set3(P.handL, 0.85, 2.1, -1.1); set3(P.handR, -0.85, 2.1, -1.1);
   P.poleL = [1, 0.4, -0.3]; P.poleR = [-1, 0.4, -0.3];
   return P;
 }
@@ -813,83 +813,172 @@ export function catchPose(P, target, crouch = 0.4, settle = 0) {
 
 // ---------------------------------------------------------------- diving
 // A layout dive in four phases (the root travels along the path; these are the body shapes):
-//   air    u 0..1  from the last stride to touchdown: launch, stretch out, glove meets the ball at u = 0.727
-//   slide  u 0..1  belly-down slide, glove out in front
-//   hold   u 0..1  lying there with the ball
-//   getup  u 0..1  hands and knees, up to a crouch, back to the ready stance
+//   air    u 0..1  from the last stride to touchdown: a drop-step (he sinks and plants the outside foot), the push-off, then the body
+//                  goes long and flat with the glove arm reaching out ahead, the back arched and the head up on the ball; the glove
+//                  meets the ball at u = 0.727, then the chest comes down first with the legs still trailing in the air
+//   slide  u 0..1  the chest lands, the hips and legs drop onto the grass and he skids along, glove out in front
+//   hold   u 0..1  lying there with the ball, head up
+//   getup  u 0..1  pushes up on his hands, draws a knee under, rises through a low lunge to the ready stance
 // `glove` is the ball position in body space (the glove reaches for it); `from` is the pose he was in the instant he left the
-// ground (the last running stride) so the launch does not pop.
+// ground (the last running stride) so the launch does not pop. `side` 0..1 is how sideways the dive is (see CONFIG.anim.dive): he
+// turns his chest so he lands on the glove-side ribs, and the legs trail apart.
 const _dk = [0, 0, 0];
 const dk = (keys, u) => { sampleKeys(keys, u, _dk); return _dk[0]; };
-const _dAir = makePose(), _dProne = makePose(), _dKneel = makePose(), _dReady = makePose(), _dPrev = makePose();
+const _dAir = makePose(), _dProne = makePose(), _dPush = makePose(), _dLunge = makePose(), _dReady = makePose(), _dMix = makePose();
 const DIVE_GLOVE_GROUND = [0.42, 0.5, 3.35];
 const DIVE_CATCH_U = 0.727; // (airTime / (airTime + landAfter))
 
-function airLayout(P, a, glove) {
+function airLayout(P, a, glove, side = 0) {
+  const D = CONFIG.anim.dive;
   resetPose(P);
-  P.hipY = dk([[0, 3.0], [0.3, 2.7], [0.6, 2.15], [0.727, 1.85], [1, 1.0]], a);
-  P.pelvisPitch = dk([[0, 0.3], [0.3, 0.8], [0.6, 1.25], [0.727, 1.35], [1, 1.45]], a);
-  P.torsoPitch = dk([[0, 0.3], [0.5, 0.15], [1, 0.0]], a);
-  P.headPitch = dk([[0, 0.0], [0.5, -0.6], [1, -0.85]], a);
-  set3(P.footL, 0.32, dk([[0, ANK], [0.4, 1.0], [0.727, 1.8], [1, 1.3]], a), dk([[0, 0.15], [0.4, -1.4], [0.727, -2.4], [1, -2.6]], a));
-  set3(P.footR, -0.32, dk([[0, ANK], [0.4, 0.9], [0.727, 1.6], [1, 1.1]], a), dk([[0, -0.1], [0.4, -1.6], [0.727, -2.6], [1, -2.8]], a));
-  P.footLTilt = 0.9; P.footRTilt = 1.0;
+  const late = smoothstep(0.3, 1, a);
+  // drop-step: he sinks over the plant, drives off, goes long; the chest then leads him down to the grass
+  P.hipY = dk([[0, 3.0], [0.1, 2.62], [0.28, 2.55], [0.5, 2.3], [0.727, 1.9], [1, 1.0]], a);
+  P.pelvisPitch = dk([[0, 0.3], [0.1, 0.7], [0.3, 1.1], [0.55, 1.35], [0.727, 1.45], [1, 1.58]], a);
+  P.torsoPitch = dk([[0, 0.3], [0.3, 0.1], [0.6, -D.arch * 0.5], [1, -D.arch]], a); // (the back arches: chest and head up)
+  P.torsoYaw = -D.sideRoll * side * late; // (a sideways dive: the glove-side ribs go down first)
+  P.headPitch = dk([[0, 0.0], [0.5, -0.6], [1, -0.95]], a);
+  // the outside (right) foot plants and pushes off, then both legs trail behind; the lead (left) knee drives up first
+  const split = D.sideSplit * side * late;
+  set3(P.footL, 0.32 + split, dk([[0, ANK], [0.08, 0.9], [0.25, 1.0], [0.45, 1.3], [0.727, 1.8], [1, 1.35]], a), dk([[0, 0.15], [0.08, 0.7], [0.25, -0.3], [0.45, -1.5], [0.727, -2.4], [1, -2.6]], a));
+  set3(P.footR, -0.32 - split * 0.3, dk([[0, ANK], [0.16, 0.47], [0.3, 0.95], [0.5, 1.25], [0.727, 1.6], [1, 1.1]], a), dk([[0, -0.1], [0.16, -0.55], [0.3, -1.3], [0.5, -1.8], [0.727, -2.6], [1, -2.8]], a));
+  P.footLTilt = dk([[0, 0.3], [0.1, 0.9]], a); P.footRTilt = dk([[0, 0.05], [0.16, 0.8], [0.3, 1.0]], a);
   set3(P.kneeL, 0.2, 1, -0.2); set3(P.kneeR, -0.2, 1, -0.2);
-  set3(P.handR, -0.45, dk([[0, 3.3], [0.5, 2.4], [0.727, 2.0], [1, 0.8]], a), dk([[0, 0.3], [0.5, 2.0], [0.727, 3.0], [1, 3.4]], a));
+  // the bare arm reaches ahead too, a little lower and wider, then goes flat to the grass to break the fall
+  set3(P.handR, -0.5, dk([[0, 3.3], [0.5, 2.4], [0.727, 1.9], [1, 0.6]], a), dk([[0, 0.3], [0.5, 2.0], [0.727, 2.9], [1, 3.2]], a));
   // glove arm: reaches for the ball until the catch, then comes down with it
-  const reach = smoothstep(0.02, 0.55, a);
+  const reach = smoothstep(0.02, 0.45, a);
   const g = glove || [0.45, 1.5, 3.4];
   const down = smoothstep(DIVE_CATCH_U, 1, a);
   const hx = lerp(0.68, lerp(g[0], DIVE_GLOVE_GROUND[0], down), reach);
   const hy = lerp(3.35, lerp(g[1], DIVE_GLOVE_GROUND[1], down), reach);
   const hz = lerp(0.5, lerp(g[2], DIVE_GLOVE_GROUND[2], down), reach);
   set3(P.handL, hx, hy, hz);
+  P.gloveOpen = lerp(0.5, 0.95, reach) * (1 - 0.5 * down);
   P.poleL = [0.9, 0.2, 0.1]; P.poleR = [-0.9, 0.2, 0.1];
   return P;
 }
 function proneLayout(P, breathe = 0) {
+  const D = CONFIG.anim.dive;
   resetPose(P);
-  P.hipY = 0.64 + breathe; P.pelvisPitch = 1.5; P.torsoPitch = 0.0; P.headPitch = -0.9;
+  P.hipY = 0.64 + breathe; P.pelvisPitch = 1.5; P.torsoPitch = -D.arch * 0.7; P.headPitch = -0.95;
   set3(P.footL, 0.3, 0.42, -2.6); set3(P.footR, -0.3, 0.4, -2.8);
   P.footLTilt = 1.3; P.footRTilt = 1.3;
   set3(P.kneeL, 0.2, 1, -0.1); set3(P.kneeR, -0.2, 1, -0.1);
   set3(P.handL, DIVE_GLOVE_GROUND[0], DIVE_GLOVE_GROUND[1], DIVE_GLOVE_GROUND[2]); set3(P.handR, -0.42, 0.42, 3.0);
   P.poleL = [0.9, 0.3, 0.0]; P.poleR = [-0.9, 0.3, 0.0];
+  P.gloveOpen = 0.4;
   return P;
 }
-function kneelLayout(P) {
+// pushing up: arms straight under the shoulders, chest lifted, one knee drawn up under the hips
+function pushLayout(P) {
   resetPose(P);
-  P.hipY = 1.25; P.pelvisPitch = 0.95; P.torsoPitch = -0.05; P.headPitch = -0.35;
-  set3(P.footL, 0.36, 0.4, -1.5); set3(P.footR, -0.36, 0.4, -1.6);
-  P.footLTilt = 1.0; P.footRTilt = 1.0;
-  set3(P.kneeL, 0.2, 1, 0.8); set3(P.kneeR, -0.2, 1, 0.8);
-  set3(P.handL, 0.45, 0.9, 2.3); set3(P.handR, -0.42, 0.7, 2.1);
-  P.poleL = [0.9, 0.2, 0.0]; P.poleR = [-0.9, 0.2, 0.0];
+  P.hipY = 1.0; P.pelvisPitch = 1.2; P.torsoPitch = -0.35; P.headPitch = -0.75;
+  set3(P.footL, 0.34, 0.42, -2.0); set3(P.footR, -0.34, 0.45, -0.6);
+  P.footLTilt = 1.3; P.footRTilt = 1.0;
+  set3(P.kneeL, 0.2, 1, -0.1); set3(P.kneeR, -0.25, 0.6, 1);
+  set3(P.handL, 0.6, 0.45, 1.75); set3(P.handR, -0.6, 0.4, 1.7);
+  P.poleL = [0.9, 0.4, -0.2]; P.poleR = [-0.9, 0.4, -0.2];
+  P.gloveOpen = 0.4;
+  return P;
+}
+// a low lunge: front foot planted, back knee just off the grass, glove with the ball drawn in to the chest
+function lungeLayout(P) {
+  resetPose(P);
+  P.hipY = 1.95; P.pelvisPitch = 0.5; P.torsoPitch = 0.35; P.headPitch = -0.3;
+  set3(P.footL, 0.4, ANK, 0.95); set3(P.footR, -0.35, 0.42, -1.3);
+  P.footLTilt = 0; P.footRTilt = 1.0;
+  set3(P.kneeL, 0.3, 0.1, 1); set3(P.kneeR, -0.2, 0.3, 1);
+  set3(P.handL, 0.55, 3.0, 1.3); set3(P.handR, -0.35, 2.9, 1.1);
+  P.poleL = [0.9, -0.4, -0.2]; P.poleR = [-0.9, -0.4, -0.2];
+  P.gloveOpen = 0.35;
   return P;
 }
 
-export function divePose(P, phase, u, glove = null, from = null, time = 0, catchU = DIVE_CATCH_U) {
+export function divePose(P, phase, u, glove = null, from = null, time = 0, catchU = DIVE_CATCH_U, side = 0) {
   u = clamp(u, 0, 1);
   if (phase === 'air') {
     // the keyframes put the catch at DIVE_CATCH_U; stretch/squeeze time so it lands when this dive's catch really happens
     const w = u < catchU ? (u * DIVE_CATCH_U) / catchU : DIVE_CATCH_U + ((u - catchU) * (1 - DIVE_CATCH_U)) / Math.max(1e-6, 1 - catchU);
-    airLayout(_dAir, w, glove);
+    airLayout(_dAir, w, glove, side);
     if (from) mixPose(P, from, _dAir, smoothstep(0, 0.32, u)); else copyPose(P, _dAir);
     return P;
   }
   const breathe = Math.sin(time * 6) * 0.012;
   if (phase === 'slide') {
-    airLayout(_dAir, 1, glove); proneLayout(_dProne, 0);
-    return mixPose(P, _dAir, _dProne, smoothstep(0, 0.55, u));
+    // the chest lands first (arms, shoulders, head settle quickly) and the hips and legs come down after it
+    airLayout(_dAir, 1, glove, side); proneLayout(_dProne, 0);
+    mixPose(P, _dAir, _dProne, smoothstep(0, 0.3, u));
+    mixPose(_dMix, _dAir, _dProne, smoothstep(0.15, 0.8, u));
+    P.hipY = _dMix.hipY; P.pelvisPitch = _dMix.pelvisPitch; P.footLTilt = _dMix.footLTilt; P.footRTilt = _dMix.footRTilt;
+    for (const k of ['footL', 'footR', 'kneeL', 'kneeR']) set3(P[k], _dMix[k][0], _dMix[k][1], _dMix[k][2]);
+    return P;
   }
-  if (phase === 'hold') return proneLayout(P, breathe);
-  // getup
-  proneLayout(_dProne, 0); kneelLayout(_dKneel); fielderReady(_dReady, time, 'IF');
-  const k = smoothstep(0, 1, u);
-  if (k < 0.45) return mixPose(P, _dProne, _dKneel, smoothstep(0, 1, k / 0.45));
-  return mixPose(P, _dKneel, _dReady, smoothstep(0, 1, (k - 0.45) / 0.55));
+  if (phase === 'hold') {
+    proneLayout(P, breathe);
+    P.headYaw = Math.sin(time * 2.2) * 0.12; // (a glance round at the ball in his glove)
+    return P;
+  }
+  // getup: push up, knee under, low lunge, ready
+  proneLayout(_dProne, 0); pushLayout(_dPush); lungeLayout(_dLunge); fielderReady(_dReady, time, 'IF');
+  if (u < 0.35) return mixPose(P, _dProne, _dPush, smoothstep(0, 1, u / 0.35));
+  if (u < 0.7) return mixPose(P, _dPush, _dLunge, smoothstep(0, 1, (u - 0.35) / 0.35));
+  return mixPose(P, _dLunge, _dReady, smoothstep(0, 1, (u - 0.7) / 0.3));
 }
 export const DIVE_CATCH_PROGRESS = DIVE_CATCH_U;
+
+// ---------------------------------------------------------------- tagging
+// A tag play at a base: he gets down over the bag (feet wide on either side of it, knees bent, glove low in front with the bare hand
+// on it), the glove sweeps down to where the runner's foot (or waist) arrives, then he pops up and shows the ball.
+//   o.sweep 0..1  the glove goes from in front of the bag to the tag spot `o.target` (body space)
+//   o.pop   0..1  he comes up off the tag, glove high with the ball showing
+// (How far he is down over the bag at all is blended by the caller over the catch pose.)
+const _tgSet = makePose(), _tgSweep = makePose(), _tgPop = makePose();
+function tagSetLayout(P) {
+  const T = CONFIG.anim.tag;
+  resetPose(P);
+  P.hipY = 2.0; P.pelvisPitch = 0.25; P.torsoPitch = 0.55; P.headPitch = -0.3;
+  set3(P.footL, T.straddle, ANK, 0.35); set3(P.footR, -T.straddle, ANK, -0.15);
+  set3(P.kneeL, 0.9, 0, 1); set3(P.kneeR, -0.9, 0, 1);
+  set3(P.handL, 0.35, 1.5, 1.85); set3(P.handR, -0.1, 1.75, 1.7);
+  P.poleL = [0.9, -0.5, -0.2]; P.poleR = [-0.9, -0.5, -0.2];
+  P.gloveOpen = 0.3;
+  return P;
+}
+function tagSweepLayout(P, t) {
+  const T = CONFIG.anim.tag;
+  resetPose(P);
+  P.hipY = 1.7; P.pelvisPitch = 0.4; P.torsoPitch = 0.85; P.headPitch = -0.55;
+  set3(P.footL, T.straddle, ANK, 0.4); set3(P.footR, -T.straddle, ANK, -0.1);
+  set3(P.kneeL, 0.9, 0, 1); set3(P.kneeR, -0.9, 0, 1);
+  // keep the glove within an arm's reach of the shoulder (and out of the grass)
+  const sx = 0.74, sy = P.hipY + 1.62 * Math.cos(P.pelvisPitch + P.torsoPitch), sz = 1.62 * Math.sin(P.pelvisPitch + P.torsoPitch) + 0.2;
+  let x = t[0], y = Math.max(0.3, t[1]), z = Math.max(0.6, t[2]);
+  const dx = x - sx, dy = y - sy, dz = z - sz, dl = Math.hypot(dx, dy, dz), lim = 2.2;
+  if (dl > lim) { const k = lim / dl; x = sx + dx * k; y = Math.max(0.3, sy + dy * k); z = sz + dz * k; }
+  set3(P.handL, x, y, z);
+  set3(P.handR, x - 0.45, Math.min(y + 0.3, 1.2), z - 0.5); // (the bare hand rides behind the glove, ready to cover the ball)
+  P.torsoYaw = clamp(x * 0.12, -0.3, 0.3);
+  P.poleL = [0.9, -0.3, -0.2]; P.poleR = [-0.9, -0.5, -0.2];
+  P.gloveOpen = 0.25;
+  return P;
+}
+function tagPopLayout(P) {
+  resetPose(P);
+  P.hipY = 2.95; P.pelvisPitch = 0.05; P.torsoPitch = 0.12; P.headPitch = -0.05;
+  set3(P.footL, 0.55, ANK, 0.5); set3(P.footR, -0.5, ANK, -0.1);
+  set3(P.handL, 0.6, 4.7, 1.4); set3(P.handR, -0.5, 3.7, 0.6);
+  P.poleL = [1, 0.2, -0.3]; P.poleR = [-0.9, -0.6, -0.4];
+  P.gloveOpen = 0.9; // (open, so the ball is seen)
+  return P;
+}
+export function tagPose(P, o) {
+  tagSetLayout(_tgSet); tagSweepLayout(_tgSweep, o.target || [0.4, 0.5, 2.2]); tagPopLayout(_tgPop);
+  const s = clamp(o.sweep || 0, 0, 1), p = clamp(o.pop || 0, 0, 1);
+  mixPose(P, _tgSet, _tgSweep, s);
+  if (p > 0) mixPose(P, P, _tgPop, p);
+  return P;
+}
 
 // ---------------------------------------------------------------- celebration
 export function celebratePose(P, t, seed = 0) {

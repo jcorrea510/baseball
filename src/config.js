@@ -969,6 +969,17 @@ export const CONFIG = {
     // `twoHandsSeconds` s. Throwing: the ball moves from the glove to the throwing hand between these two moments (seconds before the
     // release), as the hands break apart (`ballToHand`).
     fielder: { bareFollow: 0.45, twoHandsSeconds: 0.22, ballToHand: [0.3, 0.1] },
+    // Diving (picture only; the engine decides when and where he dives and how long it takes). A dive is "sideways" when the line he
+    // dives along is more than `sideAbove` (0 = straight toward or away from home plate, 1 = square across) off the line to home
+    // plate - an infielder lunging across the grass - and a "forward" dive otherwise (an outfielder laying out at a ball in front of
+    // him). A sideways dive turns the chest `sideRoll` radians so he lands on his glove-side ribs before rolling onto his chest, and
+    // the trailing legs split `sideSplit` ft apart; every dive arches the back `arch` radians so the head stays up watching the ball.
+    dive: { sideAbove: 0.5, sideAboveOF: 0.75, sideRoll: 0.4, sideSplit: 0.45, arch: 0.3 },
+    // Tagging (picture only): after the catch he gets down over the bag (feet `straddle` ft apart, glove low in front), the glove
+    // sweeps down to the runner's foot (or his waist, if he is standing) over the `sweep` s before the tag goes on and stays there
+    // `hold` s, then he pops up and shows the ball: `pop` is the [start, end] of that, in seconds after the tag, and `settle` the
+    // time for the whole thing to melt back into the normal catching pose.
+    tag: { straddle: 0.95, sweep: 0.3, hold: 0.12, pop: [0.2, 0.6], settle: [0.6, 0.85] },
     // The batter's load and stride, timed to the pitch like a real hitter's: his hands go back and his weight shifts onto the back leg
     // as the pitcher comes set and delivers (`loadStart` .. `loadEnd` s before the release), the front foot lifts `liftAt` s before the
     // ball reaches the plate, comes in toward the back knee and goes down again `landAt` s before it gets there, `stride` ft further

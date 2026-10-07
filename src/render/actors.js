@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { Person, makeBat, restyleBat, disposeBat, mixPose, makePose, copyPose } from './rig.js';
-import { batterPose, buntPose, pitcherPose, catcherPose, fielderReady, runPose, runReachPose, runCadence, runnerLeadPose, slidePose, slideGetUp, throwPose, catchPose, divePose, celebratePose, standingPose, umpirePose, THROW_RELEASE_U, PITCHER_BALL_TO_HAND, pitcherSetAfter } from './poses.js';
+import { batterPose, buntPose, pitcherPose, catcherPose, fielderReady, runPose, runReachPose, runCadence, runnerLeadPose, slidePose, slideGetUp, throwPose, catchPose, divePose, tagPose, celebratePose, standingPose, umpirePose, THROW_RELEASE_U, PITCHER_BALL_TO_HAND, pitcherSetAfter } from './poses.js';
 import { UNIFORMS } from '../game/teams.js';
 import { lookOf, umpireLook, fieldersFrom } from '../game/looks.js';
 import { allStars } from '../game/mlb.js';
@@ -273,6 +273,7 @@ export class Actors {
     const phase = E.phase;
     const F = E.cfg.fielding;
     const turn = F.turnRate * DEG * dt;
+    const F_DIVE = E.cfg.anim.dive;
     for (const pos of POSITIONS) {
       const person = this.fielders[pos];
       const def = E.defense[pos];
@@ -319,13 +320,23 @@ export class Actors {
         const tm = live ? move : st.tail ? st.tail.move : move;
         st.cx = p.x; st.cz = p.z; vx = p.ux * p.speed; vz = p.uz * p.speed; speed = p.speed;
         const dv = tm && tm.dive ? tm.run : null;
-        if (dv && (p.phase === 'air' || p.phase === 'slide' || p.phase === 'hold' || p.phase === 'getup')) dive = { phase: p.phase, u: p.u, ux: p.ux, uz: p.uz, catchU: dv.dive.catchU };
+        if (dv && (p.phase === 'air' || p.phase === 'slide' || p.phase === 'hold' || p.phase === 'getup')) {
+          // how sideways is this dive (picture only): the angle between the line he dives along and the line to home plate, worked out once as he launches
+          if (st.diveSide === undefined) {
+            const hl = Math.hypot(st.cx, st.cz) || 1;
+            const cross = Math.abs(p.ux * (-st.cz / hl) - p.uz * (-st.cx / hl));
+            const thr = pos === 'LF' || pos === 'CF' || pos === 'RF' ? F_DIVE.sideAboveOF : F_DIVE.sideAbove;
+            st.diveSide = clamp((cross - thr) / Math.max(0.05, 1 - thr), 0, 1);
+          }
+          dive = { phase: p.phase, u: p.u, ux: p.ux, uz: p.uz, catchU: dv.dive.catchU, side: st.diveSide };
+        }
         st.mover.reset(p.x, p.z, vx, vz); // keep the jog in step so the hand-off after his job is seamless
       } else {
         st.mover.setTarget(def.homeX, def.homeZ); // only re-aims if the spot moved meaningfully
         st.mover.update(dt);
         st.cx = st.mover.x; st.cz = st.mover.z; vx = st.mover.vx; vz = st.mover.vz; speed = st.mover.speed;
       }
+      if (!dive) st.diveSide = undefined;
       st.vx = vx; st.vz = vz;
       // the play was planned again (a runner was sent): start from where the old plan had him and ease onto the new one
       const sw = this.planSwap;
@@ -360,9 +371,19 @@ export class Actors {
         const carry = plan.carries.some((c) => c.pos === pos && playT >= c.t0 - 0.3 && playT <= c.t1);
         if (th && ((carry && playT >= (catchT ?? 0) - 0.2) || playT >= th.t0 - 0.45)) face = th;
       }
+      // the ball is in his hands at a base with a runner coming in to be tagged: he turns to the runner once the throw has arrived
+      let tagSpot = null;
+      if (plan && !dive) {
+        const tOut = plan.events.find((q) => q.type === 'out' && q.tag && q.pos === pos);
+        if (tOut) {
+          const thTo = plan.throws.find((q) => q.to === pos);
+          if (playT >= (thTo ? thTo.t1 + 0.05 : tOut.t - 0.5) && playT < tOut.t + E.cfg.anim.tag.settle[0]) tagSpot = this.tagSpot(plan, tOut, false);
+        }
+      }
       if (dive && dive.phase !== 'getup') { want = Math.atan2(dive.ux, dive.uz); rate = turn * 2.5; } // committed: he faces the way he is diving
       else if (pos === 'C' && !(moving && speed > 2)) want = Math.PI;
       else if (pos === 'P' && !runs && !(moving && speed > 2)) want = 0;
+      else if (tagSpot) { want = Math.atan2(tagSpot.x - x, tagSpot.z - z); rate = turn * 1.3; } // a tag play: he squares up to the runner
       else if (face) { want = Math.atan2(face.bx - x, face.bz - z); rate = turn * 1.3; }
       else if (moving && speed > 2) {
         want = Math.atan2(vx, vz);
@@ -520,7 +541,7 @@ export class Actors {
         runReachPose(scratch, st.phase, Math.max(speed, 6), g, 0);
         from = scratch;
       }
-      divePose(P, dive.phase, dive.u, st.diveGlove || null, from, time, dive.catchU);
+      divePose(P, dive.phase, dive.u, st.diveGlove || null, from, time, dive.catchU, dive.side || 0);
       if (throwing && dive.phase === 'getup') {
         // throws from his knees as he gets up
         const uT = clamp((playT - (throwing.t0 - 0.32)) / 0.32, 0, 1) * THROW_RELEASE_U + clamp((playT - throwing.t0) / 0.3, 0, 1) * (1 - THROW_RELEASE_U);
@@ -559,19 +580,36 @@ export class Actors {
         if (dl > lim) { const k = lim / dl; tx = 0.74 + dx * k; ty = sh + dy * k; tz = dz * k; }
         const settle = smoothstep(0, 0.5, dtC);
         tx = lerp(tx, 0.5, settle); ty = lerp(ty, 3.6, settle); tz = lerp(tz, 0.7, settle);
-        let crouch = clamp(1 - ty / 4.2, 0, 1) * 0.9;
-        if (tagOut) {
-          // the ball in, he gets down with the glove in front of the bag, waiting; the runner slides into the tag; he comes up with the ball
-          const ready = smoothstep(0.1, 0.45, dtC) * 0.8;
-          const hit = smoothstep(tagOut.t - 0.2, tagOut.t, playT);
-          const k = Math.max(ready, hit) * (1 - smoothstep(tagOut.t + 0.4, tagOut.t + 0.8, playT));
-          tx = lerp(tx, 0.35, k); ty = lerp(ty, lerp(1.15, 0.6, hit), k); tz = lerp(tz, lerp(1.7, 1.4, hit), k); crouch = lerp(crouch, 0.95, k);
-        }
+        const crouch = clamp(1 - ty / 4.2, 0, 1) * 0.9;
         catchPose(P, [tx, ty, tz], crouch, smoothstep(0, E.cfg.anim.fielder.twoHandsSeconds, dtC));
         if (runW > 0.01) {
           // a running catch: keep striding with the glove out, settle into the catch pose as he slows
           runReachPose(scratch, st.phase, speed, [tx, ty, tz], look);
           mixPose(P, P, scratch, runW);
+        }
+        person.tagLow = false;
+        if (tagOut) {
+          // the ball in, he gets down over the bag (feet either side of it, glove low in front); the glove sweeps down to where the
+          // runner's foot (or waist) arrives; the tag goes on; he pops up and shows the ball - then it all melts back into the catch
+          const T = E.cfg.anim.tag;
+          const spot = this.tagSpot(plan, tagOut, true);
+          const tg = st.tagTgt || (st.tagTgt = [0.4, 0.5, 2.2]);
+          if (spot) {
+            person.root.updateMatrixWorld(true);
+            const lc = person.root.worldToLocal(this.tmpV3.set(spot.x, spot.y, spot.z));
+            const k = 1 - Math.exp(-14 * dt);
+            tg[0] += (lc.x - tg[0]) * k; tg[1] += (lc.y - tg[1]) * k; tg[2] += (lc.z - tg[2]) * k;
+          }
+          const setK = smoothstep(0.1, 0.45, dtC);
+          const sweep = smoothstep(tagOut.t - T.sweep, tagOut.t - 0.02, playT);
+          const pop = smoothstep(tagOut.t + T.pop[0], tagOut.t + T.pop[1], playT);
+          const w = Math.max(setK * 0.95, sweep) * (1 - smoothstep(tagOut.t + T.settle[0], tagOut.t + T.settle[1], playT));
+          if (w > 0.001) {
+            const tp = this.tmpPose2 || (this.tmpPose2 = makePose());
+            tagPose(tp, { sweep, pop, target: tg });
+            mixPose(P, P, tp, w);
+            person.tagLow = w > 0.3 && pop < 0.5;
+          }
         }
         person.animState = 'catch';
         return;
@@ -925,6 +963,19 @@ export class Actors {
     return plan.events.some((e) => (e.type === 'out' || e.type === 'safe') && e.base === to);
   }
 
+  // Where a runner who is about to be tagged out is (world, from where he is drawn this very moment): the foot he slides in on, or his
+  // waist if he is on his feet. `foot` false = just the spot on the ground under him (to turn toward). Null when he cannot be found.
+  tagSpot(plan, tagOut, foot = true) {
+    const m = plan.moves.find((q) => q.out && q.outBase === tagOut.base);
+    const rp = m ? this.playRunnerP[m.from] : null;
+    if (!rp || !rp.active) return null;
+    const st = this.state.get(rp);
+    const v = this._tagV || (this._tagV = new THREE.Vector3());
+    rp.root.updateMatrixWorld(true);
+    if (!foot) return rp.root.getWorldPosition(v);
+    return rp.root.localToWorld(st && st.sliding ? v.set(0.1, 0.5, 2.6) : v.set(0, 2.4, 0.4));
+  }
+
   // The pose for a runner following a runnerState `r`: standing, running (with the lean / bob / arm drive that goes with his speed,
   // acceleration and turning), sliding into the bag, getting up, celebrating.
   runnerPoseFrame(person, st, r, dt, time, slide, homer = false) {
@@ -1165,7 +1216,7 @@ export class Actors {
       const person = this.fielders[seg.pos];
       person.root.updateMatrixWorld(true);
       person.gloveWorld(out);
-      out.y = Math.max(out.y, person.animState === 'dive' ? 0.3 : 1.2);
+      out.y = Math.max(out.y, person.animState === 'dive' || person.tagLow ? 0.3 : 1.2);
       // as he winds up to throw, the hands break and the ball goes from the glove into the throwing hand (never a jump)
       if (person.animState === 'throw') {
         const bh = E.cfg.anim.fielder.ballToHand;
