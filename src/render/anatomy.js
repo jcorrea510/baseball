@@ -17,7 +17,17 @@ function bumpAt(bumps, th) {
   return k;
 }
 
-const cr = (p0, p1, p2, p3, t) => {
+// A point round a ring at angle `th` (see loft): an ellipse, or a squarer superellipse when the ring has an exponent `n` > 2 (a face is
+// flatter in front and turns more sharply at the sides than an ellipse).
+export function ringPoint(r, th, out = [0, 0, 0]) {
+  const k = bumpAt(r.bumps, th);
+  let s = Math.sin(th), c = Math.cos(th);
+  if (r.n && r.n !== 2) { const e = 2 / r.n; s = Math.sign(s) * Math.pow(Math.abs(s), e); c = Math.sign(c) * Math.pow(Math.abs(c), e); }
+  out[0] = (r.x || 0) + s * r.rx * k; out[1] = r.y; out[2] = (r.z || 0) + c * r.rz * k;
+  return out;
+}
+
+export const cr = (p0, p1, p2, p3, t) => {
   const t2 = t * t, t3 = t2 * t;
   return 0.5 * (2 * p1 + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (-p0 + 3 * p1 - 3 * p2 + p3) * t3);
 };
@@ -26,7 +36,7 @@ const cr = (p0, p1, p2, p3, t) => {
  * A smooth closed surface swept through `rings` (in order along the part, usually from the joint down).
  * Ring: { y, rx, rz, x = 0, z = 0, bumps = [{ a, w, h }] } - an ellipse of half-widths rx (left-right) and rz (front-back) centred at
  * (x, y, z); a bump pushes it out by h x the radius around angle a (+- w, a cosine bump). Between rings the surface follows a
- * Catmull-Rom curve (`sub` steps per span). Columns start at the figure's right (-x) and go round through the front, so the
+ * Catmull-Rom curve (`sub` steps per span). A ring may also carry `n`, a superellipse exponent (see ringPoint). Columns start at the figure's right (-x) and go round through the front, so the
  * front is at u = 0.25 (the jersey texture's convention). Ends are closed with a rounded cap (`dome` x the end radius).
  * @returns {THREE.BufferGeometry} (cached when `key` is given - never dispose a cached one)
  */
@@ -37,9 +47,7 @@ export function loft(rings, { seg = 16, sub = 2, cap = true, dome = 0.35, key = 
   const P = rings.map((r) => {
     const pts = [];
     for (let j = 0; j < cols; j++) {
-      const th = -Math.PI / 2 + (2 * Math.PI * j) / seg;
-      const k = bumpAt(r.bumps, th);
-      pts.push([(r.x || 0) + Math.sin(th) * r.rx * k, r.y, (r.z || 0) + Math.cos(th) * r.rz * k]);
+      pts.push(ringPoint(r, -Math.PI / 2 + (2 * Math.PI * j) / seg, []));
     }
     return pts;
   });

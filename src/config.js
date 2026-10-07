@@ -1091,6 +1091,34 @@ export const CONFIG = {
     spdSpeed: 0.08, // Speed: running speed x(1 + this * (spd-50)/50)
   },
 
+  // How the players look (picture only: game/looks.js and render/rig.js / anatomy.js). Real players come from the table in looks.js;
+  // everybody else gets a look from his name with these odds.
+  looks: {
+    // skin tones 1 (very fair) .. 10 (deep), as the base colour of the skin (the face's shading is added on top)
+    skin: ['#f3d2bd', '#ebc2a3', '#dfae8a', '#cf9a72', '#bd855c', '#a66f48', '#8d5937', '#74462a', '#5a3420', '#432618'],
+    toneJitter: 0.35, // a random +- half of this many tone steps per player (from his name), so nobody is exactly the same colour
+    // hair (and facial hair) colours by code: black, dark brown, brown, light brown, blond, red / auburn, salt and pepper, grey
+    hair: { k: '#100c0a', d: '#24170f', b: '#3d2819', l: '#6b4a2e', y: '#a5814f', r: '#7a3a1f', s: '#5d5955', g: '#9a9690' },
+    // a generated player's background (when his surname does not say): the share of each group
+    mix: { euro: 0.56, latino: 0.29, african: 0.1, asian: 0.05 },
+    groups: {
+      euro: { tone: [1, 3.5], hair: { b: 0.3, d: 0.25, l: 0.2, y: 0.1, k: 0.07, r: 0.06, s: 0.02 } },
+      latino: { tone: [3, 7.5], hair: { k: 0.7, d: 0.28, s: 0.02 } },
+      african: { tone: [6.5, 10], hair: { k: 0.97, s: 0.03 } },
+      asian: { tone: [2, 3.5], hair: { k: 1 } },
+      levant: { tone: [3, 5], hair: { k: 0.6, d: 0.4 } },
+    },
+    // facial hair of a generated player: the share of each style
+    beards: { none: 0.26, stubble: 0.26, mustache: 0.07, goatee: 0.12, short: 0.19, full: 0.1 },
+    longHair: 0.07, // share of generated players whose hair shows well below the cap
+    umpire: { tone: 2.5, beard: 'mustache', hair: 's', face: 0.75 }, // the plate umpire: a veteran with a grey moustache
+    // the surfaces up close (full detail): skin has a soft sheen and a little light through it (warm), facial hair is matte
+    skinRoughness: 0.55, // (0 = mirror, 1 = chalk)
+    skinSheen: 0.35, // a soft rim of light where the face turns away from you (like the fine hair on real skin), 0 = none
+    skinWarmth: 0.12, // warm light that seems to come through the skin at the shadow's edge (ears, nose), 0 = none
+    stubble: 0.32, // how dark stubble shades the jaw and lip (0 = none, 1 = the hair colour)
+  },
+
   storageKey: 'sandlot.save.v1',
 };
 

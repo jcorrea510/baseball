@@ -458,14 +458,24 @@ export function jerseyTexture({ primary, secondary, trim, text = '', number = 0,
   return toTexture(canvas, { anisotropy: 4 });
 }
 
-// A tileable normal map for the players' surfaces, painted in code: 'fabric' (the fine weave of a uniform and soft creases) or
-// 'leather' (the pebbled grain of a glove, a belt, a shoe). Made once and shared.
+// A tileable normal map for the players' surfaces, painted in code: 'fabric' (the fine weave of a uniform and soft creases),
+// 'leather' (the pebbled grain of a glove, a belt, a shoe), 'skin' (fine pores) or 'hair' (strands). Made once and shared.
 const surfaceCache = {};
 export function surfaceNormalTexture(kind = 'fabric', size = 256) {
   if (surfaceCache[kind]) return surfaceCache[kind];
-  const rng = createRng(kind === 'fabric' ? 31 : 47);
+  const rng = createRng({ fabric: 31, leather: 47, skin: 53, hair: 59 }[kind] || 47);
   const hgt = new Float32Array(size * size);
-  if (kind === 'fabric') {
+  if (kind === 'skin') {
+    // skin: fine pores and the faintest unevenness (a light touch: skin is smooth from a few feet away)
+    const pores = tileNoise(size, size, 64, 64, rng);
+    const soft = tileNoise(size, size, 10, 10, rng);
+    for (let i = 0; i < hgt.length; i++) hgt[i] = 0.6 * Math.pow(pores[i], 2.2) + 0.5 * soft[i];
+  } else if (kind === 'hair') {
+    // hair: strands running down the surface (v), clumped
+    const strands = tileNoise(size, size, 96, 4, rng);
+    const clumps = tileNoise(size, size, 18, 3, rng);
+    for (let i = 0; i < hgt.length; i++) hgt[i] = 1.4 * strands[i] + 0.9 * clumps[i];
+  } else if (kind === 'fabric') {
     const folds = tileNoise(size, size, 4, 6, rng);
     const fine = tileNoise(size, size, 32, 32, rng);
     for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
@@ -491,7 +501,8 @@ export function surfaceNormalTexture(kind = 'fabric', size = 256) {
   }
   ctx.putImageData(img, 0, 0);
   const tex = toTexture(canvas, { srgb: false, wrap: true, anisotropy: 4 });
-  tex.repeat.set(kind === 'fabric' ? 6 : 4, kind === 'fabric' ? 6 : 4);
+  const rep = { fabric: [6, 6], leather: [4, 4], skin: [3, 3], hair: [3, 2] }[kind] || [4, 4];
+  tex.repeat.set(rep[0], rep[1]);
   surfaceCache[kind] = tex;
   return tex;
 }
