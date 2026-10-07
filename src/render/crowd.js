@@ -38,6 +38,7 @@ void main() {
   gl_Position = projectionMatrix * mvPosition;
   #include <fog_vertex>
 }`;
+const CONFIG_SAT = CONFIG.crowd.saturation.toFixed(2);
 const FRAG = /* glsl */ `
 uniform sampler2D uMask;
 uniform float uBright, uFlash, uTime;
@@ -56,6 +57,8 @@ void main() {
   float cx = fract(vUv.x * ${CROWD_VARIANTS.toFixed(1)}) - 0.5;
   col *= (0.62 + 0.45 * cy) * (1.0 - 0.55 * cx * cx);
   col *= mix(0.45, 1.0, smoothstep(0.45, 0.95, m.a));
+  // a touch less colour than the clothes themselves (a crowd seen across a ballpark is softer than a pile of swatches)
+  col = mix(vec3(dot(col, vec3(0.299, 0.587, 0.114))), col, ${CONFIG_SAT});
   col *= uBright;
   // night-time camera flashes
   float slot = floor(uTime * 6.0 + vSeed * 40.0);

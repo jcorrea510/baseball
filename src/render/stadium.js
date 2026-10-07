@@ -20,20 +20,28 @@ float aaStripe(float x, float width) {
   return smoothstep(0.5 - aa, 0.5 + aa, tri);
 }
 uniform float uMow;
+// a mowed stripe: -1 / +1 across the pattern (soft edged)
+float mowS(float x) { return (aaStripe(x, 0.5) - 0.5) * 2.0; }
+// Mowing: grass laid down away from you looks light, toward you dark, and the stripes fade when you look across them - so each pattern
+// is stripes mowed along an axis and its brightness follows the view direction (vd: from the camera to this spot, on the ground).
+float mowLight(float s, vec2 axis, vec2 vd) { return s * (0.3 + 0.7 * dot(vd, axis)); }
 float grassPattern(vec3 p) {
-  // the outfield's mowing pattern (the park's own: stripes, a checkerboard, diamonds, waves from home, or plain turf)
-  float band = aaStripe(p.x / 26.0, 0.5);
-  vec2 r = vec2(p.x + p.z, p.x - p.z) * 0.70710678 / 15.0;
-  float chk = abs(aaStripe(r.x * 0.5, 0.5) - aaStripe(r.y * 0.5, 0.5));
-  float of = band;
-  if (uMow > 0.5 && uMow < 1.5) of = abs(aaStripe(p.x / 30.0, 0.5) - aaStripe(p.z / 30.0, 0.5));
-  else if (uMow > 1.5 && uMow < 2.5) { vec2 q = vec2(p.x + p.z, p.x - p.z) * 0.70710678 / 34.0; of = abs(aaStripe(q.x, 0.5) - aaStripe(q.y, 0.5)); }
-  else if (uMow > 2.5 && uMow < 3.5) of = aaStripe(length(p.xz) / 24.0, 0.5);
-  else if (uMow > 3.5) of = 0.5 + 0.3 * (aaStripe(p.z / 15.0, 0.5) - 0.5);
+  vec2 vd = normalize(p.xz - cameraPosition.xz + vec2(1e-3));
+  const float D = 0.70710678;
+  float of;
+  if (uMow > 0.5 && uMow < 1.5) of = 0.5 * (mowLight(mowS(p.x / 30.0), vec2(0.0, 1.0), vd) + mowLight(mowS(p.z / 30.0), vec2(1.0, 0.0), vd)); // checkerboard
+  else if (uMow > 1.5 && uMow < 2.5) { vec2 q = vec2(p.x + p.z, p.x - p.z) * D / 34.0; of = 0.5 * (mowLight(mowS(q.x), vec2(D, -D), vd) + mowLight(mowS(q.y), vec2(D, D), vd)); } // diamonds
+  else if (uMow > 2.5 && uMow < 3.5) of = mowLight(mowS(length(p.xz) / 24.0), normalize(p.xz + vec2(1e-3)), vd); // rings out from home
+  else if (uMow > 3.5) of = 0.25 * mowS(p.z / 15.0); // turf: printed bands
+  else of = mowLight(mowS(p.x / 26.0), vec2(0.0, 1.0), vd); // stripes toward center field
+  // the infield grass: a small diagonal checkerboard
+  vec2 r = vec2(p.x + p.z, p.x - p.z) * D / 15.0;
+  float chk = 0.5 * (mowLight(mowS(r.x * 0.5), vec2(D, -D), vd) + mowLight(mowS(r.y * 0.5), vec2(D, D), vd));
   float infield = 1.0 - smoothstep(88.0, 98.0, length(vec2(p.x, p.z + 60.5)));
   float pat = mix(of, uMow > 3.5 ? of : chk, infield);
-  float blot = sin(p.x * 0.031 + 1.3) * sin(p.z * 0.027) * 0.035;
-  return 1.0 + (pat - 0.5) * 0.30 + blot;
+  // slow patches (wear, watering) so it is never a perfect print
+  float blot = sin(p.x * 0.031 + 1.3) * sin(p.z * 0.027) * 0.03 + sin(p.x * 0.11 + p.z * 0.07) * 0.012;
+  return 1.0 + pat * 0.14 + blot;
 }`;
 
 export function buildStadium({ isMobile = false, crowdCount = 6000 } = {}) {

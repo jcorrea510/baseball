@@ -997,7 +997,8 @@ export const CONFIG = {
     sectionFeet: 36,
     sectionFill: [0.62, 1.12],
     fill: { back: 1.25, foul: 1.1, of: 0.85, highRows: 0.4 },
-    wear: { primary: 0.32, secondary: 0.12, neutral: 0.38 },
+    wear: { primary: 0.25, secondary: 0.1, neutral: 0.45 },
+    saturation: 0.72, // colour of the crowd x this (1 = the clothes' full colour)
     caps: 0.4, longHair: 0.18, hoods: 0.06,
   },
 
