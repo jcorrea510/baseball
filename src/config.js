@@ -719,7 +719,7 @@ export const CONFIG = {
     // the infield fly rule (runners on 1st and 2nd or the bases loaded, fewer than two outs): a pop-up at least `apex` ft high that an
     // infielder settles under within `range` ft of home - the batter is out, caught or not; the umpire calls it `callBefore` s before it comes down
     infieldFly: { apex: 45, range: 160, callBefore: 1.0, callAfterApex: 0.3 }, // (the umpire calls it as the ball peaks - a moment after the top of its flight - and at the latest callBefore s before the catch)
-    transfer: { IF: 0.36, OF: 1.0, C: 0.4, P: 0.42 }, // s from catching the ball to letting it go (an outfielder fields it on the run, plants and crow-hops: about a second in the majors)
+    transfer: { IF: 0.36, OF: 0.8, C: 0.4, P: 0.42 }, // s from catching the ball to letting it go (an outfielder fields it on the run, plants and crow-hops: 0.8-1.0 s in the majors; the quick end keeps a runner you send to third at some risk)
     homeThrowMargin: 0.45, // s: on a grounder with the runner on third breaking for home, the fielder throws home only when he has him by this much
     pivot: 1.0, // s: the middle infielder turning a double play - catch, clear the sliding runner, throw to first // catch-to-throw time (an outfielder gathers himself and crow-hops)
     throwSpeed: { IF: 120, OF: 100, C: 112, P: 100 }, // ft/s, on average over the whole throw (a long outfield throw is lobbed a little)
@@ -787,7 +787,7 @@ export const CONFIG = {
     fastBallPenalty: 0.2, // extra reaction (s) fielders need on the hardest-hit grounders
     closePlay: 0.45, // a runner who beats the throw by less than this many seconds gets a 'Safe!' call
     outMargin: 0.02, // a throw must beat the runner by this many seconds
-    tagUpMargin: 0.65, // s: the man on third tags up and goes home by himself on a fly when he beats the throw by this much (raised with the slower outfield transfer, so shallow flies stay as they were)
+    tagUpMargin: 0.45, // s: the man on third tags up and goes home by himself on a fly when he beats the throw by this much (raised by as much as the outfield transfer, so shallow flies stay as they were)
     tagUpDepth: 200, // ft: a liner caught this deep is one a runner can tag up on too (not only a fly ball)
     runnerMargin: 0.35, // s: a runner takes an extra base by himself only when he beats the throw by this much (no bang-bang plays he did not ask for)
     // Errors (rare): a grounder bobbled, a fly ball dropped. Chance per chance, x difficulty.<level>.errorScale; hard chances (a smash,
