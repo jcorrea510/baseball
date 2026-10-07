@@ -91,9 +91,10 @@ function swingChance(ratio, count, batter, cfg) {
   const ahead = balls - strikes >= W.aheadBy;
   const con = hasRatings(batter) ? batter.con : 50;
   const star = 1 - W.starChase * (con - 50) / 50; // good contact hitters chase less
+  const full = balls === 3 && !two ? W.threeBallsOff : 1; // 3-1: a walk is a pitch away, so he lays off anything off the plate
   if (ratio < B.zone) return (two ? W.zoneTwo : W.zone) * (ahead && heart ? W.aheadHeart : 1);
-  if (ratio < B.edge) return (two ? W.edgeTwo : W.edge) * (ahead ? W.aheadEdge : 1) * star;
-  if (ratio < B.chase) return (two ? W.chaseTwo : W.chase) * star;
+  if (ratio < B.edge) return (two ? W.edgeTwo : W.edge) * (ahead ? W.aheadEdge : 1) * star * full;
+  if (ratio < B.chase) return (two ? W.chaseTwo : W.chase) * star * full;
   return W.waste;
 }
 

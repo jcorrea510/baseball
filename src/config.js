@@ -333,9 +333,10 @@ export const CONFIG = {
     // His chance to swing, by where he THINKS the pitch will cross (zoneBoxRatio bands in `bands`). "Two" = two strikes.
     swing: {
       zone: 0.72, zoneTwo: 0.9, // a strike
-      edge: 0.18, edgeTwo: 0.45, // on the corner (a ball he reads as a ball: he mostly takes it - he still chases many he misreads as strikes)
-      chase: 0.08, chaseTwo: 0.22, // tempting but out of the zone
-      waste: 0.03, // way out of reach
+      edge: 0.08, edgeTwo: 0.25, // on the corner (a ball he reads as a ball: he mostly takes it - he still chases many he misreads as strikes)
+      chase: 0.04, chaseTwo: 0.10, // tempting but out of the zone
+      waste: 0.015, // way out of reach: a real hitter almost never goes after these
+      threeBallsOff: 0.4, // 3-1 (3-0 has its own rule): x his swings at anything off the plate - he is happy to take ball four
       threeOhHeart: 0.3, // 3-0: he takes everything except a pitch he thinks is right down the middle, and only a power hitter...
       threeOhPower: 70, // ...with at least this Power rating
       aheadHeart: 1.15, aheadEdge: 0.6, // ahead in the count (2-0, 3-1): more swings at the heart, fewer on the corners
