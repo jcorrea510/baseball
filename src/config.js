@@ -938,6 +938,26 @@ export const CONFIG = {
     color: 0xf4efc0, // soft warm white
   },
 
+  // --------------------------------------------------------------------------
+  //  Animation (picture only - nothing here changes what happens in a play; poses.js / actors.js read it).
+  // --------------------------------------------------------------------------
+  anim: {
+    // The batter's load and stride, timed to the pitch like a real hitter's: his hands go back and his weight shifts onto the back leg
+    // as the pitcher comes set and delivers (`loadStart` .. `loadEnd` s before the release), the front foot lifts `liftAt` s before the
+    // ball reaches the plate, comes in toward the back knee and goes down again `landAt` s before it gets there, `stride` ft further
+    // toward the pitcher. On a pitch he lets go by he holds his finish of the stride, then from `relax` [start, end] s after the ball went
+    // past he steps back into his stance. `flight` is the flight time assumed while the pitch is not thrown yet (your delivery).
+    batter: {
+      loadStart: 0.55, loadEnd: 0.05,
+      liftAt: 0.42, landAt: 0.19, liftHeight: 0.3, stride: 0.6,
+      relax: [0.25, 0.85],
+      flight: 0.45,
+      oneHand: 0.45, // share of hitters who let go with the top hand in the finish (the same hitters every time)
+      oneHandAt: [0.42, 0.7], // (share of the follow-through over which that top hand lets go)
+      recover: 0.5, // s from the end of the follow-through to back in the stance (the bat comes down over the shoulder first)
+    },
+  },
+
   camera: {
     batter: { pos: [0.0, 13.5, 24.0], pitch: -14.5, fov: 36 }, // camera behind the plate; pitch in degrees
     // the catcher's view you bat from (after Ready): through the catcher's eyes, over his glove (the rest of him is hidden)

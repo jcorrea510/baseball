@@ -23,14 +23,14 @@ DIM.hipStand = DIM.ankle + DIM.shin + DIM.thigh; // hip height with straight leg
 const GRIP = { bottom: 0.17, top: 0.43, point: new THREE.Vector3(0, -0.2, 0.07), reach: 0.08 };
 
 // ---------------------------------------------------------------- pose format
-export const SCALARS = ['hipY', 'pelvisYaw', 'pelvisPitch', 'pelvisRoll', 'torsoPitch', 'torsoYaw', 'torsoRoll', 'headYaw', 'headPitch', 'footLTilt', 'footRTilt', 'footLYaw', 'footRYaw', 'batYaw', 'batPitch', 'batVis', 'gloveOpen', 'gripTop'];
+export const SCALARS = ['hipY', 'pelvisYaw', 'pelvisPitch', 'pelvisRoll', 'torsoPitch', 'torsoYaw', 'torsoRoll', 'headYaw', 'headPitch', 'footLTilt', 'footRTilt', 'footLYaw', 'footRYaw', 'batYaw', 'batPitch', 'batVis', 'gloveOpen', 'gripTop', 'topHandOff'];
 export const VECTORS = ['pelvis', 'footL', 'footR', 'handL', 'handR', 'poleL', 'poleR', 'kneeL', 'kneeR', 'bat'];
 
 export function makePose(o = {}) {
   const p = {
     hipY: DIM.hipStand - 0.12, pelvisYaw: 0, pelvisPitch: 0, pelvisRoll: 0,
     torsoPitch: 0, torsoYaw: 0, torsoRoll: 0, headYaw: 0, headPitch: 0,
-    footLTilt: 0, footRTilt: 0, footLYaw: 0, footRYaw: 0, batYaw: 0, batPitch: 0, batVis: 0, gloveOpen: 0.5, gripTop: GRIP.top,
+    footLTilt: 0, footRTilt: 0, footLYaw: 0, footRYaw: 0, batYaw: 0, batPitch: 0, batVis: 0, gloveOpen: 0.5, gripTop: GRIP.top, topHandOff: 0,
     pelvis: [0, 0, 0],
     footL: [0.34, DIM.ankle, 0], footR: [-0.34, DIM.ankle, 0],
     handL: [0.78, 2.6, 0.12], handR: [-0.78, 2.6, 0.12],
@@ -569,6 +569,7 @@ export class Person {
       if (p.batVis > 0.5) {
         for (let pass = 0; pass < 2; pass++) {
           for (const arm of this.arms) {
+            if (arm.side === -1 && p.topHandOff > 0.5) continue; // (a top hand that has let go does not hold the bat back)
             this.root.worldToLocal(arm.sh.getWorldPosition(_aim));
             _t2.copy(_knob).addScaledVector(_bd, arm.side === 1 ? GRIP.bottom : (p.gripTop ?? GRIP.top));
             const over = _t2.distanceTo(_aim) - (arm.len1 + arm.len2 + GRIP.reach);
@@ -621,6 +622,18 @@ export class Person {
       // the wrist's turn: the hand's frame (in the figure's own space) relative to the forearm's
       _hq2.copy(this.pelvisG.quaternion).multiply(this.spine.quaternion).multiply(arm.sh.quaternion).multiply(arm.upper.quaternion).multiply(arm.elbow.quaternion);
       arm.wrist.quaternion.copy(_hq2.invert().multiply(_hq));
+      // A one-handed finish: the top hand lets go of the bat (`topHandOff` 0..1) and goes to the pose's own hand target, its wrist
+      // relaxing as it goes (blended, so it never jumps off the handle).
+      const off = arm.side === -1 ? p.topHandOff || 0 : 0;
+      if (off > 0.001) {
+        const g = this.gripHands[1];
+        tmp.set(g[0] + (hand[0] - g[0]) * off, g[1] + (hand[1] - g[1]) * off, g[2] + (hand[2] - g[2]) * off);
+        g.splice(0, 3, tmp.x, tmp.y, tmp.z);
+        this.spine.worldToLocal(this.root.localToWorld(tmp));
+        _hq.copy(arm.wrist.quaternion);
+        solveTwoBone(arm.len1, arm.len2, arm.sh.position, tmp, pole, arm.upper.quaternion, arm.elbow.quaternion);
+        arm.wrist.quaternion.copy(_hq).slerp(_qId, off);
+      }
     }
     this.root.updateMatrixWorld(true);
   }
@@ -651,6 +664,7 @@ const _qw = new THREE.Quaternion(), _qr = new THREE.Quaternion(), _qk = new THRE
 const _e = new THREE.Euler();
 const _bd = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0), _ga = new THREE.Vector3(), _gb = new THREE.Vector3();
 const _hx = new THREE.Vector3(), _hy = new THREE.Vector3(), _hz = new THREE.Vector3(), _aim = new THREE.Vector3();
+const _qId = new THREE.Quaternion();
 const _hm = new THREE.Matrix4(), _hq = new THREE.Quaternion(), _hq2 = new THREE.Quaternion(), _knob = new THREE.Vector3();
 
 // ---------------------------------------------------------------- bat model (knob at the origin, barrel along +y)
