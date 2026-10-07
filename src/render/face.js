@@ -83,13 +83,14 @@ export function shell(surf, o) {
   return cached(o.key, () => {
     const { a0, a1, lo, hi, off, push = null, top = false, rows, cols, rim = 0.01, uScale = 1 } = o;
     const R = rows + 1 + (top ? 1 : 0), C = cols + 1;
+    const round = a1 - a0 >= 2 * PI - 1e-6;
     const RR = R + 2, CC = C + 2; // + the rim rows / columns
     const pos = new Float32Array(RR * CC * 3), uv = new Float32Array(RR * CC * 2);
     const put = (ri, ci, x, y, z, u, v) => { const k = ri * CC + ci; pos[k * 3] = x; pos[k * 3 + 1] = y; pos[k * 3 + 2] = z; uv[k * 2] = u; uv[k * 2 + 1] = v; };
     for (let cj = 0; cj < CC; cj++) {
       const j = Math.max(0, Math.min(C - 1, cj - 1));
       const th = a0 + ((a1 - a0) * j) / cols;
-      const edgeCol = cj === 0 || cj === CC - 1;
+      const edgeCol = !round && (cj === 0 || cj === CC - 1); // (a shell all the way round has no side edges: its ends meet)
       const yl = lo(th), yh = top ? surf.yTop : hi(th);
       for (let ri = 0; ri < RR; ri++) {
         const i = Math.max(0, Math.min(R - 1, ri - 1));
@@ -127,6 +128,16 @@ export function shell(surf, o) {
       for (let i = 0; i < idx.length; i += 3) { const t = idx[i + 1]; idx[i + 1] = idx[i + 2]; idx[i + 2] = t; }
       g.setIndex(idx);
       g.computeVertexNormals();
+    }
+    if (round) { // the seam at the back: both sides of it get the same normal (no line in the shading)
+      const nn = g.getAttribute('normal');
+      for (let ri = 0; ri < RR; ri++) {
+        const cols4 = [0, 1, CC - 2, CC - 1].map((c) => ri * CC + c);
+        let x = 0, y = 0, z = 0;
+        for (const v of cols4) { x += nn.getX(v); y += nn.getY(v); z += nn.getZ(v); }
+        const L = Math.hypot(x, y, z) || 1;
+        for (const v of cols4) nn.setXYZ(v, x / L, y / L, z / L);
+      }
     }
     g.computeBoundingSphere();
     return g;

@@ -455,8 +455,8 @@ function arcText(ctx, text, cx, y, font, fill, outline, lw, maxW, bend = 0, outl
   }
   ctx.restore();
 }
-export function jerseyTexture({ primary, secondary, trim, text = '', number = 0, stripe = false, mirror = false, back = '' }) {
-  const S = JERSEY, k = S / 256;
+export function jerseyTexture({ primary, secondary, trim, text = '', number = 0, stripe = false, mirror = false, back = '', size = JERSEY }) {
+  const S = size, k = S / 256;
   const { canvas, ctx } = makeCanvas(S, S);
   ctx.fillStyle = primary; ctx.fillRect(0, 0, S, S);
   if (stripe) {

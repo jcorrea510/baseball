@@ -133,9 +133,9 @@ const L = (rings, dl, key, extra = {}) => { const o = { ...lod(dl), ...extra }; 
 export function upperArmParts({ side, dl, len, arm, armMat = 'skin', sleeve, trim }) {
   const out = H * side;
   const skin = [
-    { y: 0.1, rx: 0.16, rz: 0.16 },
-    { y: -0.05, rx: 0.2, rz: 0.19, bumps: [{ a: out, w: 1.1, h: 0.12 }] },
-    { y: -0.25, rx: 0.178, rz: 0.17, bumps: [{ a: out, w: 0.9, h: 0.13 }, { a: 0, w: 0.9, h: 0.05 }] },
+    { y: 0.1, rx: 0.15, rz: 0.15 },
+    { y: -0.05, rx: 0.18, rz: 0.172, bumps: [{ a: out, w: 1.1, h: 0.1 }] },
+    { y: -0.25, rx: 0.168, rz: 0.162, bumps: [{ a: out, w: 0.9, h: 0.12 }, { a: 0, w: 0.9, h: 0.05 }] },
     { y: -0.45, rx: 0.152, rz: 0.158, bumps: [{ a: out, w: 0.6, h: 0.06 }, { a: Math.PI, w: 1.1, h: 0.1 }] },
     { y: -0.6, rx: 0.146, rz: 0.168, bumps: [{ a: 0, w: 1.0, h: 0.17 }, { a: Math.PI, w: 1.2, h: 0.12 }] },
     { y: -0.78, rx: 0.138, rz: 0.15, bumps: [{ a: 0, w: 1.0, h: 0.1 }, { a: Math.PI, w: 1.0, h: 0.05 }] },
@@ -145,14 +145,14 @@ export function upperArmParts({ side, dl, len, arm, armMat = 'skin', sleeve, tri
   // (the sleeve's top is a round cap over the shoulder joint: it closes in a dome, never a point)
   const sl = [
     { y: 0.27, rx: 0.06, rz: 0.06 },
-    { y: 0.24, rx: 0.15, rz: 0.145 },
-    { y: 0.15, rx: 0.218, rz: 0.21 },
-    { y: 0.02, rx: 0.245, rz: 0.235, bumps: [{ a: out, w: 1.2, h: 0.06 }] },
-    { y: -0.25, rx: 0.232, rz: 0.222 },
-    { y: -0.5, rx: 0.212, rz: 0.212 },
-    { y: -0.52, rx: 0.2, rz: 0.2 },
+    { y: 0.24, rx: 0.14, rz: 0.136 },
+    { y: 0.15, rx: 0.2, rz: 0.192 },
+    { y: 0.02, rx: 0.218, rz: 0.21, bumps: [{ a: out, w: 1.2, h: 0.05 }] },
+    { y: -0.25, rx: 0.208, rz: 0.2 },
+    { y: -0.5, rx: 0.19, rz: 0.19 },
+    { y: -0.52, rx: 0.18, rz: 0.18 },
   ];
-  const hem = [{ y: -0.47, rx: 0.218, rz: 0.218 }, { y: -0.52, rx: 0.218, rz: 0.218 }];
+  const hem = [{ y: -0.47, rx: 0.196, rz: 0.196 }, { y: -0.52, rx: 0.196, rz: 0.196 }];
   return [
     { geo: L(skin, dl, `uarm${side}|${len}`), color: arm, ao: 0.06, mat: armMat },
     { geo: L(sl, dl, `sleeve${side}`, { dome: 0.3 }), color: sleeve },

@@ -75,11 +75,11 @@ export function getMat(hex, rough = 0.88, metal = 0) {
 // Jersey materials are shared by everybody wearing the same shirt and counted: when the last figure wearing one is
 // disposed (a new game builds new teams), its texture is freed from the graphics card too.
 const jerseyCache = new Map();
-function getJerseyMat(u, mirror) {
-  const key = [u.primary, u.secondary, u.trim, u.text, u.number, u.stripe, u.back || '', mirror].join('|');
+function getJerseyMat(u, mirror, size = 512) {
+  const key = [u.primary, u.secondary, u.trim, u.text, u.number, u.stripe, u.back || '', mirror, size].join('|');
   let e = jerseyCache.get(key);
   if (!e) {
-    const m = new THREE.MeshStandardMaterial({ map: jerseyTexture({ primary: u.primary, secondary: u.secondary, trim: u.trim, text: u.text || '', number: u.number || 0, stripe: !!u.stripe, mirror, back: u.back || '' }), roughness: 0.9, normalMap: surfaceNormalTexture('fabric'), normalScale: new THREE.Vector2(0.32, 0.32) });
+    const m = new THREE.MeshStandardMaterial({ map: jerseyTexture({ primary: u.primary, secondary: u.secondary, trim: u.trim, text: u.text || '', number: u.number || 0, stripe: !!u.stripe, mirror, back: u.back || '', size }), roughness: 0.9, normalMap: surfaceNormalTexture('fabric'), normalScale: new THREE.Vector2(0.32, 0.32) });
     e = { m, key, users: 0 };
     jerseyCache.set(key, e);
   }
@@ -332,7 +332,7 @@ export class Person {
     const look = o.look || { skin: o.skin || '#cf9a72', hair: hairColor(o.skin || '#cf9a72', u.number), beard: 'none', long: false, face: ((Math.abs(u.number || 0) * 37) % 100) / 100 };
     const skinHex = look.skin;
     this.ownGeos = [];
-    this.jersey = getJerseyMat(u, this.mirror);
+    this.jersey = getJerseyMat(u, this.mirror, (o.detail ?? 1) >= 0.9 ? 512 : 256); // (a sharper shirt up close; far away and on phones half the size)
     const shirt = this.jersey.m;
     const pantsHex = u.pants || '#f2f2ee';
     // Jersey sleeves are short; where a team wears a contrasting long-sleeve undershirt (u.sleeve) it shows on the arms.
