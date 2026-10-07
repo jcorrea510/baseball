@@ -28,20 +28,24 @@ export const BATS = {
 export const PLAYER_TEAM = { id: 'sandlot', name: 'Sandlot Sluggers', abbr: 'SLG', color: '#1d3a7e' };
 
 export const FIRST = ['J.', 'M.', 'D.', 'T.', 'C.', 'R.', 'A.', 'L.', 'K.', 'B.', 'S.', 'E.', 'N.', 'P.', 'G.', 'H.', 'W.', 'F.'];
-export const LAST = ['Alvarez', 'Bennett', 'Castillo', 'Dawson', 'Ellis', 'Fontaine', 'Grayson', 'Hollis', 'Ishikawa', 'Jimenez', 'Kowalski', 'Lindgren', 'Marlow', 'Nakamura', 'Okafor', 'Pruitt', 'Quinn', 'Rourke', 'Santos', 'Tanaka', 'Underhill', 'Vasquez', 'Whitaker', 'Yoder', 'Zielinski', 'Brennan', 'Delgado', 'Faulkner', 'Haddad', 'Iverson', 'Mercer', 'Novak', 'Ortega', 'Petrov', 'Reyes', 'Sutton', 'Thibodeaux', 'Voss', 'Walsh', 'Abbott'];
+export const LAST = ['Alvarez', 'Bennett', 'Castillo', 'Dawson', 'Ellis', 'Fontaine', 'Grayson', 'Hollis', 'Ishikawa', 'Jimenez', 'Kowalski', 'Lindgren', 'Marlow', 'Nakamura', 'Okafor', 'Pruitt', 'Quinn', 'Rourke', 'Santos', 'Tanaka', 'Underhill', 'Vasquez', 'Whitaker', 'Yoder', 'Zielinski', 'Brennan', 'Delgado', 'Faulkner', 'Haddad', 'Iverson', 'Mercer', 'Novak', 'Ortega', 'Petrov', 'Reyes', 'Sutton', 'Thibodeaux', 'Voss', 'Walsh', 'Abbott',
+  'Acosta', 'Barnes', 'Caldwell', 'Dominguez', 'Espinal', 'Fischer', 'Gallagher', 'Herrera', 'Kim', 'Lockhart', 'McAllister', 'Navarro', 'O\'Brien', 'Park', 'Ramos', 'Sandoval', 'Torres', 'Valdez', 'Whitfield', 'Young', 'Archer', 'Beltran', 'Carver', 'Duran', 'Foster', 'Garza', 'Holloway', 'Jansen', 'Keller', 'Lowery', 'Mendoza', 'Nolan', 'Pena', 'Rios', 'Strickland', 'Tate', 'Vega', 'Wheeler', 'Yamada', 'Bishop'];
 export const SKINS = ['#f2c9a0', '#e0ac82', '#c68642', '#a3683b', '#7b4a2a', '#f7d7b5', '#5d3a22', '#d9a066'];
 
 export function makeLineup(seed, prefix = '') {
   const rng = createRng(seed);
-  const used = new Set();
+  const used = new Set(), nums = new Set();
   const out = [];
   for (let i = 0; i < 9; i++) {
-    let name;
-    do { name = rng.pick(FIRST) + ' ' + rng.pick(LAST); } while (used.has(name));
-    used.add(name);
+    // (no two men on a team share a last name or a number)
+    let last, number;
+    do { last = rng.pick(LAST); } while (used.has(last) && used.size < LAST.length);
+    used.add(last);
+    do { number = rng.int(1, 99); } while (nums.has(number));
+    nums.add(number);
     out.push({
-      name,
-      number: rng.int(1, 99),
+      name: rng.pick(FIRST) + ' ' + last,
+      number,
       skin: rng.pick(SKINS),
       scale: rng.range(0.95, 1.05),
       build: rng.range(0.94, 1.1),
