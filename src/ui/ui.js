@@ -3,6 +3,7 @@ import { CONFIG, DIFFICULTIES } from '../config.js';
 import { UNIFORMS, BATS } from '../game/teams.js';
 import { UNLOCKS, unlockKey, inningsText as ipText, eraText } from '../game/progression.js';
 import { logoSVG, wordSVG } from './logo.js';
+import { speedText, speedValue, speedUnit, distText } from '../util/units.js';
 import * as SEA from '../game/season.js';
 import { MLB_TEAMS, teamById, teamName, starsOf, leagueFor, lum } from '../game/mlb.js';
 
@@ -62,6 +63,18 @@ const ICONS = {
   swap: '<path d="M7 4v14M7 18l-3-3M7 18l3-3M17 20V6M17 6l-3 3M17 6l3 3"/>',
   full: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
   fullExit: '<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>',
+  close: '<path d="M6 6l12 12M18 6L6 18"/>',
+  camera: '<path d="M4 8h3l1.6-2.5h6.8L17 8h3v11H4z"/><circle cx="12" cy="13.2" r="3.4"/>',
+  vibrate: '<rect x="8" y="3.5" width="8" height="17" rx="2"/><path d="M4.5 8v8M19.5 8v8M2 10v4M22 10v4"/>',
+  ruler: '<path d="M3.5 15.5l12-12 5 5-12 12z"/><path d="M7 12l2 2M10 9l1.5 1.5M13 6l2 2"/>',
+  eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
+  hand: '<path d="M8 13V6.5a1.5 1.5 0 0 1 3 0V12V4.5a1.5 1.5 0 0 1 3 0V12V6a1.5 1.5 0 0 1 3 0v8.5c0 3.6-2.4 6-6 6-2.6 0-4-1.2-5.4-3.4L3.8 13a1.5 1.5 0 0 1 2.6-1.5z"/>',
+  layout: '<rect x="3.5" y="4.5" width="17" height="15" rx="1.5"/><path d="M3.5 9.5h17M9 9.5v10"/>',
+  trail: '<circle cx="18" cy="6" r="2.6"/><path d="M15.6 7.8L4 18M13 6.5L5.5 11M17 10.5l-5 7"/>',
+  speed: '<path d="M4.5 16.5a8 8 0 1 1 15 0"/><path d="M12 13l4-4"/><circle class="f" cx="12" cy="13" r="1.6"/>',
+  palette: '<path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.3 0 1.8-.9 1.4-1.9-.5-1.2.2-2.4 1.6-2.4h1.8a3.7 3.7 0 0 0 3.7-3.7C20.5 7.3 16.7 3.5 12 3.5z"/><circle class="f" cx="7.6" cy="11" r="1.2"/><circle class="f" cx="10.4" cy="7.4" r="1.2"/><circle class="f" cx="14.8" cy="7.6" r="1.2"/>',
+  mitt: '<path d="M6.5 13.5C5 9.5 6.6 4.5 11.5 4c4.3-.4 7 2.8 6.7 6.6l-.4 4.4c-.3 3-2.6 5-5.5 5H9.6c-1.6 0-2.7-1.4-2.4-3z"/><path d="M10 9.5c1.5-.8 3.5-.8 5 .3"/>',
+  sound: '<path d="M4 9.5v5h3.5l4.5 4v-13l-4.5 4z"/><path d="M15.5 9a4.5 4.5 0 0 1 0 6M18.2 6.3a8.5 8.5 0 0 1 0 11.4"/>',
 };
 const icon = (name, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`;
 
@@ -79,6 +92,24 @@ function focusSelector(el) {
   if (d.slide) return `[data-slide="${d.slide}"]`;
   if (d.a) return `[data-a="${d.a}"]`;
   return null;
+}
+
+// A pitch's movement as a pitcher's chart draws it, seen from behind your pitcher: an arrow from the middle toward where it breaks
+// (right = his arm side for a right-hander, mirrored for a left-hander; up = rides, down = drops), from the pitch type's own break
+// numbers (CONFIG.pitch.types breakArm / hop), its length by how much it moves.
+function moveIcon(type, hand = 'R') {
+  const T = CONFIG.pitch.types[type];
+  if (!T) return '';
+  const I = CONFIG.ui.moveIcon;
+  const a = (hand === 'L' ? -1 : 1) * T.breakArm, v = T.hop;
+  const m = Math.hypot(a, v) || 1;
+  const len = I.minLen + (I.maxLen - I.minLen) * Math.min(1, m / I.full);
+  const x = 12 + (a / m) * len, y = 12 - (v / m) * len;
+  // (a slight bend, like the ball's own path)
+  const cx = 12 + (a / m) * len * 0.35 - (v / m) * I.bend, cy = 12 - (v / m) * len * 0.35 - (a / m) * I.bend;
+  const ang = Math.atan2(y - cy, x - cx), h = 3.4;
+  const p1 = `${(x - h * Math.cos(ang - 0.55)).toFixed(1)} ${(y - h * Math.sin(ang - 0.55)).toFixed(1)}`, p2 = `${(x - h * Math.cos(ang + 0.55)).toFixed(1)} ${(y - h * Math.sin(ang + 0.55)).toFixed(1)}`;
+  return `<svg class="mv" viewBox="0 0 24 24" aria-hidden="true"><circle class="mvr" cx="12" cy="12" r="10"/><circle class="mvo" cx="12" cy="12" r="1.7"/><path d="M12 12Q${cx.toFixed(1)} ${cy.toFixed(1)} ${x.toFixed(1)} ${y.toFixed(1)}M${p1}L${x.toFixed(1)} ${y.toFixed(1)}L${p2}"/></svg>`;
 }
 
 const PITCH_LABEL = { fastball: 'Fastball', changeup: 'Changeup', curveball: 'Curveball', slider: 'Slider', heater: 'Heater', sinker: 'Sinker', cutter: 'Cutter', splitter: 'Splitter', mixed: 'Mixed' };
@@ -127,8 +158,8 @@ export class UI {
     const hud = h('div', 'hud');
     hud.innerHTML = `
       <div class="vignette"></div>
-      <svg class="aimpad" aria-hidden="true"><rect class="ap-reach"/><g class="ap-cells"></g><rect class="ap-zone"/><g class="ap-marks"></g><g class="ap-call"><circle class="ap-callring"/><path class="ap-callticks"/></g><circle class="ap-dot"/><circle class="ap-ring"/><text class="ap-word"></text></svg>
-      <div class="aplegend" aria-hidden="true"><span class="hot">Hot</span><span class="cold">Cold</span><span class="call">Catcher</span></div>
+      <svg class="aimpad" aria-hidden="true"><rect class="ap-reach"/><g class="ap-cells"></g><path class="ap-grid"/><rect class="ap-zoneo"/><rect class="ap-zone"/><g class="ap-marks"></g><g class="ap-call"><circle class="ap-callring"/><path class="ap-callticks"/></g><circle class="ap-ringo"/><circle class="ap-ring"/><circle class="ap-dot"/><circle class="ap-pip"/><text class="ap-word"></text></svg>
+      <div class="atbat" aria-label="At bat"><div class="ab1"><b class="num"></b><span class="nm"></span></div><div class="ab2"><span class="meta"></span><span class="today"></span></div><div class="ablg" aria-hidden="true"><span class="hot">Hot</span><span class="cold">Cold</span><span class="call">Call</span></div></div>
       <div class="throwpad" aria-label="Throw to">
         <svg class="tpfield" viewBox="0 0 200 200" aria-hidden="true"><path d="M100 172 L172 100 L100 28 L28 100 Z"/></svg>
         <svg class="tpfield tpdots" viewBox="0 0 200 200" aria-hidden="true"><g class="runners"></g><circle class="tpball" r="0"/></svg>
@@ -146,21 +177,15 @@ export class UI {
       <div class="hint"></div>
       <div class="bugwrap">
         <div class="batter-tag"></div>
-        <div class="pitchtag"><div class="pt1"><b class="pn"></b><span class="pc"></span></div><div class="stam"><i></i></div></div>
+        <div class="pitchtag"><div class="pt1"><span class="ph"></span><b class="pn"></b><span class="pc"></span></div><div class="stam"><i></i></div><div class="form" aria-hidden="true"></div></div>
         <div class="bug">
           <div class="teams">
             <div class="team away"><i></i><span class="abbr">AWY</span><span class="runs">0</span></div>
             <div class="team home"><i></i><span class="abbr">HME</span><span class="runs">0</span></div>
           </div>
-          <div class="state">
-            <div class="inning">▲ 1</div>
-            <div class="dots">
-              <span class="grp"><span>B</span><span class="dot b"></span><span class="dot b"></span><span class="dot b"></span><span class="dot b"></span></span>
-              <span class="grp"><span>S</span><span class="dot s"></span><span class="dot s"></span><span class="dot s"></span></span>
-              <span class="grp"><span>O</span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></span>
-            </div>
-          </div>
-          <svg class="diamond" viewBox="0 0 60 60"><rect class="base b2" x="21" y="4" width="18" height="18" transform="rotate(45 30 13)"/><rect class="base b3" x="3" y="22" width="18" height="18" transform="rotate(45 12 31)"/><rect class="base b1" x="39" y="22" width="18" height="18" transform="rotate(45 48 31)"/></svg>
+          <div class="inn top"><span class="arrow"></span><span class="inning">1</span></div>
+          <svg class="diamond" viewBox="0 0 60 46" aria-hidden="true"><rect class="base b2" x="23" y="5" width="14" height="14" transform="rotate(45 30 12)"/><rect class="base b3" x="7" y="21" width="14" height="14" transform="rotate(45 14 28)"/><rect class="base b1" x="39" y="21" width="14" height="14" transform="rotate(45 46 28)"/></svg>
+          <div class="cnt"><span class="bs">0-0</span><span class="outs"><i class="dot o"></i><i class="dot o"></i><i class="dot o"></i></span></div>
         </div>
       </div>
       <div class="practbox">
@@ -189,9 +214,9 @@ export class UI {
         <svg class="bpfield bphits" viewBox="0 0 160 160" aria-hidden="true"><g class="hits"></g></svg>
       </div>
       <button class="ffbtn" data-a="fast" aria-pressed="false" title="Speed up (Space)">${icon('ff')}<span>Fast</span></button>
-      <div class="pitchbar" aria-label="Pitches"></div>
-      <div class="bullback" data-bb></div><div class="bullpanel" role="dialog" aria-label="Bullpen"><div class="bphead">${icon('swap')}<span>Bullpen</span></div><div class="bplist"></div></div>
-      <div class="pitchside"><button class="btn small ghost bullbtn" data-a="bullpen" disabled title="Bullpen">${icon('swap')}<span>Bullpen</span></button><button class="btn small ghost simbtn" data-a="sim" title="Sim this inning">${icon('ff')}<span>Sim</span></button></div>
+      <div class="pmeter" aria-hidden="true"><div class="pmtrack"><i class="pz ok"></i><i class="pz good"></i><i class="pz perfect"></i><i class="pmfill"></i><i class="pmneedle"></i></div></div>
+      <div class="pitchdock"><div class="pitchside"><button class="dockbtn bullbtn" data-a="bullpen" disabled title="Bullpen">${icon('swap')}<span>Bullpen</span></button><button class="dockbtn simbtn" data-a="sim" title="Sim this inning">${icon('ff')}<span>Sim</span></button></div><div class="pitchbar" aria-label="Pitches"></div></div>
+      <div class="bullback" data-bb></div><div class="bullpanel" role="dialog" aria-label="Bullpen"><div class="bphead">${icon('swap')}<span>Bullpen</span><button class="iconbtn sm" data-bb aria-label="Close">${icon('close')}</button></div><div class="bplist"></div></div>
       <div class="acts"><button class="stealbtn" data-a="steal" aria-pressed="false" title="Steal (S)">${icon('go')}<span>Steal</span></button><button class="buntbtn" data-a="bunt" aria-pressed="false" title="Bunt (B)">${icon('bat')}<span>Bunt</span></button></div>
       <div class="practice panel collapsed">
         <button class="prhead" aria-label="Practice settings">${icon('sliders')}<span>Practice</span>${icon('chevDown', 'chev')}</button>
@@ -269,7 +294,7 @@ export class UI {
     // your pitch choice (labels only): a tap picks it; the buttons never count as a click on the field
     this.q.pitchbar = $(hud, '.pitchbar');
     this.q.pitchbar.addEventListener('click', (e) => { const b = e.target.closest('button[data-type]'); if (b) this.act('pitchSel', { type: b.dataset.type }); });
-    for (const el of hud.querySelectorAll('.practice, .hudbtns, .batterup, .acts, .lineup, .ffbtn, .pitchbar, .pitchside, .bullpanel, .bullback')) el.addEventListener('pointerdown', (e) => e.stopPropagation());
+    for (const el of hud.querySelectorAll('.practice, .hudbtns, .batterup, .acts, .lineup, .ffbtn, .pitchdock, .bullpanel, .bullback, .atbat')) el.addEventListener('pointerdown', (e) => e.stopPropagation());
 
     // ---------------- toast + rotate hint
     this.toastEl = h('div', 'toast');
@@ -896,18 +921,16 @@ export class UI {
     const t = b.querySelectorAll('.team');
     t[0].querySelector('.runs').textContent = g.score.top; t[1].querySelector('.runs').textContent = g.score.bottom;
     t[0].classList.toggle('active', g.half === 'top'); t[1].classList.toggle('active', g.half === 'bottom');
-    b.querySelector('.inning').textContent = `${g.half === 'top' ? '▲' : '▼'} ${g.inning}`;
+    const inn = b.querySelector('.inn');
+    inn.classList.toggle('top', g.half === 'top'); inn.classList.toggle('bot', g.half !== 'top');
+    b.querySelector('.inning').textContent = g.inning;
     this.setCount(g.balls, g.strikes, g.outs);
-    const bs = b.querySelectorAll('.diamond .base');
-    bs.forEach((x) => x.classList.remove('on'));
-    if (g.bases[0]) b.querySelector('.b1').classList.add('on');
-    if (g.bases[1]) b.querySelector('.b2').classList.add('on');
-    if (g.bases[2]) b.querySelector('.b3').classList.add('on');
+    for (const [k, i] of [['b1', 0], ['b2', 1], ['b3', 2]]) b.querySelector('.' + k).classList.toggle('on', !!g.bases[i]);
   }
+  // the count (balls - strikes) and the outs on the score bug
   setCount(balls, strikes, outs) {
     const b = this.q.bug;
-    b.querySelectorAll('.dot.b').forEach((d, i) => d.classList.toggle('on', i < balls));
-    b.querySelectorAll('.dot.s').forEach((d, i) => d.classList.toggle('on', i < strikes));
+    b.querySelector('.bs').textContent = `${balls}-${strikes}`;
     b.querySelectorAll('.dot.o').forEach((d, i) => d.classList.toggle('on', i < outs));
   }
   // The batting order on the left: all nine, the one at the plate lit, the ones who have been up dimmed. `today` = { id: { ab, h } } (optional).
@@ -926,6 +949,16 @@ export class UI {
     });
   }
   setBatter(b) { this.q.tag.innerHTML = b ? `<b>#${b.number}</b>${b.name}` : ''; }
+  // The batter's card while you pitch (top left): o = null hides it, else { number, name, pos, hand, today } (today = '1-2, HR' or '').
+  setAtBat(o) {
+    const el = this.hud.querySelector('.atbat');
+    el.classList.toggle('show', !!o);
+    if (!o) return;
+    el.querySelector('.num').textContent = o.number !== undefined ? `#${o.number}` : '';
+    el.querySelector('.nm').textContent = o.name;
+    el.querySelector('.meta').textContent = [o.pos, o.hand ? `Bats ${o.hand}` : ''].filter(Boolean).join(' · ');
+    el.querySelector('.today').textContent = o.today || '';
+  }
   // The next batter's card and the Ready button (the pitcher waits for it). line = today's { ab, h, hr, rbi, bb }; info = extra chips.
   showBatterUp(b, line, info = []) {
     const el = this.q.batterUp;
@@ -960,25 +993,24 @@ export class UI {
     q.querySelector('.longest').textContent = d.longest || '--';
     q.querySelector('.streak').textContent = d.streak;
   }
+  // The pitch read-out at the top (what was thrown and how fast). Settings -> Pitch speed off: the speed is left out (a type
+  // announced at release still shows on Rookie / Pro).
   showPitchInfo(type, mph, announceOnly = false, ms = 1700) {
     const el = this.q.pitchinfo;
+    const speed = !announceOnly && this.showSpeed !== false;
+    if (!type && !speed) return;
     el.querySelector('.type').textContent = type;
-    el.querySelector('.mph').textContent = announceOnly ? '' : `${Math.round(mph)} mph`;
+    el.querySelector('.mph').innerHTML = speed ? `${speedValue(mph)}<small>${speedUnit()}</small>` : '';
     el.classList.add('show');
     this.pitchPinned = false;
     clearTimeout(this.pitchTimer);
     this.pitchTimer = setTimeout(() => el.classList.remove('show'), ms);
   }
   hidePitchInfo() { this.q.pitchinfo.classList.remove('show'); this.pitchPinned = false; }
-  // While you aim: the pill stays up with the selected pitch's name and top speed (and the count); null lets it go.
+  // (round twenty-one: the pitch list itself shows the pitch you picked and its speed while you aim - the pill is no longer pinned;
+  // null still takes a pinned pill away)
   pinPitchInfo(o) {
-    const el = this.q.pitchinfo;
-    if (!o) { if (this.pitchPinned) { this.pitchPinned = false; el.classList.remove('show'); } return; }
-    clearTimeout(this.pitchTimer);
-    this.pitchPinned = true;
-    el.querySelector('.type').textContent = o.type;
-    el.querySelector('.mph').textContent = `${Math.round(o.mph)} mph`;
-    el.classList.add('show');
+    if (!o && this.pitchPinned) { this.pitchPinned = false; this.q.pitchinfo.classList.remove('show'); }
   }
   banner(big, sub = '', cls = 'neutral', hold = false) {
     const el = this.q.banner;
@@ -1047,11 +1079,13 @@ export class UI {
     this.hud.classList.toggle('canSim', !!o.canSim);
     this.hud.querySelector('.bullbtn').disabled = !o.canBullpen;
     if (!o.canBullpen) this.closeBullpen();
-    const key = o.pitches.map((p) => p.type).join(',');
+    const key = o.pitches.map((p) => p.type).join(',') + '|' + (o.hand || 'R') + '|' + speedUnit();
     if (key !== this.pitchKey) {
       this.pitchKey = key;
       this.q.pitchbar.dataset.n = o.pitches.length;
-      this.q.pitchbar.innerHTML = o.pitches.map((p) => `<button data-type="${p.type}" tabindex="-1"><span class="pn">${p.label}</span><span class="pm">${Math.round(p.mph)}</span></button>`).join('');
+      // one row per pitch: its key, a little picture of how it moves (from your side: arm side / glove side, rise / drop), its name
+      // and top speed; the catcher's call wears his mitt
+      this.q.pitchbar.innerHTML = o.pitches.map((p, i) => `<button data-type="${p.type}" tabindex="-1"><span class="pk">${i + 1}</span>${moveIcon(p.type, o.hand)}<span class="pn">${p.label}</span><span class="pcall">${icon('mitt')}</span><span class="pm">${speedValue(p.mph)}</span></button>`).join('');
     }
     for (const b of this.q.pitchbar.children) { b.classList.toggle('on', b.dataset.type === o.selected); b.classList.toggle('call', b.dataset.type === o.call); }
   }
@@ -1071,12 +1105,17 @@ export class UI {
     const el = this.hud.querySelector('.pitchtag');
     el.classList.toggle('show', !!o);
     if (!o) return;
+    el.querySelector('.ph').textContent = o.hand ? `${o.hand}HP` : '';
     el.querySelector('.pn').textContent = o.name;
     el.querySelector('.pc').textContent = `${o.pitches} P`;
     const st = Math.max(0, Math.min(1, o.stamina));
     el.querySelector('.stam i').style.width = `${Math.round(st * 100)}%`;
     el.classList.toggle('mid', st < 0.4 && st >= 0.15);
     el.classList.toggle('low', st < 0.15);
+    // his last few ring taps, oldest first (gold PERFECT, green GOOD, white OK, red WILD): how well he is throwing today
+    const form = (o.form || []).join(',');
+    const f = el.querySelector('.form');
+    if (f.dataset.k !== form) { f.dataset.k = form; f.innerHTML = (o.form || []).map((g) => `<i class="${g}"></i>`).join(''); }
   }
   // The count by the zone while you pitch (it rides on the pitch pill): '' removes it.
   setPitchCount(text) { this.q.pitchinfo.querySelector('.cnt').textContent = text || ''; }
@@ -1090,11 +1129,9 @@ export class UI {
    *     faded (true while the pitch is in the air: only the marks and the word stay) }
    */
   setAimPad(o) {
-    const el = this.hud.querySelector('.aimpad'), lg = this.hud.querySelector('.aplegend');
-    if (!o) { if (this.aimPadOn) { this.aimPadOn = false; el.classList.remove('show'); lg.classList.remove('show'); } return; }
-    // the legend under the zone while you aim: what the colours and the crosshair are
-    lg.classList.toggle('show', !!o.dot && !o.faded);
-    if (o.dot) { lg.style.left = `${o.left + o.reach.x * o.pxPerFt}px`; lg.style.top = `${o.top + (o.reach.yMax - o.zone.bottom) * o.pxPerFt + 10}px`; }
+    const el = this.hud.querySelector('.aimpad');
+    if (!o) { if (this.aimPadOn) { this.aimPadOn = false; el.classList.remove('show'); } return; }
+    // (what the colours and the catcher's target mean is on the batter's card, top left)
     if (!this.aimPadOn) { this.aimPadOn = true; el.classList.add('show'); }
     el.classList.toggle('faded', !!o.faded);
     const R = o.reach, Z = o.zone, k = o.pxPerFt;
@@ -1103,7 +1140,11 @@ export class UI {
     el.style.left = `${o.left}px`; el.style.top = `${o.top}px`; el.style.width = `${2 * R.x * k}px`; el.style.height = `${(R.yMax - R.yMin) * k}px`;
     const set = (q, a) => { for (const n in a) q.setAttribute(n, a[n]); };
     set(el.querySelector('.ap-reach'), { x: -R.x, y: -R.yMax, width: 2 * R.x, height: R.yMax - R.yMin, rx: 0.12 });
-    set(el.querySelector('.ap-zone'), { x: -Z.halfWidth, y: -Z.top, width: 2 * Z.halfWidth, height: Z.top - Z.bottom });
+    const zr = { x: -Z.halfWidth, y: -Z.top, width: 2 * Z.halfWidth, height: Z.top - Z.bottom };
+    set(el.querySelector('.ap-zone'), zr); set(el.querySelector('.ap-zoneo'), zr);
+    // the zone's thirds, faint (the batter's hot and cold cells are these)
+    { const w = 2 * Z.halfWidth / 3, hh = (Z.top - Z.bottom) / 3, x0 = -Z.halfWidth, y0 = -Z.top;
+      el.querySelector('.ap-grid').setAttribute('d', `M${x0 + w} ${y0}v${3 * hh}M${x0 + 2 * w} ${y0}v${3 * hh}M${x0} ${y0 + hh}h${2 * Z.halfWidth}M${x0} ${y0 + 2 * hh}h${2 * Z.halfWidth}`); }
     const cells = el.querySelector('.ap-cells');
     const key = (o.zones || []).join(',');
     if (cells.dataset.key !== key) {
@@ -1130,12 +1171,31 @@ export class UI {
       set(call.querySelector('.ap-callring'), { cx, cy, r });
       call.querySelector('.ap-callticks').setAttribute('d', [[0, -1], [1, 0], [0, 1], [-1, 0]].map(([a, b]) => `M${cx + a * r * 1.15} ${cy + b * r * 1.15} L${cx + a * r * 1.6} ${cy + b * r * 1.6}`).join(' '));
     } else call.style.display = 'none';
-    const dot = el.querySelector('.ap-dot');
-    if (o.dot) set(dot, { cx: -o.dot.x, cy: -o.dot.y, r: o.dot.r }); else dot.setAttribute('r', 0);
-    const ring = el.querySelector('.ap-ring');
-    if (o.ring && o.dot) { set(ring, { cx: -o.dot.x, cy: -o.dot.y, r: Math.max(0, o.ring.r) }); ring.classList.toggle('gold', !!o.ring.gold); } else ring.setAttribute('r', 0);
+    const dot = el.querySelector('.ap-dot'), pip = el.querySelector('.ap-pip');
+    if (o.dot) { set(dot, { cx: -o.dot.x, cy: -o.dot.y, r: o.dot.r }); set(pip, { cx: -o.dot.x, cy: -o.dot.y, r: o.dot.r * 0.22 }); } else { dot.setAttribute('r', 0); pip.setAttribute('r', 0); }
+    const ring = el.querySelector('.ap-ring'), ringo = el.querySelector('.ap-ringo');
+    if (o.ring && o.dot) {
+      const a = { cx: -o.dot.x, cy: -o.dot.y, r: Math.max(0, o.ring.r) };
+      set(ring, a); set(ringo, a); ring.classList.toggle('gold', !!o.ring.gold);
+    } else { ring.setAttribute('r', 0); ringo.setAttribute('r', 0); }
     const word = el.querySelector('.ap-word');
     if (o.word) { word.textContent = o.word.text; set(word, { x: -o.word.x, y: -o.word.y }); word.style.fill = o.word.color; word.style.opacity = o.word.alpha; } else word.textContent = '';
+  }
+
+  /**
+   * The pitch meter while the delivery runs (the ring's clock laid flat): o = null hides it, else { p: how far the ring is through its
+   * time (0..1), hit: where it meets the dot (0..1), ok / good / perfect: half-widths of those windows (0..1 of the ring's time),
+   * grade: the grade once tapped (the needle stops there) or null }.
+   */
+  setPitchMeter(o) {
+    const el = this.hud.querySelector('.pmeter');
+    el.classList.toggle('show', !!o);
+    if (!o) return;
+    const pct = (v) => `${(Math.max(0, Math.min(1, v)) * 100).toFixed(2)}%`;
+    for (const k of ['ok', 'good', 'perfect']) { const z = el.querySelector('.pz.' + k); z.style.left = pct(o.hit - o[k]); z.style.width = pct(2 * o[k]); }
+    el.querySelector('.pmneedle').style.left = pct(o.p);
+    el.querySelector('.pmfill').style.width = pct(o.p);
+    el.dataset.grade = o.grade || '';
   }
 
   /**

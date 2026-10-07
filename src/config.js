@@ -452,6 +452,22 @@ export const CONFIG = {
     dot: 0.26, // ft: your dot's radius (the ring closes onto it when you should let go / tap)
   },
 
+  // The on-screen controls and read-outs (src/ui/ui.js, src/style.css). Picture and feel only - nothing here changes a result.
+  ui: {
+    moveIcon: { minLen: 4, maxLen: 8.5, full: 1.6, bend: 1.6 }, // the little movement arrow on each pitch button (24-unit box): shortest / longest arrow, the break (ft) that draws it longest, how much it bends
+    pitchMarker: { normal: { strike: 0x3ddc7c, ball: 0xff5a4d }, colorBlind: { strike: 0x49b7ff, ball: 0xff8c1a } }, // the ring where your last pitch faced crossed the plate (in the zone / out of it)
+    formPitches: 6, // the pitcher's card shows the grades of his last this-many ring taps
+    hudScale: { small: 0.86, normal: 1, large: 1.16 }, // Settings -> HUD size: the score box, the buttons and the read-outs are drawn this much bigger / smaller
+    aimSpeed: { min: 50, max: 160, step: 10 }, // Settings -> Drag speed (touch): % of the normal speed a finger moves the bat / the pitch target
+    // Settings -> Vibration (phones that can): how long (ms) the phone buzzes for each moment
+    haptics: { contact: 18, perfect: 34, homer: [40, 60, 80], strikeout: [26, 40, 26], throw: 10, tap: 8 },
+    // Settings -> Batting view: where the camera sits while you are up ('catcher' is the round-four view; 'high' sits behind and above the umpire)
+    batViews: {
+      catcher: { pos: [0, 3.3, 7.0], look: [0, 1.2, -30], fov: 42 },
+      high: { pos: [0, 5.4, 13.5], look: [0, 1.7, -30], fov: 36 },
+    },
+  },
+
   // The see-through bat you aim with (render/batAim.js) and how the cursor / keys / a finger move it
   batAim: {
     color: 0xffffff, opacity: 0.4, spotColor: 0xffe08a, spotOpacity: 0.95,
