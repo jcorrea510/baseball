@@ -1,7 +1,7 @@
 // Actors: every visible person and the ball, driven each frame by the game engine's state.
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
-import { Person, makeBat, restyleBat, disposeBat, mixPose, makePose, copyPose } from './rig.js';
+import { Person, createBlobs, makeBat, restyleBat, disposeBat, mixPose, makePose, copyPose } from './rig.js';
 import { batterPose, buntPose, pitcherPose, catcherPose, fielderReady, runPose, runReachPose, runCadence, runnerLeadPose, slidePose, slideGetUp, throwPose, catchPose, divePose, tagPose, celebratePose, standingPose, umpirePose, THROW_RELEASE_U, PITCHER_BALL_TO_HAND, pitcherSetAfter } from './poses.js';
 import { UNIFORMS } from '../game/teams.js';
 import { lookOf, umpireLook, fieldersFrom } from '../game/looks.js';
@@ -38,6 +38,8 @@ export class Actors {
     this.fx = effects;
     this.group = new THREE.Group();
     scene.add(this.group);
+    this.blobs = createBlobs();
+    this.group.add(this.blobs.mesh);
     this.fielders = {};
     this.defSets = { opp: null, mine: null }; this.coachSets = { opp: null, mine: null }; this.defSide = 'opp'; this.coachSide = 'mine';
     this.players = new Map();
@@ -262,6 +264,7 @@ export class Actors {
 
     for (const p of this.players.values()) p.root.visible = !!p.active;
     if (this.fielders.C) this.fielders.C.root.visible = !this.catcherHidden; // (hidden only while the camera pulls back out of his eyes)
+    this.blobs.sync();
     this.lastPhase = phase;
   }
 

@@ -261,7 +261,43 @@ function hairColor(skinHex, number = 0) {
 }
 let blobShared = null;
 
+// The soft blob under every figure's feet, ALL in one instanced mesh (one draw instead of one per figure). `sync()` after the figures
+// are placed each frame; it follows whoever is on screen.
+const BLOB_Y = 0.04;
+export function createBlobs(max = 64) {
+  if (!blobShared) {
+    blobShared = new THREE.MeshBasicMaterial({ map: blobTexture(), transparent: true, depthWrite: false, opacity: 0.6, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
+  }
+  const geo = new THREE.PlaneGeometry(3.4, 3.4);
+  const mesh = new THREE.InstancedMesh(geo, blobShared, max);
+  mesh.count = 0;
+  mesh.frustumCulled = false;
+  mesh.renderOrder = 2;
+  mesh.name = 'blobs';
+  const local = new THREE.Matrix4().compose(new THREE.Vector3(0, BLOB_Y, 0), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2), new THREE.Vector3(1, 1, 1));
+  const m = new THREE.Matrix4();
+  return {
+    mesh,
+    sync() {
+      let n = 0;
+      for (const p of Person.live) {
+        if (!p.root.visible || n >= max) continue;
+        let seen = true;
+        for (let o = p.root.parent; o; o = o.parent) if (!o.visible) { seen = false; break; }
+        if (!seen) continue;
+        p.root.updateMatrix();
+        m.multiplyMatrices(p.root.matrix, local);
+        mesh.setMatrixAt(n++, m);
+      }
+      mesh.count = n;
+      mesh.instanceMatrix.needsUpdate = true;
+    },
+    dispose() { geo.dispose(); mesh.dispose(); },
+  };
+}
+
 export class Person {
+  static live = new Set(); // every figure alive (for the shared blob shadows)
   /**
    * @param {object} o
    * @param {'batter'|'fielder'|'pitcher'|'catcher'|'runner'|'coach'} o.role
@@ -468,21 +504,92 @@ export class Person {
       this.root.add(this.bat);
     }
 
-    // soft blob shadow under the feet
-    if (!blobShared) {
-      blobShared = new THREE.MeshBasicMaterial({ map: blobTexture(), transparent: true, depthWrite: false, opacity: 0.6, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
+    // (the soft blob shadow under the feet is drawn for everybody at once - see createBlobs)
+    Person.live.add(this);
+    this._skin();
+  }
+
+  // Draw the whole figure as a few skinned meshes - one per surface - instead of one mesh per joint (fewer draw calls, in the
+  // picture and in the shadow pass). Every vertex follows exactly the one joint its piece was hung on (weight 1), so the figure
+  // moves and looks exactly as before; the joints themselves (and the IK that turns them) are unchanged.
+  _skin() {
+    const root = this.root;
+    const keep = root.scale.clone();
+    root.scale.set(1, 1, 1); // (rest pose in figure space: no height, no mirror)
+    root.updateMatrixWorld(true);
+    const invRoot = root.matrixWorld.clone().invert();
+    const bones = [], boneIdx = new Map(), inverses = [];
+    const boneOf = (o) => {
+      if (!boneIdx.has(o)) { boneIdx.set(o, bones.length); bones.push(o); inverses.push(o.matrixWorld.clone().premultiply(invRoot).invert()); }
+      return boneIdx.get(o);
+    };
+    const byMat = new Map();
+    for (const m of this.meshes) {
+      if (!byMat.has(m.material)) byMat.set(m.material, []);
+      byMat.get(m.material).push(m);
     }
-    this.blob = new THREE.Mesh(geoCache.blob || (geoCache.blob = new THREE.PlaneGeometry(3.4, 3.4)), blobShared);
-    this.blob.rotation.x = -Math.PI / 2;
-    this.blob.position.y = 0.04;
-    this.blob.renderOrder = 2;
-    this.root.add(this.blob);
+    const _n = new THREE.Matrix4();
+    const made = [];
+    for (const [mat, list] of byMat) {
+      const withColor = list.some((m) => m.geometry.getAttribute('color'));
+      let vc = 0, ic = 0;
+      for (const m of list) { vc += m.geometry.getAttribute('position').count; ic += m.geometry.index.count; }
+      const pos = new Float32Array(vc * 3), nor = new Float32Array(vc * 3), uv = new Float32Array(vc * 2), col = withColor ? new Float32Array(vc * 3).fill(1) : null;
+      const skI = new Uint16Array(vc * 4), skW = new Float32Array(vc * 4), idx = new Uint32Array(ic);
+      let vo = 0, io = 0;
+      for (const m of list) {
+        const g = m.geometry.clone();
+        m.updateMatrixWorld(true);
+        g.applyMatrix4(_n.multiplyMatrices(invRoot, m.matrixWorld));
+        const n = g.getAttribute('position').count, b = boneOf(m.parent);
+        pos.set(g.getAttribute('position').array, vo * 3);
+        nor.set(g.getAttribute('normal').array, vo * 3);
+        if (g.getAttribute('uv')) uv.set(g.getAttribute('uv').array, vo * 2);
+        if (col && g.getAttribute('color')) col.set(g.getAttribute('color').array, vo * 3);
+        for (let i = 0; i < n; i++) { skI[(vo + i) * 4] = b; skW[(vo + i) * 4] = 1; }
+        const gi = g.index.array;
+        for (let i = 0; i < gi.length; i++) idx[io + i] = gi[i] + vo;
+        vo += n; io += gi.length;
+        g.dispose();
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+      geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+      if (col) geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      geo.setAttribute('skinIndex', new THREE.BufferAttribute(skI, 4));
+      geo.setAttribute('skinWeight', new THREE.BufferAttribute(skW, 4));
+      geo.setIndex(new THREE.BufferAttribute(idx, 1));
+      geo.computeBoundingSphere();
+      made.push({ geo, mat });
+    }
+    for (const m of this.meshes) m.parent.remove(m);
+    for (const g of this.ownGeos) g.dispose();
+    this.ownGeos = [];
+    this.skeleton = new THREE.Skeleton(bones, inverses);
+    this.meshes = [];
+    const bind = new THREE.Matrix4();
+    for (const { geo, mat } of made) {
+      const sm = new THREE.SkinnedMesh(geo, mat);
+      sm.castShadow = true;
+      sm.bind(this.skeleton, bind);
+      // (the culling sphere must hold every pose - a dive, a slide - not just the standing one the geometry was made in)
+      sm.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 3.2, 0), 7);
+      root.add(sm);
+      this.ownGeos.push(geo);
+      this.meshes.push(sm);
+    }
+    this.torsoMesh = null;
+    root.scale.copy(keep);
+    root.updateMatrixWorld(true);
   }
 
   // Free everything made for this figure alone (shared shapes and colours stay cached). Call once it leaves the scene.
   dispose() {
+    Person.live.delete(this);
     for (const g of this.ownGeos) g.dispose();
     this.ownGeos = [];
+    if (this.skeleton) { this.skeleton.dispose(); this.skeleton = null; }
     releaseJersey(this.jersey);
     this.jersey = null;
     if (this.bat) { disposeBat(this.bat); this.bat = null; }
