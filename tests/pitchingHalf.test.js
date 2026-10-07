@@ -324,7 +324,7 @@ describe('saving in the middle of your half', () => {
     };
     const a = seen(e1), b = seen(e2);
     for (const k of [0, 1, 2]) {
-      const p = { type: 'fastball', aim: { x: 0.1 * k, y: 2.5 }, errMs: [10, -50, 90][k] };
+      const p = { type: 'fastball', aim: { x: 0.1 * k, y: 2.5 }, errMs: [10, -60, 120][k] }; // (each well inside its grade: on a boundary the two clocks can grade it differently)
       pitchOne(e1, p); pitchOne(e2, p);
     }
     expect(a.length).toBeGreaterThan(6);
